@@ -1,0 +1,4 @@
+# Runtime dependencies for dash-improve-my-llms
+dash>=3.0.0
+flask>=2.0.0
+dash-mantine-components>=2.3.0

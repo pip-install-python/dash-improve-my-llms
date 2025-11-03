@@ -1,0 +1,137 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dash-improve-my-llms"
+version = "0.1.0"
+description = "Automatic llms.txt, page.json, and architecture.txt generation for Dash applications"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Pip Install Python LLC", email = "pipinstallpython@gmail.com"}
+]
+maintainers = [
+    {name = "Pip Install Python LLC", email = "pipinstallpython@gmail.com"}
+]
+keywords = [
+    "dash",
+    "plotly",
+    "llms",
+    "ai",
+    "documentation",
+    "llms.txt",
+    "architecture",
+    "metadata",
+    "plugin",
+    "hook"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Dash",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Documentation",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "dash>=3.0.0",
+    "flask>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "build>=0.10.0",
+    "twine>=4.0.0",
+    "dash-mantine-components>=2.0.0",  # For testing with example app
+]
+
+[project.urls]
+Homepage = "https://pip-install-python.com"
+Documentation = "https://github.com/pip-install-python/dash-improve-my-llms#readme"
+Repository = "https://github.com/pip-install-python/dash-improve-my-llms"
+"Bug Tracker" = "https://github.com/pip-install-python/dash-improve-my-llms/issues"
+"Plotly Pro" = "https://plotly.pro"
+
+[tool.setuptools]
+packages = ["dash_improve_my_llms"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+dash_improve_my_llms = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.eggs
+  | \.tox
+  | build
+  | dist
+  | __pycache__
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--cov=dash_improve_my_llms",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--verbose",
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+
+[tool.coverage.run]
+source = ["dash_improve_my_llms"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
