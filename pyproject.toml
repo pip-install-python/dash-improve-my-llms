@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "0.1.0"
-description = "Automatic llms.txt, page.json, and architecture.txt generation for Dash applications"
+version = "0.2.0"
+description = "Automatic llms.txt, page.json, architecture.txt, robots.txt, and sitemap.xml generation for Dash applications with bot detection and visitor analytics"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,7 +25,15 @@ keywords = [
     "architecture",
     "metadata",
     "plugin",
-    "hook"
+    "hook",
+    "bot-detection",
+    "robots-txt",
+    "sitemap",
+    "seo",
+    "analytics",
+    "visitor-tracking",
+    "web-crawlers",
+    "ai-bots"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

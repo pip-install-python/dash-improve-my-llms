@@ -1,0 +1,286 @@
+"""
+HTML generation for bot-friendly static content.
+
+This module generates static HTML pages that AI agents and crawlers can read,
+even when they cannot execute JavaScript.
+"""
+
+import json
+from typing import Dict, List, Optional
+
+
+def generate_static_page_html(
+    page_path: str,
+    page_metadata: Dict,
+    all_pages: List[Dict],
+    app_config: Dict,
+    marked_important: List[Dict],
+) -> str:
+    """
+    Generate static HTML for a specific page that AI agents can read.
+
+    Args:
+        page_path: Current page path (e.g., "/dashboard")
+        page_metadata: Metadata for current page
+        all_pages: List of all registered pages
+        app_config: Application configuration
+        marked_important: Important content sections
+
+    Returns:
+        Complete HTML string
+    """
+
+    title = page_metadata.get("name", "Dashboard")
+    description = page_metadata.get("description", "")
+
+    # Build navigation from all pages
+    nav_items = []
+    for page in all_pages:
+        is_current = page.get("path") == page_path
+        class_attr = ' class="current"' if is_current else ""
+        nav_items.append(
+            f'<li{class_attr}><a href="{page.get("path", "/")}">{page.get("name", "Page")}</a></li>'
+        )
+
+    # Build important content sections
+    content_sections = []
+    for item in marked_important:
+        if item.get("page_path") == page_path:
+            section_id = item.get("id", "")
+            id_attr = f' id="{section_id}"' if section_id else ""
+            content_sections.append(
+                f"""
+                <section{id_attr}>
+                    {item.get('html_content', '')}
+                </section>
+            """
+            )
+
+    # Generate structured data (JSON-LD)
+    structured_data = {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": app_config.get("name", "Dashboard"),
+        "url": f"{app_config.get('base_url', '')}{page_path}",
+        "description": description,
+        "applicationCategory": "BusinessApplication",
+    }
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{description}">
+    <meta name="robots" content="index, follow">
+
+    <!-- AI Discovery Hints -->
+    <link rel="alternate" type="text/markdown" href="{page_path}/llms.txt">
+    <link rel="alternate" type="application/json" href="{page_path}/page.json">
+
+    <title>{title}</title>
+
+    <!-- Structured Data for AI Understanding -->
+    <script type="application/ld+json">
+    {json.dumps(structured_data, indent=2)}
+    </script>
+
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }}
+        header {{
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        nav ul {{
+            list-style: none;
+            padding: 0;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }}
+        nav a {{
+            text-decoration: none;
+            color: #0066cc;
+        }}
+        nav a:hover {{
+            text-decoration: underline;
+        }}
+        nav .current a {{
+            font-weight: bold;
+            color: #000;
+        }}
+        section {{
+            margin-bottom: 30px;
+        }}
+        .ai-note {{
+            background: #f5f5f5;
+            padding: 20px;
+            border-left: 4px solid #0066cc;
+            margin-top: 40px;
+        }}
+        footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{title}</h1>
+        <p>{description}</p>
+    </header>
+
+    <nav aria-label="Main navigation">
+        <ul>
+            {"".join(nav_items)}
+        </ul>
+    </nav>
+
+    <main>
+        {"".join(content_sections) if content_sections else '<p>This page contains interactive content that requires JavaScript.</p>'}
+
+        <section class="ai-note">
+            <p><strong>Note for AI Agents:</strong> This is a Dash interactive application.
+            For complete documentation and API access, visit:</p>
+            <ul>
+                <li><a href="{page_path}/llms.txt">LLM-friendly documentation (llms.txt)</a></li>
+                <li><a href="/architecture.txt">Application architecture (architecture.txt)</a></li>
+                <li><a href="{page_path}/page.json">Page structure data (page.json)</a></li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>Interactive version requires JavaScript. For programmatic access, see our API documentation.</p>
+        <p>Generated by <a href="https://pip-install-python.com">dash-improve-my-llms</a></p>
+    </footer>
+</body>
+</html>"""
+
+    return html
+
+
+def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
+    """
+    Generate the main index.html template with AI-friendly metadata.
+
+    This template is used for the Dash app.index_string.
+
+    Args:
+        app_config: Application configuration
+        pages: List of registered pages
+
+    Returns:
+        Complete index.html template string
+    """
+
+    app_name = app_config.get("name", "Dash Application")
+    app_description = app_config.get("description", "Interactive dashboard application")
+    base_url = app_config.get("base_url", "https://example.com")
+
+    # Build navigation structure for AI
+    nav_structure = {
+        "@context": "https://schema.org",
+        "@type": "SiteNavigationElement",
+        "name": "Main Navigation",
+        "hasPart": [
+            {
+                "@type": "WebPage",
+                "name": page.get("name", "Page"),
+                "url": f"{base_url}{page.get('path', '/')}",
+                "description": page.get("description", ""),
+            }
+            for page in pages
+        ],
+    }
+
+    # Build page list for noscript fallback
+    page_list_items = []
+    for p in pages:
+        page_list_items.append(
+            f'<li><a href="{p.get("path", "/")}">{p.get("name", "Page")}</a> - {p.get("description", "")}</li>'
+        )
+
+    template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    {{%metas%}}
+
+    <title>{{%title%}}</title>
+
+    <!-- AI Discovery -->
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="LLM-friendly documentation">
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{app_name}">
+    <meta property="og:description" content="{app_description}">
+
+    <!-- Structured Data for AI -->
+    <script type="application/ld+json">
+    {{
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "{app_name}",
+        "description": "{app_description}",
+        "url": "{base_url}",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Any"
+    }}
+    </script>
+
+    <!-- Navigation Structure for AI -->
+    <script type="application/ld+json">
+    {json.dumps(nav_structure, indent=2)}
+    </script>
+
+    {{%favicon%}}
+    {{%css%}}
+</head>
+<body>
+    <!-- Graceful degradation for non-JS agents -->
+    <noscript>
+        <div style="padding: 20px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
+            <h1>{app_name}</h1>
+            <p>{app_description}</p>
+            <p><strong>This application requires JavaScript for interactive features.</strong></p>
+
+            <h2>Available Resources:</h2>
+            <ul>
+                <li><a href="/llms.txt">LLM-friendly documentation</a></li>
+                <li><a href="/architecture.txt">Application architecture</a></li>
+                <li><a href="/sitemap.xml">Sitemap</a></li>
+                <li><a href="/robots.txt">Robots.txt</a></li>
+            </ul>
+
+            <h2>Pages:</h2>
+            <ul>
+                {"".join(page_list_items)}
+            </ul>
+        </div>
+    </noscript>
+
+    {{%app_entry%}}
+
+    <footer>
+        {{%config%}}
+        {{%scripts%}}
+        {{%renderer%}}
+    </footer>
+</body>
+</html>"""
+
+    return template

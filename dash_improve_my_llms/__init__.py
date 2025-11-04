@@ -24,6 +24,10 @@ from flask import Response, jsonify
 _important_components = set()
 _page_metadata = {}
 
+# Global registry to track hidden pages/components
+_hidden_pages = set()
+_hidden_components = set()
+
 
 class LLMSConfig:
     """Configuration for LLMS plugin"""
@@ -78,6 +82,80 @@ def mark_important(component, component_id: Optional[str] = None):
 def is_important(component_id: str) -> bool:
     """Check if a component or its parent is marked as important"""
     return component_id in _important_components
+
+
+def mark_hidden(page_path: str):
+    """
+    Mark a page as hidden from AI bots, LLMs, and search engines.
+
+    Hidden pages will be:
+    - Excluded from sitemap.xml
+    - Blocked in robots.txt
+    - Not accessible via /llms.txt or /page.json routes
+
+    Args:
+        page_path: Path of the page to hide (e.g., "/admin", "/private")
+
+    Returns:
+        None
+
+    Example:
+        # Hide admin pages from AI crawlers
+        mark_hidden("/admin")
+        mark_hidden("/settings")
+        mark_hidden("/internal-tools")
+    """
+    _hidden_pages.add(page_path)
+
+
+def is_hidden(page_path: str) -> bool:
+    """
+    Check if a page is marked as hidden from AI bots.
+
+    Args:
+        page_path: Path of the page to check
+
+    Returns:
+        True if the page is hidden, False otherwise
+    """
+    return page_path in _hidden_pages
+
+
+def mark_component_hidden(component, component_id: Optional[str] = None):
+    """
+    Mark a component as hidden from AI extraction.
+
+    This is useful for sensitive information that should not be
+    included in llms.txt or page.json output.
+
+    Args:
+        component: Dash component to mark as hidden
+        component_id: Optional ID to track this component
+
+    Returns:
+        The same component (for chaining)
+
+    Example:
+        html.Div([
+            mark_component_hidden(
+                html.Div([
+                    html.P("Sensitive internal information"),
+                    html.P("API keys, passwords, etc.")
+                ], id="sensitive-data")
+            )
+        ])
+    """
+    if hasattr(component, "id") and component.id:
+        _hidden_components.add(component.id)
+    elif component_id:
+        _hidden_components.add(component_id)
+
+    return component
+
+
+def is_component_hidden(component_id: str) -> bool:
+    """Check if a component is marked as hidden"""
+    return component_id in _hidden_components
 
 
 def extract_text_content(
@@ -1156,6 +1234,139 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
     # Store config on app
     app._llms_config = config
 
+    # Add bot response middleware
+    @app.server.before_request
+    def handle_bot_requests():
+        """
+        Middleware to serve different content based on bot type and RobotsConfig.
+
+        Behavior:
+        - Training bots (when block_ai_training=True): Return 403 Forbidden
+        - Search/Traditional bots: Return static HTML with structured data
+        - Regular browsers: Continue with normal Dash app
+        """
+        from flask import request, Response
+        from .bot_detection import is_any_bot, get_bot_type
+        from .html_generator import generate_static_page_html
+
+        # Skip for asset requests and Dash internal paths
+        if any(ext in request.path for ext in ['.css', '.js', '.png', '.jpg', '.ico', '_dash', '_reload-hash']):
+            return None
+
+        # Skip for documentation routes (let them handle bots themselves)
+        if request.path.endswith(('/llms.txt', '/page.json', '/architecture.txt', '/robots.txt', '/sitemap.xml')):
+            return None
+
+        user_agent = request.headers.get('User-Agent', '')
+
+        # Check if this is a bot
+        if is_any_bot(user_agent):
+            bot_type = get_bot_type(user_agent)
+            robots_config = getattr(app, '_robots_config', None)
+
+            # Block AI training bots if configured
+            if bot_type == 'training' and robots_config and robots_config.block_ai_training:
+                return Response(
+                    "403 Forbidden - AI training bots are not allowed to access this content.\n"
+                    "This site blocks AI training bots to prevent unauthorized use of content for model training.\n"
+                    f"Bot detected: {user_agent[:100]}\n"
+                    "For more information, see /robots.txt",
+                    status=403,
+                    mimetype='text/plain'
+                )
+
+            # Serve llms.txt content to search and traditional bots
+            # This solves the "AI crawlers cannot execute JavaScript" problem
+            if bot_type in ['search', 'traditional']:
+                try:
+                    # Get the page path
+                    page_path = request.path if request.path != '/' else '/'
+
+                    # Check if page is hidden
+                    if is_hidden(page_path):
+                        return Response("404 Not Found - Page not available", status=404, mimetype='text/plain')
+
+                    # Try to find the page in dash.page_registry
+                    import dash
+                    page_registry = dash.page_registry if hasattr(dash, "page_registry") else {}
+
+                    # Find matching page
+                    page = None
+                    for p in page_registry.values():
+                        p_path = p.get("path", "")
+                        if p_path == page_path:
+                            page = p
+                            break
+
+                    if page:
+                        layout_func = page.get("layout")
+                        page_name = page.get("name", page_path)
+
+                        if layout_func:
+                            # Generate llms.txt content for bots (bot-friendly markdown)
+                            # This is what bots should see instead of JavaScript
+                            llms_content = generate_llms_txt(page_path, layout_func, page_name, app)
+
+                            # Return as HTML with proper formatting for better bot rendering
+                            html_wrapper = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{page_name}</title>
+    <meta name="robots" content="index, follow">
+    <link rel="alternate" type="text/plain" href="{page_path}/llms.txt">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+        }}
+        pre {{
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }}
+        a {{
+            color: #0066cc;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        .bot-notice {{
+            background: #f0f7ff;
+            border-left: 4px solid #0066cc;
+            padding: 15px;
+            margin-bottom: 30px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="bot-notice">
+        <strong>🤖 Bot-Optimized Content</strong><br>
+        You're viewing a bot-friendly version of this page.<br>
+        Also available: <a href="{page_path}/llms.txt">llms.txt</a> |
+        <a href="{page_path}/page.json">page.json</a> |
+        <a href="/architecture.txt">architecture.txt</a> |
+        <a href="/sitemap.xml">sitemap.xml</a>
+    </div>
+    <pre>{llms_content}</pre>
+</body>
+</html>"""
+                            return Response(html_wrapper, mimetype='text/html')
+                except Exception as e:
+                    # If llms.txt generation fails, log and continue with normal app
+                    import traceback
+                    print(f"Error generating llms.txt for bot: {e}")
+                    print(traceback.format_exc())
+                    # Fall through to normal Dash app
+
+        # Continue with normal Dash app for regular browsers
+        return None
+
     # Use Flask's app.server to add routes directly
     # This ensures proper route matching with wildcards
 
@@ -1170,6 +1381,10 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
             page_path = "/"
         elif not page_path.startswith("/"):
             page_path = "/" + page_path
+
+        # Block access to hidden pages
+        if is_hidden(page_path):
+            return Response("Page not available", status=404)
 
         # Try to find the page in dash.page_registry
         try:
@@ -1212,6 +1427,10 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
             page_path = "/"
         elif not page_path.startswith("/"):
             page_path = "/" + page_path
+
+        # Block access to hidden pages
+        if is_hidden(page_path):
+            return jsonify({"error": "Page not available"}), 404
 
         # Try to find the page
         try:
@@ -1256,6 +1475,64 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
             error_msg = f"Error generating architecture.txt: {str(e)}\n{traceback.format_exc()}"
             return Response(error_msg, status=500)
 
+    @app.server.route("/robots.txt")
+    def serve_robots_txt():
+        """Serve robots.txt with configurable bot policies"""
+        from .robots_generator import RobotsConfig, generate_robots_txt
+
+        try:
+            # Get config from app or use defaults
+            robots_config = getattr(app, "_robots_config", RobotsConfig())
+            base_url = getattr(app, "_base_url", "https://example.com")
+
+            robots_content = generate_robots_txt(
+                config=robots_config,
+                sitemap_url=f"{base_url}/sitemap.xml",
+                base_url=base_url,
+            )
+            return Response(robots_content, mimetype="text/plain")
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Error generating robots.txt: {str(e)}\n{traceback.format_exc()}"
+            return Response(error_msg, status=500)
+
+    @app.server.route("/sitemap.xml")
+    def serve_sitemap():
+        """Serve sitemap.xml from registered pages"""
+        from .sitemap_generator import generate_sitemap_xml
+
+        try:
+            import dash
+
+            page_registry = dash.page_registry if hasattr(dash, "page_registry") else {}
+
+            # Build pages list from registry
+            pages = []
+            for p in page_registry.values():
+                page_path = p.get("path", "/")
+                # Skip hidden pages
+                if not is_hidden(page_path):
+                    page_info = {
+                        "path": page_path,
+                        "name": p.get("name", "Page"),
+                        "description": _page_metadata.get(page_path, {}).get("description", ""),
+                        "hidden": False,
+                    }
+                    pages.append(page_info)
+
+            base_url = getattr(app, "_base_url", "https://example.com")
+
+            sitemap_content = generate_sitemap_xml(
+                pages=pages, base_url=base_url, hidden_paths=list(_hidden_pages)
+            )
+            return Response(sitemap_content, mimetype="application/xml")
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Error generating sitemap.xml: {str(e)}\n{traceback.format_exc()}"
+            return Response(error_msg, status=500)
+
 
 # For backward compatibility and direct usage
 def setup_llms_plugin(
@@ -1272,11 +1549,19 @@ def setup_llms_plugin(
     add_llms_routes(app, config)
 
 
+# Import RobotsConfig for external use
+from .robots_generator import RobotsConfig
+
 __all__ = [
     "add_llms_routes",
     "mark_important",
     "is_important",
+    "mark_hidden",
+    "is_hidden",
+    "mark_component_hidden",
+    "is_component_hidden",
     "register_page_metadata",
     "LLMSConfig",
+    "RobotsConfig",
     "setup_llms_plugin",
 ]
