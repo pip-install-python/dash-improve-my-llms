@@ -28,7 +28,6 @@ Then visit:
 import dash_mantine_components as dmc
 from dash import Dash, dcc, html, page_container
 from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden
-from flask import request
 import json
 from pathlib import Path
 from datetime import datetime
@@ -144,6 +143,8 @@ def detect_device_type(user_agent):
 
 def track_visit():
     """Track page visit with device and bot detection."""
+    from flask import request
+
     try:
         user_agent = request.headers.get('User-Agent', 'Unknown')
         path = request.path
