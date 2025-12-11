@@ -1,28 +1,40 @@
 """
-Example Dash app demonstrating the dash-improve-my-llms hook v0.2.0
+Example Dash app demonstrating the dash-improve-my-llms hook v1.0.0
 
 This example shows:
 1. Basic setup with Dash Pages
-2. Bot management with RobotsConfig (NEW v0.2.0)
-3. SEO optimization with base_url (NEW v0.2.0)
-4. Privacy controls with mark_hidden (NEW v0.2.0)
+2. Bot management with RobotsConfig
+3. SEO optimization with base_url
+4. Privacy controls with mark_hidden
 5. Marking components as important
 6. Custom page metadata
 7. Automatic llms.txt, page.json, and architecture.txt generation
-8. Automatic robots.txt and sitemap.xml generation (NEW v0.2.0)
+8. Automatic robots.txt and sitemap.xml generation
 9. Visitor analytics tracking (admin dashboard)
+10. TOON format support for token-optimized LLM documentation (NEW v1.0.0!)
 
 Run with: python app.py
 Then visit:
 - http://localhost:8959/ (Home)
 - http://localhost:8959/equipment (Equipment)
 - http://localhost:8959/analytics (Analytics)
-- http://localhost:8959/admin (Hidden Admin Dashboard - NEW!)
-- http://localhost:8959/llms.txt (LLM-friendly docs)
-- http://localhost:8959/page.json (Architecture)
+- http://localhost:8959/admin (Hidden Admin Dashboard)
+
+Documentation Routes:
+- http://localhost:8959/llms.txt (LLM-friendly markdown docs)
+- http://localhost:8959/llms.toon (Token-optimized TOON format - NEW v1.0.0!)
+- http://localhost:8959/page.json (Architecture JSON)
 - http://localhost:8959/architecture.txt (App overview)
-- http://localhost:8959/robots.txt (Bot control - NEW!)
-- http://localhost:8959/sitemap.xml (SEO sitemap - NEW!)
+- http://localhost:8959/architecture.toon (Token-optimized architecture - NEW v1.0.0!)
+- http://localhost:8959/robots.txt (Bot control)
+- http://localhost:8959/sitemap.xml (SEO sitemap)
+
+TOON Format Benefits (v1.0.0):
+- 50-60% fewer tokens compared to markdown llms.txt
+- Tabular arrays for uniform data structures
+- Explicit length markers for LLM validation
+- YAML-like readability with JSON-compatible data model
+- See: https://github.com/toon-format/spec
 """
 
 import dash_mantine_components as dmc
@@ -43,7 +55,56 @@ server = app.server
 # ============================================================================
 # v0.2.0 CONFIGURATION (NEW!)
 # ============================================================================
+# In app.py or __init__.py when setting up the app
+app.index_string = '''<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
 
+        <!-- LLM Discovery Meta Tags -->
+        <meta name="llms-txt" content="/llms.txt">
+        <meta name="llms-page-json" content="/page.json">
+        <meta name="llms-architecture" content="/architecture.txt">
+
+        <!-- Structured Data for LLMs -->
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Equipment Management System",
+            "url": "https://554d9a17-106e-455a-a015-1194587c953f.plotly.app",
+            "documentation": {
+                "@type": "TechArticle",
+                "url": "https://554d9a17-106e-455a-a015-1194587c953f.plotly.app/llms.txt"
+            }
+        }
+        </script>
+
+        <!-- Noscript fallback with direct links -->
+        <noscript>
+            <div style="padding: 20px; font-family: sans-serif;">
+                <h1>Equipment Management System</h1>
+                <p>This application requires JavaScript. For AI/LLM access:</p>
+                <ul>
+                    <li><a href="/llms.txt">LLM-friendly documentation (llms.txt)</a></li>
+                    <li><a href="/page.json">Technical architecture (page.json)</a></li>
+                    <li><a href="/architecture.txt">Application overview (architecture.txt)</a></li>
+                </ul>
+            </div>
+        </noscript>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>'''
 # Configure base URL for SEO (used in sitemap.xml and robots.txt)
 app._base_url = "https://554d9a17-106e-455a-a015-1194587c953f.plotly.app"  # Change to your production URL
 
@@ -205,7 +266,7 @@ app.layout = dmc.MantineProvider(
                             style={"margin": "0", "color": "white"},
                         ),
                         html.P(
-                            "Powered by dash-improve-my-llms v0.2.0 with Bot Management & SEO",
+                            "Powered by dash-improve-my-llms v1.0.0 with TOON Format, Bot Management & SEO",
                             style={
                                 "margin": "5px 0 0 0",
                                 "fontSize": "14px",
@@ -252,7 +313,7 @@ app.layout = dmc.MantineProvider(
 
                         html.Span("|", style={"margin": "0 10px", "color": "#ccc"}),
 
-                        # Documentation Links (v0.1.0)
+                        # Documentation Links
                         html.A(
                             "📄 llms.txt",
                             href="/llms.txt",
@@ -274,20 +335,38 @@ app.layout = dmc.MantineProvider(
 
                         html.Span("|", style={"margin": "0 10px", "color": "#ccc"}),
 
-                        # SEO Links (v0.2.0 NEW!)
+                        # TOON Format Links (v1.0.0 NEW!)
+                        html.A(
+                            "🎯 llms.toon",
+                            href="/llms.toon",
+                            target="_blank",
+                            style={"margin": "0 10px", "textDecoration": "none", "color": "#e599f7"},
+                            title="NEW v1.0.0: Token-optimized TOON format (50-60% fewer tokens)"
+                        ),
+                        html.A(
+                            "🔷 architecture.toon",
+                            href="/architecture.toon",
+                            target="_blank",
+                            style={"margin": "0 10px", "textDecoration": "none", "color": "#e599f7"},
+                            title="NEW v1.0.0: Token-optimized architecture in TOON format"
+                        ),
+
+                        html.Span("|", style={"margin": "0 10px", "color": "#ccc"}),
+
+                        # SEO Links
                         html.A(
                             "🤖 robots.txt",
                             href="/robots.txt",
                             target="_blank",
                             style={"margin": "0 10px", "textDecoration": "none", "color": "#51cf66"},
-                            title="NEW v0.2.0: Bot access control"
+                            title="Bot access control"
                         ),
                         html.A(
                             "🗺️ sitemap.xml",
                             href="/sitemap.xml",
                             target="_blank",
                             style={"margin": "0 10px", "textDecoration": "none", "color": "#51cf66"},
-                            title="NEW v0.2.0: SEO sitemap"
+                            title="SEO sitemap"
                         ),
                     ],
                     style={
@@ -304,17 +383,17 @@ app.layout = dmc.MantineProvider(
                     style={"padding": "30px", "maxWidth": "1400px", "margin": "0 auto"},
                 ),
 
-                # Footer with v0.2.0 features
+                # Footer with v1.0.0 features
                 html.Div(
                     [
                         html.Div(
                             [
-                                html.Strong("✨ NEW in v0.2.0: "),
-                                "Bot Management • SEO Optimization • Privacy Controls • Visitor Analytics",
+                                html.Strong("✨ NEW in v1.0.0: "),
+                                "TOON Format (50-60% fewer tokens) • Bot Management • SEO Optimization • Privacy Controls",
                             ],
                             style={
                                 "textAlign": "center",
-                                "color": "#51cf66",
+                                "color": "#e599f7",
                                 "fontSize": "14px",
                                 "marginBottom": "10px",
                                 "fontWeight": "bold"
@@ -364,26 +443,32 @@ app.layout = dmc.MantineProvider(
 
 if __name__ == "__main__":
     print("\n" + "="*80)
-    print("🚀 dash-improve-my-llms v0.2.0 - Example App")
+    print("🚀 dash-improve-my-llms v1.0.0 - Example App")
     print("="*80)
     print("\n📍 Available Routes:")
     print("   • http://localhost:8959/ (Home)")
     print("   • http://localhost:8959/equipment (Equipment Catalog)")
     print("   • http://localhost:8959/analytics (Analytics Dashboard)")
     print("   • http://localhost:8959/admin (Admin Dashboard - Hidden from bots!) 🔒")
-    print("\n📄 Documentation Routes (v0.1.0):")
-    print("   • http://localhost:8959/llms.txt (LLM-friendly context)")
+    print("\n📄 Documentation Routes:")
+    print("   • http://localhost:8959/llms.txt (LLM-friendly markdown)")
     print("   • http://localhost:8959/page.json (Technical architecture)")
     print("   • http://localhost:8959/architecture.txt (App overview)")
-    print("\n🤖 SEO Routes (NEW v0.2.0):")
+    print("\n🎯 TOON Format Routes (NEW v1.0.0 - 50-60% fewer tokens!):")
+    print("   • http://localhost:8959/llms.toon (Token-optimized LLM docs)")
+    print("   • http://localhost:8959/architecture.toon (Token-optimized architecture)")
+    print("   • http://localhost:8959/equipment/llms.toon (Per-page TOON)")
+    print("   • http://localhost:8959/analytics/llms.toon (Per-page TOON)")
+    print("\n🤖 SEO Routes:")
     print("   • http://localhost:8959/robots.txt (Bot access control)")
     print("   • http://localhost:8959/sitemap.xml (SEO sitemap)")
-    print("\n✨ New Features:")
+    print("\n✨ v1.0.0 Features:")
+    print("   ✅ TOON Format - Token-Oriented Object Notation")
+    print("   ✅ 50-60% fewer tokens than markdown")
+    print("   ✅ Tabular arrays for structured data")
     print("   ✅ Bot Detection & Management")
     print("   ✅ SEO Optimization with smart sitemaps")
     print("   ✅ Privacy Controls (mark_hidden)")
-    print("   ✅ Visitor Analytics Dashboard")
-    print("   ✅ 88 Tests Passing (100%)")
     print("\n" + "="*80 + "\n")
 
     app.run(debug=True, port=8959)

@@ -76,6 +76,7 @@ def generate_static_page_html(
 
     <!-- AI Discovery Hints -->
     <link rel="alternate" type="text/markdown" href="{page_path}/llms.txt">
+    <link rel="alternate" type="text/plain" href="{page_path}/llms.toon" title="Token-optimized LLM documentation">
     <link rel="alternate" type="application/json" href="{page_path}/page.json">
 
     <title>{title}</title>
@@ -153,7 +154,9 @@ def generate_static_page_html(
             For complete documentation and API access, visit:</p>
             <ul>
                 <li><a href="{page_path}/llms.txt">LLM-friendly documentation (llms.txt)</a></li>
+                <li><a href="{page_path}/llms.toon">Token-optimized LLM documentation (llms.toon)</a></li>
                 <li><a href="/architecture.txt">Application architecture (architecture.txt)</a></li>
+                <li><a href="/architecture.toon">Token-optimized architecture (architecture.toon)</a></li>
                 <li><a href="{page_path}/page.json">Page structure data (page.json)</a></li>
             </ul>
         </section>
@@ -222,6 +225,7 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
 
     <!-- AI Discovery -->
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="LLM-friendly documentation">
+    <link rel="alternate" type="text/plain" href="/llms.toon" title="Token-optimized LLM documentation">
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
     <!-- Open Graph / Social -->
@@ -261,7 +265,9 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
             <h2>Available Resources:</h2>
             <ul>
                 <li><a href="/llms.txt">LLM-friendly documentation</a></li>
+                <li><a href="/llms.toon">Token-optimized LLM documentation (TOON format)</a></li>
                 <li><a href="/architecture.txt">Application architecture</a></li>
+                <li><a href="/architecture.toon">Token-optimized architecture (TOON format)</a></li>
                 <li><a href="/sitemap.xml">Sitemap</a></li>
                 <li><a href="/robots.txt">Robots.txt</a></li>
             </ul>

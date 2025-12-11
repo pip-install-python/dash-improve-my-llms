@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+
+        <!-- LLM Discovery Meta Tags -->
+        <meta name="llms-txt" content="/llms.txt">
+        <meta name="llms-toon" content="/llms.toon">
+        <meta name="llms-page-json" content="/page.json">
+        <meta name="llms-architecture" content="/architecture.txt">
+        <meta name="llms-architecture-toon" content="/architecture.toon">
+
+        <!-- Structured Data for LLMs -->
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Equipment Management System",
+            "url": "https://554d9a17-106e-455a-a015-1194587c953f.plotly.app",
+            "documentation": {
+                "@type": "TechArticle",
+                "url": "https://554d9a17-106e-455a-a015-1194587c953f.plotly.app/llms.txt"
+            }
+        }
+        </script>
+
+        <!-- Noscript fallback with direct links -->
+        <noscript>
+            <div style="padding: 20px; font-family: sans-serif;">
+                <h1>Equipment Management System</h1>
+                <p>This application requires JavaScript. For AI/LLM access:</p>
+                <ul>
+                    <li><a href="/llms.txt">LLM-friendly documentation (llms.txt)</a></li>
+                    <li><a href="/llms.toon">Token-optimized LLM documentation (llms.toon)</a></li>
+                    <li><a href="/page.json">Technical architecture (page.json)</a></li>
+                    <li><a href="/architecture.txt">Application overview (architecture.txt)</a></li>
+                    <li><a href="/architecture.toon">Token-optimized architecture (architecture.toon)</a></li>
+                </ul>
+            </div>
+        </noscript>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>

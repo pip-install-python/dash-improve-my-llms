@@ -54,14 +54,20 @@ ARCHITECTURE_DIAGRAM = """
          │
          ├──────────────────────────► /llms.txt            (LLM-friendly markdown)
          │
+         ├──────────────────────────► /llms.toon           (Token-optimized TOON - NEW v1.0.0!)
+         │
          ├──────────────────────────► /page.json           (Technical architecture)
          │
-         └──────────────────────────► /architecture.txt    (App overview - global)
+         ├──────────────────────────► /architecture.txt    (App overview - global)
+         │
+         └──────────────────────────► /architecture.toon   (Token-optimized - NEW v1.0.0!)
 
     Your Page: /equipment           Auto-Generated Routes:
     ─────────────────               ──────────────────────
          │
          ├──────────────────────────► /equipment/llms.txt
+         │
+         ├──────────────────────────► /equipment/llms.toon (NEW v1.0.0!)
          │
          └──────────────────────────► /equipment/page.json
 
@@ -69,6 +75,8 @@ ARCHITECTURE_DIAGRAM = """
     ─────────────────               ──────────────────────
          │
          ├──────────────────────────► /analytics/llms.txt
+         │
+         ├──────────────────────────► /analytics/llms.toon (NEW v1.0.0!)
          │
          └──────────────────────────► /analytics/page.json
 
@@ -243,10 +251,10 @@ Made with ❤️  by Pip Install Python LLC | https://pip-install-python.com
 def layout():
     return html.Div(
         [
-            html.H1("Welcome to dash-improve-my-llms v0.2.0"),
+            html.H1("Welcome to dash-improve-my-llms v1.0.0"),
             html.P(
                 "Make your Dash applications AI-friendly with automatic documentation generation, "
-                "bot management, and SEO optimization.",
+                "TOON format support (50-60% fewer tokens), bot management, and SEO optimization.",
                 style={"fontSize": "18px", "marginBottom": "30px"}
             ),
 
@@ -310,40 +318,64 @@ app.run(debug=True)""",
                                 # Documentation Routes
                                 html.Div(
                                     [
-                                        html.H3("📄 Documentation Routes (v0.1.0)", style={"fontSize": "18px"}),
+                                        html.H3("📄 Documentation Routes", style={"fontSize": "18px"}),
                                         html.Ul(
                                             [
                                                 html.Li([
                                                     html.A("/llms.txt", href="/llms.txt", target="_blank"),
-                                                    " - LLM-friendly markdown context (current page)"
+                                                    " - LLM-friendly markdown context"
                                                 ]),
                                                 html.Li([
                                                     html.A("/page.json", href="/page.json", target="_blank"),
-                                                    " - Technical architecture JSON (current page)"
+                                                    " - Technical architecture JSON"
                                                 ]),
                                                 html.Li([
                                                     html.A("/architecture.txt", href="/architecture.txt", target="_blank"),
-                                                    " - ASCII art app overview (global)"
+                                                    " - ASCII art app overview"
                                                 ]),
                                             ]
                                         ),
                                     ],
-                                    style={"flex": "1", "marginRight": "20px"}
+                                    style={"flex": "1", "marginRight": "15px"}
+                                ),
+
+                                # TOON Format Routes (NEW v1.0.0!)
+                                html.Div(
+                                    [
+                                        html.H3("🎯 TOON Format (v1.0.0 NEW!)", style={"fontSize": "18px", "color": "#e599f7"}),
+                                        html.Ul(
+                                            [
+                                                html.Li([
+                                                    html.A("/llms.toon", href="/llms.toon", target="_blank"),
+                                                    " - Token-optimized (50-60% fewer tokens!)"
+                                                ]),
+                                                html.Li([
+                                                    html.A("/architecture.toon", href="/architecture.toon", target="_blank"),
+                                                    " - Token-optimized architecture"
+                                                ]),
+                                                html.Li([
+                                                    html.A("/equipment/llms.toon", href="/equipment/llms.toon", target="_blank"),
+                                                    " - Per-page TOON example"
+                                                ]),
+                                            ]
+                                        ),
+                                    ],
+                                    style={"flex": "1", "marginRight": "15px"}
                                 ),
 
                                 # SEO Routes
                                 html.Div(
                                     [
-                                        html.H3("🤖 SEO Routes (v0.2.0 NEW!)", style={"fontSize": "18px", "color": "#51cf66"}),
+                                        html.H3("🤖 SEO Routes", style={"fontSize": "18px", "color": "#51cf66"}),
                                         html.Ul(
                                             [
                                                 html.Li([
                                                     html.A("/robots.txt", href="/robots.txt", target="_blank"),
-                                                    " - Bot access control & policies"
+                                                    " - Bot access control"
                                                 ]),
                                                 html.Li([
                                                     html.A("/sitemap.xml", href="/sitemap.xml", target="_blank"),
-                                                    " - SEO sitemap with smart priorities"
+                                                    " - SEO sitemap"
                                                 ]),
                                             ]
                                         ),
@@ -452,18 +484,33 @@ app.run(debug=True)""",
             # Features Section
             html.Div(
                 [
-                    html.H2("✨ v0.2.0 Features"),
+                    html.H2("✨ v1.0.0 Features"),
                     html.Div(
                         [
+                            html.Div(
+                                [
+                                    html.H3("🎯 TOON Format (NEW!)", style={"fontSize": "16px", "color": "#e599f7"}),
+                                    html.Ul(
+                                        [
+                                            html.Li("Token-Oriented Object Notation"),
+                                            html.Li("50-60% fewer tokens than markdown"),
+                                            html.Li("Tabular arrays for structured data"),
+                                            html.Li("Per-page /llms.toon endpoints"),
+                                        ],
+                                        style={"fontSize": "14px"}
+                                    ),
+                                ],
+                                style={"flex": "1", "marginRight": "15px"}
+                            ),
                             html.Div(
                                 [
                                     html.H3("🤖 Bot Management", style={"fontSize": "16px", "color": "#667eea"}),
                                     html.Ul(
                                         [
-                                            html.Li("Block AI training bots (GPTBot, CCBot)"),
-                                            html.Li("Allow AI search bots (ChatGPT-User, ClaudeBot)"),
-                                            html.Li("Control traditional search engines"),
-                                            html.Li("Custom crawl delays & rules"),
+                                            html.Li("Block AI training bots"),
+                                            html.Li("Allow AI search bots"),
+                                            html.Li("Control search engines"),
+                                            html.Li("Custom crawl delays"),
                                         ],
                                         style={"fontSize": "14px"}
                                     ),
@@ -475,10 +522,10 @@ app.run(debug=True)""",
                                     html.H3("🗺️ SEO Optimization", style={"fontSize": "16px", "color": "#51cf66"}),
                                     html.Ul(
                                         [
-                                            html.Li("Automatic sitemap.xml generation"),
+                                            html.Li("Automatic sitemap.xml"),
                                             html.Li("Smart priority inference"),
-                                            html.Li("Change frequency detection"),
-                                            html.Li("robots.txt with policies"),
+                                            html.Li("robots.txt policies"),
+                                            html.Li("Hidden page exclusion"),
                                         ],
                                         style={"fontSize": "14px"}
                                     ),
@@ -490,10 +537,10 @@ app.run(debug=True)""",
                                     html.H3("🔐 Privacy Controls", style={"fontSize": "16px", "color": "#ff6b6b"}),
                                     html.Ul(
                                         [
-                                            html.Li("mark_hidden() for pages"),
-                                            html.Li("mark_component_hidden()"),
-                                            html.Li("Exclude from sitemaps"),
+                                            html.Li("mark_hidden() pages"),
+                                            html.Li("Component hiding"),
                                             html.Li("404 for bot requests"),
+                                            html.Li("Sitemap exclusion"),
                                         ],
                                         style={"fontSize": "14px"}
                                     ),

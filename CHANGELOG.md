@@ -5,6 +5,127 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-12-07
+
+### 🎉 Major Release: TOON Format Support
+
+This release marks the **production-ready 1.0.0 milestone** with the addition of TOON (Token-Oriented Object Notation) format support, achieving **50-60% token reduction** compared to markdown llms.txt output.
+
+### ✨ New Features
+
+#### TOON Format Integration
+- **New `/llms.toon` endpoint**: Token-optimized LLM documentation format
+- **New `/<page>/llms.toon` endpoints**: Per-page TOON format support
+- **New `/architecture.toon` endpoint**: Token-optimized application architecture
+- **Built-in TOON encoder**: Works without external dependencies (fallback encoder)
+- **Optional `python-toon` package support**: For full spec compliance
+
+#### TOON Format Benefits
+- **50-60% fewer tokens** compared to markdown llms.txt format
+- **Tabular arrays** for uniform data structures (`[N]{fields}:` syntax)
+- **Explicit length markers** for LLM validation
+- **YAML-like readability** with JSON-compatible data model
+- **Primitive arrays** inline format for lists
+
+#### New Module: `toon_generator.py` (~600 lines)
+- `TOONConfig` dataclass for configuration
+- `TOONEncoder` class for TOON format encoding
+- `toon_encode()` function with fallback support
+- `generate_llms_toon()` for page-level TOON output
+- `generate_architecture_toon()` for app-wide architecture
+
+#### New Exports
+```python
+from dash_improve_my_llms import (
+    TOONConfig,           # Configuration dataclass
+    toon_encode,          # Low-level encoder
+    generate_llms_toon,   # Page TOON generation
+    generate_architecture_toon,  # App TOON generation
+)
+```
+
+### 📝 Documentation Updates
+
+- Updated `templates/index.html` with TOON discovery links
+- Updated `html_generator.py` with TOON links in noscript sections
+- Updated `app.py` with TOON route examples and documentation
+- Updated `pages/home.py` with TOON feature showcase
+- Created `TOON_INTEGRATION_PLAN.md` implementation guide
+
+### 🔧 Technical Changes
+
+- Version bumped to `1.0.0` (Production/Stable)
+- Updated pyproject.toml classifiers to "Production/Stable"
+- Added TOON-related keywords to package metadata
+- Updated bot middleware to skip TOON routes
+
+### 💡 TOON Format Example
+
+**Markdown llms.txt (~312 tokens):**
+```markdown
+# Equipment Catalog
+
+> Browse and filter the complete equipment catalog
+
+## Interactive Elements
+**User Inputs:**
+- TextInput (ID: `equipment-search`) - Search equipment...
+- Select (ID: `equipment-category`)
+```
+
+**TOON format (~127 tokens):**
+```toon
+page:
+  path: /equipment
+  name: Equipment Catalog
+  description: Browse and filter the complete equipment catalog
+
+interactive:
+  inputs[2]{id,type,placeholder}:
+    equipment-search,TextInput,Search equipment...
+    equipment-category,Select,
+```
+
+### 📦 New Routes
+
+| Route | Description |
+|-------|-------------|
+| `/llms.toon` | Token-optimized LLM documentation |
+| `/<page>/llms.toon` | Per-page TOON format |
+| `/architecture.toon` | Token-optimized architecture |
+
+### 💡 Breaking Changes
+
+None - v1.0.0 is fully backward compatible with v0.3.0.
+
+### 🔗 References
+
+- [TOON Specification v3.0](https://github.com/toon-format/spec)
+- [python-toon PyPI](https://pypi.org/project/python-toon/)
+
+---
+
+## [0.3.0] - 2025-11-05
+
+### 🎉 Enhanced Bot HTML Generation
+
+Critical fix: AI chatbots (ChatGPT, Claude, etc.) can now properly see and navigate your Dash apps.
+
+#### What Changed
+- ✅ Bots now receive **comprehensive static HTML** with full content
+- ✅ Complete **Schema.org structured data** for AI understanding
+- ✅ Full **navigation structure** for proper crawling
+- ✅ **SEO meta tags** and Open Graph support
+- ✅ **Important sections** rendered as proper HTML
+
+#### Technical Improvements
+- Enhanced `html_generator.py` with full structured data
+- Added Schema.org JSON-LD for all pages
+- Improved navigation rendering for bots
+- Added noscript fallback content
+
+---
+
 ## [0.2.0] - 2025-11-04
 
 ### 🎉 Major New Features

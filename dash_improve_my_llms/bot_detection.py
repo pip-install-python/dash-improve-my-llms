@@ -27,11 +27,11 @@ AI_SEARCH_BOTS = [
     "perplexitybot",  # Perplexity search
 ]
 
+# Add more generic bot patterns
 TRADITIONAL_BOTS = [
-    "googlebot",  # Google Search
-    "bingbot",  # Bing Search
-    "slurp",  # Yahoo
-    "duckduckbot",  # DuckDuckGo
+    "googlebot", "bingbot", "slurp", "duckduckbot",
+    "bot", "crawler", "spider", "scraper",  # Generic patterns
+    "curl", "wget", "python-requests",  # CLI tools
 ]
 
 

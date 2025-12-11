@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "0.2.0"
-description = "Automatic llms.txt, page.json, architecture.txt, robots.txt, and sitemap.xml generation for Dash applications with bot detection and visitor analytics"
+version = "1.0.0"
+description = "Automatic llms.txt, llms.toon (Token-Oriented Object Notation), page.json, architecture.txt, robots.txt, and sitemap.xml generation for Dash applications with comprehensive bot management, static HTML serving, and SEO optimization"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -22,6 +22,8 @@ keywords = [
     "ai",
     "documentation",
     "llms.txt",
+    "toon",
+    "token-oriented-object-notation",
     "architecture",
     "metadata",
     "plugin",
@@ -36,7 +38,7 @@ keywords = [
     "ai-bots"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Dash",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",

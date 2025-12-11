@@ -12,6 +12,8 @@ Usage:
     add_llms_routes(app)
 """
 
+__version__ = "1.0.0"
+
 import json
 import re
 from collections import defaultdict
@@ -1248,20 +1250,27 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
         from flask import request, Response
         from .bot_detection import is_any_bot, get_bot_type
         from .html_generator import generate_static_page_html
+        import logging
 
         # Skip for asset requests and Dash internal paths
         if any(ext in request.path for ext in ['.css', '.js', '.png', '.jpg', '.ico', '_dash', '_reload-hash']):
             return None
 
         # Skip for documentation routes (let them handle bots themselves)
-        if request.path.endswith(('/llms.txt', '/page.json', '/architecture.txt', '/robots.txt', '/sitemap.xml')):
+        if request.path.endswith(('/llms.txt', '/llms.toon', '/page.json', '/architecture.txt', '/architecture.toon', '/robots.txt', '/sitemap.xml')):
             return None
 
         user_agent = request.headers.get('User-Agent', '')
+        logging.info(f"Request from: {user_agent[:100]}")
+
+        # Skip for asset requests
+        if any(ext in request.path for ext in ['.css', '.js', '.png', '.jpg', '.ico', '_dash', '_reload-hash']):
+            return None
 
         # Check if this is a bot
         if is_any_bot(user_agent):
             bot_type = get_bot_type(user_agent)
+            logging.info(f"Bot detected! Type: {bot_type}")
             robots_config = getattr(app, '_robots_config', None)
 
             # Block AI training bots if configured
@@ -1275,7 +1284,7 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
                     mimetype='text/plain'
                 )
 
-            # Serve llms.txt content to search and traditional bots
+            # Serve static HTML to search and traditional bots
             # This solves the "AI crawlers cannot execute JavaScript" problem
             if bot_type in ['search', 'traditional']:
                 try:
@@ -1303,64 +1312,73 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
                         page_name = page.get("name", page_path)
 
                         if layout_func:
-                            # Generate llms.txt content for bots (bot-friendly markdown)
-                            # This is what bots should see instead of JavaScript
-                            llms_content = generate_llms_txt(page_path, layout_func, page_name, app)
+                            # Build page metadata
+                            page_metadata = {
+                                "name": page_name,
+                                "description": _page_metadata.get(page_path, {}).get("description", f"View {page_name}"),
+                                "path": page_path
+                            }
 
-                            # Return as HTML with proper formatting for better bot rendering
-                            html_wrapper = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{page_name}</title>
-    <meta name="robots" content="index, follow">
-    <link rel="alternate" type="text/plain" href="{page_path}/llms.txt">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #333;
-        }}
-        pre {{
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }}
-        a {{
-            color: #0066cc;
-            text-decoration: none;
-        }}
-        a:hover {{
-            text-decoration: underline;
-        }}
-        .bot-notice {{
-            background: #f0f7ff;
-            border-left: 4px solid #0066cc;
-            padding: 15px;
-            margin-bottom: 30px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="bot-notice">
-        <strong>🤖 Bot-Optimized Content</strong><br>
-        You're viewing a bot-friendly version of this page.<br>
-        Also available: <a href="{page_path}/llms.txt">llms.txt</a> |
-        <a href="{page_path}/page.json">page.json</a> |
-        <a href="/architecture.txt">architecture.txt</a> |
-        <a href="/sitemap.xml">sitemap.xml</a>
-    </div>
-    <pre>{llms_content}</pre>
-</body>
-</html>"""
-                            return Response(html_wrapper, mimetype='text/html')
+                            # Build all pages list for navigation
+                            all_pages = []
+                            for p in page_registry.values():
+                                p_path = p.get("path", "/")
+                                if not is_hidden(p_path):
+                                    all_pages.append({
+                                        "path": p_path,
+                                        "name": p.get("name", "Page")
+                                    })
+
+                            # Get app configuration
+                            base_url = getattr(app, "_base_url", "https://example.com")
+                            app_config = {
+                                "name": getattr(app, "title", "Dash Application"),
+                                "base_url": base_url
+                            }
+
+                            # Extract important content from layout
+                            try:
+                                layout = layout_func() if callable(layout_func) else layout_func
+                                marked_important = []
+
+                                # Recursively find components marked as important
+                                def extract_important_content(component, current_path=""):
+                                    if hasattr(component, "id") and component.id and is_important(component.id):
+                                        # Extract HTML-like representation
+                                        html_content = str(component)
+                                        marked_important.append({
+                                            "page_path": page_path,
+                                            "id": component.id,
+                                            "html_content": html_content
+                                        })
+
+                                    # Recurse through children
+                                    if hasattr(component, "children"):
+                                        children = component.children
+                                        if isinstance(children, list):
+                                            for child in children:
+                                                extract_important_content(child, current_path)
+                                        elif children is not None:
+                                            extract_important_content(children, current_path)
+
+                                extract_important_content(layout)
+                            except:
+                                marked_important = []
+
+                            # Generate comprehensive static HTML for bots
+                            static_html = generate_static_page_html(
+                                page_path=page_path,
+                                page_metadata=page_metadata,
+                                all_pages=all_pages,
+                                app_config=app_config,
+                                marked_important=marked_important
+                            )
+
+                            return Response(static_html, mimetype='text/html')
                 except Exception as e:
-                    # If llms.txt generation fails, log and continue with normal app
+                    # If HTML generation fails, log and continue with normal app
                     import traceback
-                    print(f"Error generating llms.txt for bot: {e}")
+                    print(f"Error generating static HTML for bot: {e}")
                     print(traceback.format_exc())
                     # Fall through to normal Dash app
 
@@ -1533,6 +1551,75 @@ def add_llms_routes(app, config: Optional[LLMSConfig] = None):
             error_msg = f"Error generating sitemap.xml: {str(e)}\n{traceback.format_exc()}"
             return Response(error_msg, status=500)
 
+    # ===== TOON FORMAT ROUTES =====
+    # Token-Oriented Object Notation for optimized LLM consumption
+
+    @app.server.route("/<path:page_path>/llms.toon")
+    @app.server.route("/llms.toon")
+    def serve_llms_toon(page_path=""):
+        """Serve TOON-formatted llms content for a specific page (30-60% fewer tokens)"""
+        from .toon_generator import generate_llms_toon, TOONConfig
+
+        # Construct the page path
+        if not page_path:
+            page_path = "/"
+        elif not page_path.startswith("/"):
+            page_path = "/" + page_path
+
+        # Block access to hidden pages
+        if is_hidden(page_path):
+            return Response("Page not available", status=404, mimetype="text/plain")
+
+        # Try to find the page in dash.page_registry
+        try:
+            import dash
+
+            page_registry = dash.page_registry
+
+            # Find matching page
+            page = None
+            for p in page_registry.values():
+                p_path = p.get("path", "")
+                if p_path == page_path or p.get("relative_path") == page_path:
+                    page = p
+                    break
+
+            if page:
+                layout_func = page.get("layout")
+                page_name = page.get("name", page_path)
+
+                if layout_func:
+                    # Get TOON config from app or use defaults
+                    toon_config = getattr(app, "_toon_config", TOONConfig())
+
+                    # Generate TOON content
+                    toon_content = generate_llms_toon(
+                        page_path, layout_func, page_name, app, toon_config
+                    )
+                    return Response(toon_content, mimetype="text/plain")
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Error generating llms.toon: {str(e)}\n{traceback.format_exc()}"
+            return Response(error_msg, status=500, mimetype="text/plain")
+
+        return Response(f"llms.toon not available for {page_path}", status=404, mimetype="text/plain")
+
+    @app.server.route("/architecture.toon")
+    def serve_architecture_toon():
+        """Serve TOON-formatted architecture overview (30-60% fewer tokens)"""
+        from .toon_generator import generate_architecture_toon, TOONConfig
+
+        try:
+            toon_config = getattr(app, "_toon_config", TOONConfig())
+            architecture_content = generate_architecture_toon(app, toon_config)
+            return Response(architecture_content, mimetype="text/plain")
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Error generating architecture.toon: {str(e)}\n{traceback.format_exc()}"
+            return Response(error_msg, status=500, mimetype="text/plain")
+
 
 # For backward compatibility and direct usage
 def setup_llms_plugin(
@@ -1552,6 +1639,9 @@ def setup_llms_plugin(
 # Import RobotsConfig for external use
 from .robots_generator import RobotsConfig
 
+# Import TOON generator for external use
+from .toon_generator import TOONConfig, toon_encode, generate_llms_toon, generate_architecture_toon
+
 __all__ = [
     "add_llms_routes",
     "mark_important",
@@ -1563,5 +1653,9 @@ __all__ = [
     "register_page_metadata",
     "LLMSConfig",
     "RobotsConfig",
+    "TOONConfig",
+    "toon_encode",
+    "generate_llms_toon",
+    "generate_architecture_toon",
     "setup_llms_plugin",
 ]

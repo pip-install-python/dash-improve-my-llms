@@ -1,31 +1,34 @@
 # dash-improve-my-llms
 
-**Make your Dash applications AI-friendly with automatic documentation, bot management, and SEO optimization.**
+**Make your Dash applications AI-friendly with automatic documentation, TOON format support, bot management, and SEO optimization.**
 
-[![PyPI version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
+[![PyPI version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-88%20passed-success.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-success.svg)](htmlcov/)
+[![Status](https://img.shields.io/badge/status-Production%2FStable-brightgreen.svg)](https://pypi.org/project/dash-improve-my-llms/)
 
 ---
 
 ## 🎯 Overview
 
-`dash-improve-my-llms` is a comprehensive plugin that automatically generates **five types of AI-friendly documentation and SEO resources** for your Dash application:
+`dash-improve-my-llms` is a comprehensive plugin that automatically generates **AI-friendly documentation and SEO resources** for your Dash application:
 
-### Automatic Documentation (v0.1.0)
+### Automatic Documentation
 
 1. **`llms.txt`** - Comprehensive, context-rich markdown optimized for LLM understanding
-2. **`page.json`** - Detailed technical architecture with interactivity and data flow
-3. **`architecture.txt`** - ASCII art representation of entire application
+2. **`llms.toon`** - **NEW v1.0.0!** Token-optimized TOON format (50-60% fewer tokens)
+3. **`page.json`** - Detailed technical architecture with interactivity and data flow
+4. **`architecture.txt`** - ASCII art representation of entire application
+5. **`architecture.toon`** - **NEW v1.0.0!** Token-optimized architecture in TOON format
 
-### Bot Management & SEO (v0.2.0 - NEW!)
+### Bot Management & SEO
 
-4. **`robots.txt`** - Intelligent bot control with AI training bot blocking
-5. **`sitemap.xml`** - SEO-optimized sitemap with intelligent priority inference
-6. **Static HTML** - Bot-friendly pages with structured data
+6. **`robots.txt`** - Intelligent bot control with AI training bot blocking
+7. **`sitemap.xml`** - SEO-optimized sitemap with intelligent priority inference
+8. **Static HTML** - Bot-friendly pages with structured data
 
-### Privacy Controls (v0.2.0 - NEW!)
+### Privacy Controls
 
 - **`mark_hidden()`** - Hide sensitive pages from AI bots and search engines
 - **Bot Detection** - Differentiate between AI training, AI search, and traditional bots
@@ -696,6 +699,134 @@ mark_hidden("/admin")
 # - Better SEO
 # - Bot control
 ```
+
+---
+
+## 🎉 What's New in v0.3.0
+
+### Critical Fix: AI Chatbots Can Now See Your App! 🤖
+
+**The Problem (v0.2.0 and earlier):**
+- Users shared Dash app URLs with ChatGPT, Claude, etc.
+- Bots saw only "Loading..." because they can't execute JavaScript
+- AI assistants couldn't help users understand the app
+
+**The Solution (v0.3.0):**
+- ✅ Bots now receive **comprehensive static HTML** with full content
+- ✅ Complete **Schema.org structured data** for AI understanding
+- ✅ Full **navigation structure** for proper crawling
+- ✅ **SEO meta tags** and Open Graph support
+- ✅ **Important sections** rendered as proper HTML
+
+### Technical Improvements
+
+**Enhanced Bot Middleware:**
+```python
+# v0.3.0 now generates comprehensive static HTML for bots
+# instead of simple HTML wrappers
+
+# What AI bots now receive:
+✓ Full Schema.org JSON-LD structured data
+✓ Complete navigation with all pages
+✓ Rich meta tags (description, robots, viewport)
+✓ Important content sections as HTML
+✓ AI discovery links (llms.txt, page.json, architecture.txt)
+✓ Noscript fallback content
+```
+
+**Before vs After:**
+
+| Feature | v0.2.0 | v0.3.0 |
+|---------|--------|--------|
+| Bot HTML | Simple wrapper | Comprehensive HTML |
+| Schema.org | ❌ Not included | ✅ Full JSON-LD |
+| Navigation | ❌ Not included | ✅ Complete structure |
+| Meta Tags | Minimal | ✅ Full SEO suite |
+| AI Understanding | Limited | ✅ Excellent |
+
+### Migration
+
+**Zero changes required!** Just upgrade:
+
+```bash
+pip install --upgrade dash-improve-my-llms
+```
+
+Your existing v0.2.0 code automatically benefits from the v0.3.0 improvements.
+
+### Testing the Fix
+
+```bash
+# Test with ClaudeBot user agent
+curl -H "User-Agent: Mozilla/5.0 (compatible; ClaudeBot/1.0)" \
+  https://yourapp.com/ | grep "@context"
+
+# Should now see Schema.org structured data!
+```
+
+**See:** [RELEASE_NOTES_v0.3.0.md](RELEASE_NOTES_v0.3.0.md) for complete details.
+
+---
+
+## 🎉 What's New in v1.0.0 - TOON Format Support
+
+### Token-Oriented Object Notation (TOON) 🎯
+
+v1.0.0 introduces **TOON format support** - a token-optimized alternative to markdown that achieves **50-60% fewer tokens** when consumed by LLMs.
+
+### New Endpoints
+
+| Route | Description |
+|-------|-------------|
+| `/llms.toon` | Token-optimized LLM documentation |
+| `/<page>/llms.toon` | Per-page TOON format |
+| `/architecture.toon` | Token-optimized architecture |
+
+### TOON Format Benefits
+
+- **50-60% fewer tokens** compared to markdown llms.txt
+- **Tabular arrays** for uniform data structures
+- **Explicit length markers** for LLM validation
+- **YAML-like readability** with JSON-compatible data model
+
+### Example Comparison
+
+**Markdown llms.txt (~312 tokens):**
+```markdown
+## Interactive Elements
+**User Inputs:**
+- TextInput (ID: `equipment-search`) - Search equipment...
+- Select (ID: `equipment-category`)
+```
+
+**TOON format (~127 tokens):**
+```toon
+interactive:
+  inputs[2]{id,type,placeholder}:
+    equipment-search,TextInput,Search equipment...
+    equipment-category,Select,
+```
+
+### New API Exports
+
+```python
+from dash_improve_my_llms import (
+    TOONConfig,           # Configuration for TOON output
+    toon_encode,          # Low-level encoder
+    generate_llms_toon,   # Generate page TOON
+    generate_architecture_toon,  # Generate app architecture TOON
+)
+```
+
+### Migration
+
+**Zero changes required!** Existing code works as-is. New TOON routes are automatically available.
+
+```bash
+pip install --upgrade dash-improve-my-llms
+```
+
+**See:** [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) and [TOON_INTEGRATION_PLAN.md](TOON_INTEGRATION_PLAN.md) for complete details.
 
 ---
 
