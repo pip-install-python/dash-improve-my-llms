@@ -251,7 +251,7 @@ Made with ❤️  by Pip Install Python LLC | https://pip-install-python.com
 def layout():
     return html.Div(
         [
-            html.H1("Welcome to dash-improve-my-llms v1.0.0"),
+            html.H1("Welcome to dash-improve-my-llms v1.2.0"),
             html.P(
                 "Make your Dash applications AI-friendly with automatic documentation generation, "
                 "TOON format support (50-60% fewer tokens), bot management, and SEO optimization.",
@@ -339,23 +339,23 @@ app.run(debug=True)""",
                                     style={"flex": "1", "marginRight": "15px"}
                                 ),
 
-                                # TOON Format Routes (NEW v1.0.0!)
+                                # TOON Format Routes (v1.2.0!)
                                 html.Div(
                                     [
-                                        html.H3("🎯 TOON Format (v1.0.0 NEW!)", style={"fontSize": "18px", "color": "#e599f7"}),
+                                        html.H3("🎯 TOON Format (v1.2.0)", style={"fontSize": "18px", "color": "#e599f7"}),
                                         html.Ul(
                                             [
                                                 html.Li([
                                                     html.A("/llms.toon", href="/llms.toon", target="_blank"),
-                                                    " - Token-optimized (50-60% fewer tokens!)"
+                                                    " - Token-optimized (40-60% fewer tokens)"
+                                                ]),
+                                                html.Li([
+                                                    html.A("/v120-features/llms.toon", href="/v120-features/llms.toon", target="_blank"),
+                                                    " - Documentation-optimized TOON (v1.2.0)"
                                                 ]),
                                                 html.Li([
                                                     html.A("/architecture.toon", href="/architecture.toon", target="_blank"),
                                                     " - Token-optimized architecture"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/equipment/llms.toon", href="/equipment/llms.toon", target="_blank"),
-                                                    " - Per-page TOON example"
                                                 ]),
                                             ]
                                         ),
@@ -477,6 +477,25 @@ app.run(debug=True)""",
                         ],
                         style={"display": "flex"}
                     ),
+                    # v1.2.0 Features Page
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.H3("📚 v1.2.0 Features", style={"fontSize": "18px", "color": "#667eea"}),
+                                    html.P("Documentation-aware TOON generation with PageType detection, prose extraction, and optimized output"),
+                                    dcc.Link("Explore v1.2.0 →", href="/v120-features", style={"fontWeight": "bold", "color": "#667eea"})
+                                ],
+                                style={
+                                    "background": "linear-gradient(135deg, #667eea15 0%, #764ba215 100%)",
+                                    "padding": "20px",
+                                    "borderRadius": "8px",
+                                    "border": "2px solid #667eea",
+                                    "marginTop": "15px"
+                                }
+                            ),
+                        ]
+                    ),
                 ],
                 style={"marginTop": "40px"}
             ),
@@ -484,18 +503,18 @@ app.run(debug=True)""",
             # Features Section
             html.Div(
                 [
-                    html.H2("✨ v1.0.0 Features"),
+                    html.H2("✨ v1.2.0 Features"),
                     html.Div(
                         [
                             html.Div(
                                 [
-                                    html.H3("🎯 TOON Format (NEW!)", style={"fontSize": "16px", "color": "#e599f7"}),
+                                    html.H3("📚 Doc-Aware TOON (v1.2.0)", style={"fontSize": "16px", "color": "#e599f7"}),
                                     html.Ul(
                                         [
-                                            html.Li("Token-Oriented Object Notation"),
-                                            html.Li("50-60% fewer tokens than markdown"),
-                                            html.Li("Tabular arrays for structured data"),
-                                            html.Li("Per-page /llms.toon endpoints"),
+                                            html.Li("PageType detection (DOC/INTERACTIVE/HYBRID)"),
+                                            html.Li("Full prose extraction from dcc.Markdown"),
+                                            html.Li("Code block & table preservation"),
+                                            html.Li("Adaptive TOON generation"),
                                         ],
                                         style={"fontSize": "14px"}
                                     ),

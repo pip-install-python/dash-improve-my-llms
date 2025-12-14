@@ -5,6 +5,197 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-13
+
+### 🎯 Documentation-Aware TOON Generation
+
+This release introduces **adaptive page type detection** and **documentation-optimized TOON generation**. The hook now intelligently detects whether a page is documentation, interactive, or hybrid, and generates TOON content optimized for each type.
+
+### ✨ New Features
+
+#### Page Type Detection
+- **`PageType` Enum**: New enum with `DOCUMENTATION`, `INTERACTIVE`, and `HYBRID` values
+- **`detect_page_type()`**: Automatically analyzes page layouts to determine content type
+- **Scoring System**: Uses markdown content, section count, code blocks, callbacks, and interactive components
+
+```python
+from dash_improve_my_llms import detect_page_type, PageType
+
+page_type = detect_page_type(layout, callback_count=2)
+# Returns: PageType.DOCUMENTATION, PageType.INTERACTIVE, or PageType.HYBRID
+```
+
+#### Documentation-Optimized TOON Generation
+- **`generate_documentation_toon()`**: New function for documentation-heavy pages
+- **Full Prose Extraction**: Captures complete markdown content, not just structure
+- **Code Block Preservation**: Maintains full code examples with language detection
+- **Table Extraction**: Parses and preserves HTML tables for reference documentation
+- **List Processing**: Extracts ordered and unordered lists
+
+```python
+from dash_improve_my_llms import generate_documentation_toon
+
+toon_output = generate_documentation_toon(
+    page_path="/examples/directives",
+    layout=layout,
+    page_name="Custom Directives",
+    app=app
+)
+```
+
+#### Enhanced Prose Extraction
+- **`extract_prose_content()`**: New comprehensive text extraction function
+- **Extracts from multiple sources**:
+  - `dcc.Markdown` children (raw markdown text)
+  - `html.P` paragraph content
+  - `html.H1-H6` headings
+  - `html.Li` list items
+  - `html.Code/Pre` code elements
+  - `html.Table` structures
+
+```python
+from dash_improve_my_llms import extract_prose_content
+
+prose = extract_prose_content(layout)
+# Returns: {
+#   "sections": [...],
+#   "code_blocks": [...],
+#   "lists": [...],
+#   "tables": [...],
+#   "prose": [...],
+#   "headings": [...],
+#   "raw_markdown": [...]
+# }
+```
+
+#### New TOONConfig Options
+```python
+from dash_improve_my_llms import TOONConfig
+
+config = TOONConfig(
+    # v1.2.0 New Options
+    extract_prose=True,           # Extract prose text from components
+    extract_code_blocks=True,     # Include full code blocks
+    extract_tables=True,          # Preserve table structures
+    max_prose_chars=5000,         # Limit prose per section
+    max_code_blocks=15,           # Limit code examples per page
+    section_depth=4,              # How deep to nest sections (h1-h4)
+    include_examples=True,        # Include usage examples
+    compress_code=True,           # Compress code (remove excess whitespace)
+    page_type_override=None,      # Force: "documentation", "interactive", "hybrid"
+)
+```
+
+#### Adaptive TOON Generation
+`generate_llms_toon()` now automatically dispatches to the appropriate generator:
+- **DOCUMENTATION pages**: Uses `generate_documentation_toon()` for prose-focused output
+- **INTERACTIVE pages**: Uses component/callback-focused format
+- **HYBRID pages**: Combines both with prose sections and code examples alongside interactive metadata
+
+### 📊 Documentation TOON Format (v3.2)
+
+Documentation pages now generate a specialized format optimized for tutorials, guides, and API docs:
+
+```toon
+meta:
+  path: /examples/directives
+  name: Custom Directives
+  type: documentation
+  generator: dash-improve-my-llms
+  version: 1.2.0
+  format: toon/3.2
+
+context:
+  description: Part of 7-page Dash documentation site
+  totalPages: 7
+  relatedPages[6]{name,path}:
+    Getting Started,/getting-started
+    Interactive Components,/examples/components
+    ...
+
+sections[5]:
+  1:
+    n: 1
+    title: Table of Contents Directive
+    level: 2
+    content: >
+      The toc directive generates navigation from markdown headings.
+      Place it at the start of your documentation file...
+
+  2:
+    n: 2
+    title: Execute Directive
+    level: 2
+    content: >
+      The exec directive renders Python components inline with
+      optional source code display...
+
+codeExamples[3]:
+  1:
+    n: 1
+    lang: python
+    code: |
+      from dash import html
+      import dash_mantine_components as dmc
+
+      component = dmc.Button("Click Me!", id="demo")
+
+  2:
+    n: 2
+    lang: markdown
+    code: |
+      .. exec::docs.examples.button_example
+          :code: false
+
+tables[1]:
+  1:
+    n: 1
+    headers: [Directive, Syntax, Purpose]
+    rows[5]:
+      [toc, ".. toc::", Generate table of contents]
+      [exec, ".. exec::path", Render Python component]
+      ...
+
+lists[2]:
+  1:
+    type: unordered
+    items[4]:
+      - Use toc at the start of every page
+      - Combine exec with source for examples
+      ...
+
+summary: Documentation page: Custom Directives. Contains 5 section(s). Includes 3 code example(s). Has 1 reference table(s).
+```
+
+### 🔧 Technical Changes
+
+- TOON format version bumped to `toon/3.2`
+- Package version bumped to `1.2.0`
+- New exports in `__all__`: `PageType`, `detect_page_type`, `extract_prose_content`, `generate_documentation_toon`
+- Hybrid pages now include prose sections and code examples alongside interactive metadata
+
+### 💡 Use Cases
+
+**For Documentation Sites (like Dash-Documentation-Boilerplate)**:
+- Full prose content is captured from `dcc.Markdown` components
+- Code examples are preserved for tutorials
+- Directive syntax examples are maintained
+- Reference tables are extractable
+
+**For Interactive Dashboards**:
+- Continues to use optimized callback/component format
+- No changes to existing behavior
+
+**For Mixed Applications**:
+- Hybrid detection combines both approaches
+- Documentation content appears alongside interactive metadata
+
+### 💡 Breaking Changes
+
+None - v1.2.0 is fully backward compatible with v1.1.0. Existing code continues to work without modification. The new page type detection is automatic and enhances output quality.
+
+---
+
 ## [1.1.0] - 2025-12-13
 
 ### 🎯 Enhanced TOON Format: Lossless Semantic Compression

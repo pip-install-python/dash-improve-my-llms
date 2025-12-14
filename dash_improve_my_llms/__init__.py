@@ -12,7 +12,7 @@ Usage:
     add_llms_routes(app)
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import json
 import re
@@ -1640,22 +1640,43 @@ def setup_llms_plugin(
 from .robots_generator import RobotsConfig
 
 # Import TOON generator for external use
-from .toon_generator import TOONConfig, toon_encode, generate_llms_toon, generate_architecture_toon
+from .toon_generator import (
+    TOONConfig,
+    PageType,
+    toon_encode,
+    generate_llms_toon,
+    generate_architecture_toon,
+    generate_documentation_toon,
+    detect_page_type,
+    extract_prose_content,
+    extract_markdown_content,
+)
 
 __all__ = [
+    # Core functions
     "add_llms_routes",
+    "setup_llms_plugin",
+    # Important/hidden markers
     "mark_important",
     "is_important",
     "mark_hidden",
     "is_hidden",
     "mark_component_hidden",
     "is_component_hidden",
+    # Metadata registration
     "register_page_metadata",
+    # Configuration classes
     "LLMSConfig",
     "RobotsConfig",
     "TOONConfig",
+    "PageType",
+    # TOON generation
     "toon_encode",
     "generate_llms_toon",
     "generate_architecture_toon",
-    "setup_llms_plugin",
+    "generate_documentation_toon",
+    # v1.2.0: Page type detection and prose extraction
+    "detect_page_type",
+    "extract_prose_content",
+    "extract_markdown_content",
 ]

@@ -10,11 +10,25 @@ Key Design Principle:
   TOON should be a LOSSLESS SEMANTIC COMPRESSION of llms.txt content.
   An AI reading llms.toon should gain the same understanding as llms.txt,
   just with fewer tokens. Architecture metadata is secondary to actual content.
+
+v1.2.0 Enhancements:
+  - PageType detection (DOCUMENTATION, INTERACTIVE, HYBRID)
+  - Enhanced prose extraction from dcc.Markdown and html elements
+  - Documentation-optimized TOON schema with sections, code, tables
+  - Adaptive generation based on page type
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union
 import re
+
+
+class PageType(Enum):
+    """Page type classification for adaptive TOON generation."""
+    DOCUMENTATION = "documentation"  # Tutorials, guides, API docs, markdown-heavy
+    INTERACTIVE = "interactive"      # Dashboards, data apps, callback-heavy
+    HYBRID = "hybrid"                # Mix of documentation and interactivity
 
 
 @dataclass
@@ -28,14 +42,25 @@ class TOONConfig:
     # Content control
     include_metadata: bool = True  # Include generator metadata
     include_content: bool = True  # Include text content arrays
-    max_content_items: int = 100  # Limit content array size (increased from 20)
+    max_content_items: int = 100  # Limit content array size
 
-    # Content preservation (NEW)
+    # Content preservation
     preserve_code_examples: bool = True  # Include code snippets
     preserve_headings: bool = True  # Keep section structure
     preserve_markdown: bool = True  # Extract dcc.Markdown content
     max_code_lines: int = 30  # Max lines per code example
     max_sections: int = 20  # Max number of sections to include
+
+    # v1.2.0: Enhanced prose extraction
+    extract_prose: bool = True  # Extract prose text from components
+    extract_code_blocks: bool = True  # Include full code blocks
+    extract_tables: bool = True  # Preserve table structures
+    max_prose_chars: int = 5000  # Limit prose per section
+    max_code_blocks: int = 15  # Limit code examples per page
+    section_depth: int = 4  # How deep to nest sections (h1-h4)
+    include_examples: bool = True  # Include usage examples
+    compress_code: bool = True  # Compress code (remove excess whitespace)
+    page_type_override: Optional[str] = None  # Force page type: "documentation", "interactive", "hybrid"
 
     # Advanced
     strict_mode: bool = True  # Validate array lengths
@@ -234,6 +259,645 @@ def compress_section_content(content: str, max_chars: int = 500) -> str:
     # Keep first portion and indicate truncation
     truncated = content[:max_chars].rsplit(' ', 1)[0]
     return truncated + "..."
+
+
+# =============================================================================
+# v1.2.0: PAGE TYPE DETECTION
+# =============================================================================
+
+# Regex patterns for directive detection (common in documentation)
+DIRECTIVE_PATTERN = re.compile(r'\.\.\s+\w+::')
+TABLE_PATTERN = re.compile(r'\|[^\|]+\|')
+
+
+def count_component_instances(component, component_names: set, depth: int = 0, max_depth: int = 50) -> int:
+    """Count instances of specific component types in a layout."""
+    if depth > max_depth:
+        return 0
+
+    count = 0
+    component_name = getattr(component, "__class__", type(component)).__name__
+
+    if component_name in component_names:
+        count += 1
+
+    # Recurse into children
+    if hasattr(component, "children"):
+        children = component.children
+        if children is not None:
+            if isinstance(children, list):
+                for child in children:
+                    count += count_component_instances(child, component_names, depth + 1, max_depth)
+            elif not isinstance(children, str):
+                count += count_component_instances(children, depth + 1, max_depth)
+
+    return count
+
+
+def detect_page_type(
+    layout,
+    callback_count: int = 0,
+    config: Optional[TOONConfig] = None,
+) -> PageType:
+    """
+    Analyze a page layout to determine its type: DOCUMENTATION, INTERACTIVE, or HYBRID.
+
+    Detection logic:
+    - High dcc.Markdown ratio + low callbacks = DOCUMENTATION
+    - High callbacks + inputs/outputs = INTERACTIVE
+    - Mixed = HYBRID
+
+    Args:
+        layout: The Dash layout component
+        callback_count: Number of callbacks associated with this page
+        config: Optional configuration (can override with page_type_override)
+
+    Returns:
+        PageType enum value
+    """
+    # Check for override in config
+    if config and config.page_type_override:
+        override = config.page_type_override.lower()
+        if override == "documentation":
+            return PageType.DOCUMENTATION
+        elif override == "interactive":
+            return PageType.INTERACTIVE
+        elif override == "hybrid":
+            return PageType.HYBRID
+
+    # Count different component types
+    markdown_components = {"Markdown"}
+    interactive_components = {
+        "Input", "TextInput", "Select", "Dropdown", "Button",
+        "Checkbox", "Radio", "Slider", "RangeSlider", "DatePicker",
+        "Textarea", "Upload", "NumberInput", "PasswordInput"
+    }
+    visualization_components = {"Graph", "DataTable", "AgGrid"}
+
+    # Extract content to analyze
+    markdown_content = extract_markdown_content(layout)
+
+    # Count markdown sections and code blocks
+    section_count = len(markdown_content.get("sections", []))
+    code_block_count = len(markdown_content.get("code_examples", []))
+    text_content = markdown_content.get("text_content", [])
+    total_prose_length = sum(len(t) for t in text_content)
+
+    # Count interactive elements (simplified - count from extracted IDs)
+    interactive_count = 0
+    viz_count = 0
+
+    def count_types(comp, depth=0):
+        nonlocal interactive_count, viz_count
+        if depth > 50:
+            return
+        comp_name = getattr(comp, "__class__", type(comp)).__name__
+        if comp_name in interactive_components:
+            interactive_count += 1
+        if comp_name in visualization_components:
+            viz_count += 1
+        if hasattr(comp, "children"):
+            children = comp.children
+            if children:
+                if isinstance(children, list):
+                    for c in children:
+                        if not isinstance(c, str):
+                            count_types(c, depth + 1)
+                elif not isinstance(children, str):
+                    count_types(children, depth + 1)
+
+    count_types(layout)
+
+    # Calculate documentation score
+    doc_score = 0
+    interactive_score = 0
+
+    # Documentation indicators
+    if section_count >= 3:
+        doc_score += 3
+    elif section_count >= 1:
+        doc_score += 1
+
+    if code_block_count >= 2:
+        doc_score += 3
+    elif code_block_count >= 1:
+        doc_score += 1
+
+    if total_prose_length >= 1000:
+        doc_score += 3
+    elif total_prose_length >= 500:
+        doc_score += 2
+    elif total_prose_length >= 200:
+        doc_score += 1
+
+    # Check for directive patterns (common in documentation frameworks)
+    for text in text_content:
+        if DIRECTIVE_PATTERN.search(text):
+            doc_score += 2
+            break
+
+    # Interactive indicators
+    if callback_count >= 5:
+        interactive_score += 4
+    elif callback_count >= 2:
+        interactive_score += 2
+    elif callback_count >= 1:
+        interactive_score += 1
+
+    if interactive_count >= 5:
+        interactive_score += 3
+    elif interactive_count >= 2:
+        interactive_score += 2
+    elif interactive_count >= 1:
+        interactive_score += 1
+
+    if viz_count >= 2:
+        interactive_score += 2
+    elif viz_count >= 1:
+        interactive_score += 1
+
+    # Decision logic
+    if doc_score >= 5 and interactive_score <= 2:
+        return PageType.DOCUMENTATION
+    elif interactive_score >= 5 and doc_score <= 2:
+        return PageType.INTERACTIVE
+    elif doc_score >= 3 or interactive_score >= 3:
+        return PageType.HYBRID
+    else:
+        # Default based on relative scores
+        if doc_score > interactive_score:
+            return PageType.DOCUMENTATION
+        elif interactive_score > doc_score:
+            return PageType.INTERACTIVE
+        else:
+            return PageType.HYBRID
+
+
+# =============================================================================
+# v1.2.0: ENHANCED PROSE EXTRACTION
+# =============================================================================
+
+def extract_prose_content(layout, config: Optional[TOONConfig] = None) -> Dict[str, Any]:
+    """
+    Extract prose text content from Dash layouts, optimized for documentation pages.
+
+    This extracts:
+    - dcc.Markdown children (the actual markdown text)
+    - html.P, html.Span text content
+    - html.H1-H6 headings
+    - html.Li items for lists
+    - html.Code/html.Pre for inline code
+    - Table structures from html.Table
+
+    Args:
+        layout: The Dash layout component
+        config: Optional TOON configuration
+
+    Returns:
+        Dict with: sections, code_blocks, lists, tables, prose, headings
+    """
+    if config is None:
+        config = TOONConfig()
+
+    result = {
+        "sections": [],       # Hierarchical sections with headers
+        "code_blocks": [],    # Extracted code examples
+        "lists": [],          # Bullet/numbered lists
+        "tables": [],         # Data tables
+        "prose": [],          # Paragraph text
+        "headings": [],       # All headings in order
+        "raw_markdown": [],   # Raw markdown strings for full context
+    }
+
+    def _extract(component, depth=0, current_heading=None):
+        if depth > config.section_depth * 10:  # Reasonable depth limit
+            return
+
+        if component is None:
+            return
+
+        # Handle string content
+        if isinstance(component, str):
+            text = component.strip()
+            if text and len(text) > 5:
+                result["prose"].append(text)
+            return
+
+        comp_name = getattr(component, "__class__", type(component)).__name__
+
+        # === MARKDOWN COMPONENT (Primary source for documentation) ===
+        if comp_name == "Markdown":
+            children = getattr(component, "children", None)
+            if children and isinstance(children, str):
+                # Store the raw markdown for full context
+                result["raw_markdown"].append(children)
+
+                # Parse markdown content
+                parsed = parse_markdown_content(children)
+
+                # Add sections with hierarchy
+                for section in parsed.get("sections", []):
+                    if section.get("level", 2) <= config.section_depth:
+                        result["sections"].append(section)
+
+                # Add code blocks
+                for code in parsed.get("code_examples", []):
+                    if len(result["code_blocks"]) < config.max_code_blocks:
+                        if config.compress_code:
+                            code["code"] = compress_code_example(
+                                code["code"], config.max_code_lines
+                            )
+                        result["code_blocks"].append(code)
+
+                # Add text content as prose
+                for text in parsed.get("text_content", []):
+                    if text and len(text) > 10:
+                        result["prose"].append(text[:config.max_prose_chars])
+
+            return  # Don't recurse into markdown children
+
+        # === HEADING ELEMENTS ===
+        if comp_name in ["H1", "H2", "H3", "H4", "H5", "H6"]:
+            level = int(comp_name[1])
+            if level <= config.section_depth:
+                children = getattr(component, "children", "")
+                heading_text = ""
+                if isinstance(children, str):
+                    heading_text = children
+                elif isinstance(children, list):
+                    heading_text = " ".join(
+                        c if isinstance(c, str) else ""
+                        for c in children
+                    ).strip()
+
+                if heading_text:
+                    result["headings"].append({
+                        "text": heading_text,
+                        "level": level,
+                    })
+
+        # === PARAGRAPH ELEMENTS ===
+        if comp_name == "P":
+            children = getattr(component, "children", "")
+            if isinstance(children, str) and len(children) > 10:
+                result["prose"].append(children[:config.max_prose_chars])
+            elif isinstance(children, list):
+                text = " ".join(
+                    c if isinstance(c, str) else ""
+                    for c in children
+                ).strip()
+                if text and len(text) > 10:
+                    result["prose"].append(text[:config.max_prose_chars])
+
+        # === LIST ELEMENTS ===
+        if comp_name in ["Ul", "Ol"]:
+            list_items = []
+            children = getattr(component, "children", [])
+            if isinstance(children, list):
+                for item in children:
+                    item_name = getattr(item, "__class__", type(item)).__name__
+                    if item_name == "Li":
+                        li_children = getattr(item, "children", "")
+                        if isinstance(li_children, str):
+                            list_items.append(li_children)
+                        elif isinstance(li_children, list):
+                            text = " ".join(
+                                c if isinstance(c, str) else ""
+                                for c in li_children
+                            ).strip()
+                            if text:
+                                list_items.append(text)
+
+            if list_items:
+                result["lists"].append({
+                    "type": "ordered" if comp_name == "Ol" else "unordered",
+                    "items": list_items[:20],  # Limit items
+                })
+
+        # === CODE/PRE ELEMENTS ===
+        if comp_name in ["Code", "Pre"]:
+            children = getattr(component, "children", "")
+            if isinstance(children, str) and len(children) > 5:
+                if len(result["code_blocks"]) < config.max_code_blocks:
+                    result["code_blocks"].append({
+                        "language": "text",
+                        "code": compress_code_example(children, config.max_code_lines) if config.compress_code else children,
+                    })
+
+        # === TABLE ELEMENTS ===
+        if comp_name == "Table" and config.extract_tables:
+            table_data = _extract_table(component)
+            if table_data:
+                result["tables"].append(table_data)
+
+        # === RECURSE INTO CHILDREN ===
+        if hasattr(component, "children"):
+            children = component.children
+            if children is not None:
+                if isinstance(children, list):
+                    for child in children:
+                        if not isinstance(child, str) or len(child) > 50:
+                            _extract(child, depth + 1, current_heading)
+                elif not isinstance(children, str):
+                    _extract(children, depth + 1, current_heading)
+
+    def _extract_table(table_component) -> Optional[Dict]:
+        """Extract table structure from html.Table component."""
+        headers = []
+        rows = []
+
+        children = getattr(table_component, "children", [])
+        if not isinstance(children, list):
+            children = [children] if children else []
+
+        for child in children:
+            child_name = getattr(child, "__class__", type(child)).__name__
+
+            # Table header
+            if child_name == "Thead":
+                thead_children = getattr(child, "children", [])
+                if not isinstance(thead_children, list):
+                    thead_children = [thead_children] if thead_children else []
+                for tr in thead_children:
+                    tr_name = getattr(tr, "__class__", type(tr)).__name__
+                    if tr_name == "Tr":
+                        tr_children = getattr(tr, "children", [])
+                        if not isinstance(tr_children, list):
+                            tr_children = [tr_children] if tr_children else []
+                        for th in tr_children:
+                            th_children = getattr(th, "children", "")
+                            if isinstance(th_children, str):
+                                headers.append(th_children)
+
+            # Table body
+            if child_name == "Tbody":
+                tbody_children = getattr(child, "children", [])
+                if not isinstance(tbody_children, list):
+                    tbody_children = [tbody_children] if tbody_children else []
+                for tr in tbody_children[:20]:  # Limit rows
+                    tr_name = getattr(tr, "__class__", type(tr)).__name__
+                    if tr_name == "Tr":
+                        row = []
+                        tr_children = getattr(tr, "children", [])
+                        if not isinstance(tr_children, list):
+                            tr_children = [tr_children] if tr_children else []
+                        for td in tr_children:
+                            td_children = getattr(td, "children", "")
+                            if isinstance(td_children, str):
+                                row.append(td_children)
+                            else:
+                                row.append("")
+                        if row:
+                            rows.append(row)
+
+        if headers or rows:
+            return {"headers": headers, "rows": rows}
+        return None
+
+    _extract(layout)
+
+    # Deduplicate prose
+    seen_prose = set()
+    unique_prose = []
+    for p in result["prose"]:
+        p_clean = p.strip()[:200]  # Use first 200 chars for dedup
+        if p_clean not in seen_prose:
+            seen_prose.add(p_clean)
+            unique_prose.append(p)
+    result["prose"] = unique_prose[:config.max_content_items]
+
+    return result
+
+
+# =============================================================================
+# v1.2.0: DOCUMENTATION-OPTIMIZED TOON GENERATION
+# =============================================================================
+
+def generate_documentation_toon(
+    page_path: str,
+    layout,
+    page_name: Optional[str] = None,
+    app=None,
+    config: Optional[TOONConfig] = None,
+    prose_content: Optional[Dict] = None,
+) -> str:
+    """
+    Generate TOON optimized for documentation pages.
+
+    This format prioritizes:
+    - Section structure with full content
+    - Code examples (complete, not truncated)
+    - Tables preserved
+    - Lists maintained
+    - Minimal component/callback metadata
+
+    Args:
+        page_path: URL path of the page
+        layout: The page layout component
+        page_name: Optional display name
+        app: Optional Dash app instance
+        config: Optional TOON configuration
+        prose_content: Pre-extracted prose content (optional)
+
+    Returns:
+        TOON-formatted string optimized for documentation
+    """
+    if config is None:
+        config = TOONConfig()
+
+    # Extract prose content if not provided
+    if prose_content is None:
+        prose_content = extract_prose_content(layout, config)
+
+    # Build documentation-optimized TOON structure
+    toon_data = {}
+
+    # === META ===
+    title = page_name or page_path.strip("/").replace("-", " ").title() or "Home"
+    toon_data["meta"] = {
+        "path": page_path,
+        "name": title,
+        "type": "documentation",
+        "generator": "dash-improve-my-llms",
+        "version": "1.2.0",
+        "format": "toon/3.2",
+    }
+
+    # === APP CONTEXT ===
+    if app:
+        try:
+            import dash
+            page_registry = getattr(dash, "page_registry", {})
+            total_pages = len(page_registry)
+            if total_pages > 0:
+                toon_data["context"] = {
+                    "description": f"Part of {total_pages}-page Dash documentation site",
+                    "totalPages": total_pages,
+                }
+
+                # Related pages (for navigation)
+                related = []
+                for p in page_registry.values():
+                    if p.get("path") != page_path:
+                        related.append({
+                            "name": p.get("name", "Page"),
+                            "path": p.get("path", "/"),
+                        })
+                if related:
+                    toon_data["context"]["relatedPages"] = related[:10]
+        except Exception:
+            pass
+
+    # === SECTIONS (Primary content for documentation) ===
+    sections = prose_content.get("sections", [])
+    if sections:
+        formatted_sections = []
+        for i, section in enumerate(sections[:config.max_sections]):
+            heading = section.get("heading", "")
+            level = section.get("level", 2)
+            content = section.get("content", "")
+
+            # Clean content (remove code block placeholders)
+            content = re.sub(r'\[CODE_BLOCK_\d+\]', '', content).strip()
+
+            # Compress if needed but allow more for documentation
+            if len(content) > config.max_prose_chars:
+                content = compress_section_content(content, config.max_prose_chars)
+
+            section_obj = {
+                "n": i + 1,
+                "title": heading,
+                "level": level,
+            }
+            if content:
+                section_obj["content"] = content
+
+            formatted_sections.append(section_obj)
+
+        if formatted_sections:
+            toon_data["sections"] = formatted_sections
+
+    # === HEADINGS OUTLINE (Quick navigation) ===
+    headings = prose_content.get("headings", [])
+    if headings and not sections:  # Only if sections not already captured
+        toon_data["outline"] = [
+            {"text": h["text"], "level": h["level"]}
+            for h in headings[:20]
+        ]
+
+    # === CODE EXAMPLES (Critical for documentation) ===
+    code_blocks = prose_content.get("code_blocks", [])
+    if code_blocks and config.extract_code_blocks:
+        formatted_code = []
+        for i, block in enumerate(code_blocks[:config.max_code_blocks]):
+            lang = block.get("language", "text")
+            code = block.get("code", "")
+
+            if code:
+                # For documentation, preserve more code
+                if config.compress_code and len(code.split('\n')) > config.max_code_lines:
+                    code = compress_code_example(code, config.max_code_lines)
+
+                formatted_code.append({
+                    "n": i + 1,
+                    "lang": lang,
+                    "code": code,
+                })
+
+        if formatted_code:
+            toon_data["codeExamples"] = formatted_code
+
+    # === TABLES (Preserve reference tables) ===
+    tables = prose_content.get("tables", [])
+    if tables and config.extract_tables:
+        formatted_tables = []
+        for i, table in enumerate(tables[:5]):  # Limit to 5 tables
+            formatted_tables.append({
+                "n": i + 1,
+                "headers": table.get("headers", []),
+                "rows": table.get("rows", [])[:10],  # Limit rows
+            })
+        if formatted_tables:
+            toon_data["tables"] = formatted_tables
+
+    # === LISTS (Usage examples, best practices) ===
+    lists = prose_content.get("lists", [])
+    if lists:
+        formatted_lists = []
+        for lst in lists[:10]:  # Limit to 10 lists
+            formatted_lists.append({
+                "type": lst.get("type", "unordered"),
+                "items": lst.get("items", [])[:15],
+            })
+        if formatted_lists:
+            toon_data["lists"] = formatted_lists
+
+    # === PROSE (Additional text content) ===
+    prose = prose_content.get("prose", [])
+    if prose and config.extract_prose:
+        # Filter and clean
+        clean_prose = []
+        seen = set()
+        for p in prose:
+            # Skip very short or duplicate content
+            p_clean = p.strip()
+            if len(p_clean) > 20 and p_clean[:100] not in seen:
+                seen.add(p_clean[:100])
+                clean_prose.append(p_clean[:config.max_prose_chars])
+
+        if clean_prose:
+            toon_data["prose"] = clean_prose[:config.max_content_items]
+
+    # === RAW MARKDOWN (Full context for complex documentation) ===
+    raw_markdown = prose_content.get("raw_markdown", [])
+    if raw_markdown and not sections and not prose:
+        # Only include raw markdown if we didn't get structured content
+        combined = "\n\n".join(raw_markdown)
+        if len(combined) > 100:
+            # Compress if too long
+            if len(combined) > config.max_prose_chars * 2:
+                combined = combined[:config.max_prose_chars * 2] + "..."
+            toon_data["rawContent"] = combined
+
+    # === NAVIGATION ===
+    md_content = extract_markdown_content(layout)
+    links = md_content.get("links", [])
+    if links:
+        internal = []
+        external = []
+        seen = set()
+        for link in links:
+            href = link.get("href", "")
+            if href and href not in seen:
+                seen.add(href)
+                obj = {"text": link.get("text", href)[:50], "href": href}
+                if href.startswith("/") or href.startswith("#"):
+                    internal.append(obj)
+                elif href.startswith("http"):
+                    external.append(obj)
+
+        if internal or external:
+            nav = {}
+            if internal:
+                nav["internal"] = internal[:15]
+            if external:
+                nav["external"] = external[:10]
+            toon_data["navigation"] = nav
+
+    # === SUMMARY ===
+    section_count = len(sections)
+    code_count = len(code_blocks)
+    summary_parts = [f"Documentation page: {title}."]
+    if section_count:
+        summary_parts.append(f"Contains {section_count} section(s).")
+    if code_count:
+        summary_parts.append(f"Includes {code_count} code example(s).")
+    if tables:
+        summary_parts.append(f"Has {len(tables)} reference table(s).")
+
+    toon_data["summary"] = " ".join(summary_parts)
+
+    return toon_encode(toon_data, config)
 
 
 def needs_quoting(value: str, delimiter: str = ",") -> bool:
@@ -662,6 +1326,11 @@ def generate_llms_toon(
     An AI reading llms.toon should understand the page as well as reading llms.txt,
     just with fewer tokens. Content is PRIMARY, architecture is secondary.
 
+    v1.2.0: Now uses adaptive generation based on page type:
+    - DOCUMENTATION pages: Use documentation-optimized format with prose/code focus
+    - INTERACTIVE pages: Use interactive-optimized format with callback/component focus
+    - HYBRID pages: Use combined format with both
+
     Args:
         page_path: URL path of the page
         layout_func: Function or component that returns the page layout
@@ -692,6 +1361,27 @@ def generate_llms_toon(
     # Generate page.json data if not provided
     if page_data is None:
         page_data = generate_page_json(page_path, layout_func, app)
+
+    # === v1.2.0: PAGE TYPE DETECTION AND ADAPTIVE DISPATCH ===
+    interactivity = page_data.get("interactivity", {})
+    callback_count = interactivity.get("callback_count", 0)
+
+    page_type = detect_page_type(layout, callback_count, config)
+
+    # For documentation pages, use the specialized documentation generator
+    if page_type == PageType.DOCUMENTATION:
+        prose_content = extract_prose_content(layout, config)
+        return generate_documentation_toon(
+            page_path=page_path,
+            layout=layout,
+            page_name=page_name,
+            app=app,
+            config=config,
+            prose_content=prose_content,
+        )
+
+    # For hybrid pages, we'll use an enhanced interactive format that also
+    # includes documentation content
 
     # === ENHANCED CONTENT EXTRACTION ===
     # Extract structured content including markdown, code, and sections
@@ -934,11 +1624,48 @@ def generate_llms_toon(
 
     # === TECHNICAL DETAILS ===
     toon_data["technical"] = {
+        "pageType": page_type.value,  # v1.2.0: Include detected page type
         "maxDepth": metadata.get("max_depth", 0),
         "hasImportantSections": metadata.get("has_important_sections", False),
         "containsForms": metadata.get("contains_forms", False),
         "containsVisualizations": metadata.get("contains_visualizations", False),
     }
+
+    # === v1.2.0: ENHANCED PROSE FOR HYBRID PAGES ===
+    if page_type == PageType.HYBRID and config.extract_prose:
+        prose_content = extract_prose_content(layout, config)
+
+        # Add prose sections for hybrid pages
+        prose_sections = prose_content.get("sections", [])
+        if prose_sections:
+            formatted_prose = []
+            for section in prose_sections[:config.max_sections]:
+                heading = section.get("heading", "")
+                content = section.get("content", "")
+                if heading or content:
+                    s = {"h": heading, "l": section.get("level", 2)}
+                    if content:
+                        content = re.sub(r'\[CODE_BLOCK_\d+\]', '', content).strip()
+                        if len(content) > config.max_prose_chars:
+                            content = compress_section_content(content, config.max_prose_chars)
+                        s["t"] = content
+                    formatted_prose.append(s)
+            if formatted_prose:
+                toon_data["prose"] = {"sections": formatted_prose}
+
+        # Add code examples for hybrid pages
+        code_blocks = prose_content.get("code_blocks", [])
+        if code_blocks and config.extract_code_blocks:
+            formatted_code = []
+            for block in code_blocks[:config.max_code_blocks]:
+                lang = block.get("language", "text")
+                code = block.get("code", "")
+                if code:
+                    if config.compress_code and len(code.split('\n')) > config.max_code_lines:
+                        code = compress_code_example(code, config.max_code_lines)
+                    formatted_code.append({"lang": lang, "code": code})
+            if formatted_code:
+                toon_data["codeExamples"] = formatted_code
 
     # === SUMMARY (Enhanced - addresses Gap #5) ===
     summary = _generate_page_summary(
@@ -956,8 +1683,9 @@ def generate_llms_toon(
     if config.include_metadata:
         toon_data["_meta"] = {
             "gen": "dash-improve-my-llms",
-            "v": "1.1.0",
-            "fmt": "toon/3.1",  # Version bump for enhanced format
+            "v": "1.2.0",
+            "fmt": "toon/3.2",  # v1.2.0: Format version bump
+            "pageType": page_type.value,
         }
 
     # Encode to TOON
@@ -1123,21 +1851,31 @@ def generate_architecture_toon(app, config: Optional[TOONConfig] = None) -> str:
     if config.include_metadata:
         toon_data["meta"] = {
             "generator": "dash-improve-my-llms",
-            "version": "1.1.0",
-            "format": "toon/3.0",
+            "version": "1.2.0",
+            "format": "toon/3.2",
         }
 
     return toon_encode(toon_data, config)
 
 
 __all__ = [
+    # Core classes
     "TOONConfig",
     "TOONEncoder",
+    "PageType",
+    # Encoding
     "toon_encode",
+    # Generation
     "generate_llms_toon",
     "generate_architecture_toon",
+    "generate_documentation_toon",
+    # Content extraction
     "extract_markdown_content",
+    "extract_prose_content",
     "parse_markdown_content",
+    # Page type detection
+    "detect_page_type",
+    # Utilities
     "compress_code_example",
     "compress_section_content",
     "needs_quoting",
