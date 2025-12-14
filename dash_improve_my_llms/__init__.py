@@ -12,7 +12,7 @@ Usage:
     add_llms_routes(app)
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import json
 import re

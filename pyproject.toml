@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "1.0.0"
+version = "1.1.0"
 description = "Automatic llms.txt, llms.toon (Token-Oriented Object Notation), page.json, architecture.txt, robots.txt, and sitemap.xml generation for Dash applications with comprehensive bot management, static HTML serving, and SEO optimization"
 readme = "README.md"
 license = "MIT"

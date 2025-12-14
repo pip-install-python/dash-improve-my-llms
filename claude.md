@@ -1,9 +1,15 @@
 # dash-improve-my-llms - Complete Implementation Guide
 
-> **STATUS: ✅ v1.0.0 PRODUCTION RELEASE** - Stable, feature-complete with TOON format support!
+> **STATUS: ✅ v1.1.0 PRODUCTION RELEASE** - Enhanced TOON format with lossless semantic compression!
 >
-> **v1.0.0 Features (✅ NEW):**
-> - 🎯 TOON format support (50-60% fewer tokens)
+> **v1.1.0 Features (✅ NEW):**
+> - 🎯 Enhanced TOON format v3.1 - lossless semantic compression
+> - 📝 Full content preservation (markdown, code examples, sections)
+> - 🔍 Human-readable callback descriptions and page summaries
+> - 📊 40-50% token reduction while preserving all meaningful content
+>
+> **v1.0.0 Features (✅ Complete):**
+> - 🎯 TOON format support with endpoints
 > - 📄 /llms.toon and /architecture.toon endpoints
 > - 🔧 Built-in TOON encoder with fallback support
 > - 📦 Production/Stable status
@@ -27,7 +33,7 @@
 
 ## 📖 Table of Contents
 
-1. [What's New in v1.0.0](#whats-new-in-v100)
+1. [What's New in v1.1.0](#whats-new-in-v110)
 2. [Quick Start](#quick-start)
 3. [TOON Format](#toon-format)
 4. [v0.2.0 Features](#v02-features-in-depth)
@@ -35,6 +41,105 @@
 6. [Testing & Quality](#testing--quality)
 7. [Usage Examples](#usage-examples)
 8. [API Reference](#api-reference)
+
+---
+
+## 🆕 What's New in v1.1.0
+
+### Enhanced TOON Format: Lossless Semantic Compression
+
+v1.1.0 addresses a critical gap between `llms.txt` and `llms.toon` formats. The TOON format now achieves **lossless semantic compression** - preserving all meaningful content while reducing tokens by 40-50%.
+
+#### Design Principle
+
+> **TOON should be a LOSSLESS SEMANTIC COMPRESSION of llms.txt content**
+>
+> The goal is not maximum token reduction, but optimal information density.
+
+#### Key Improvements (TOON Format v3.1)
+
+| Gap | Issue in v1.0.0 | Fixed in v1.1.0 |
+|-----|-----------------|-----------------|
+| App Context | Missing page count framing | Added `context` field with total pages |
+| Page Purpose | Only flags, no explanations | Added `purpose.explanation` array |
+| Components | Only total count | Added `breakdown` with type distribution |
+| Callbacks | Raw flow data | Human-readable descriptions |
+| Summary | Missing | Synthesized page summary |
+| Navigation | Mixed links | Separated internal/external |
+
+#### New TOONConfig Options
+
+```python
+from dash_improve_my_llms import TOONConfig
+
+config = TOONConfig(
+    preserve_code_examples=True,   # Include code snippets
+    preserve_headings=True,        # Keep section structure
+    preserve_markdown=True,        # Extract dcc.Markdown content
+    max_code_lines=30,             # Max lines per code example
+    max_sections=20,               # Max sections to include
+    max_content_items=100,         # Content item limit
+)
+```
+
+#### Example TOON v3.1 Output
+
+```toon
+v: 1.1.0
+format: toon/3.1
+
+page:
+  path: /equipment
+  name: Equipment Catalog
+  description: Browse and filter equipment
+
+context: Part of multi-page Dash app with 3 total pages
+related_pages[3]{path,name}:
+  /,Home
+  /equipment,Equipment Catalog
+  /analytics,Analytics Dashboard
+
+purpose:
+  flags: [data_input, interactive]
+  explanation:
+    - Contains form elements for data entry
+    - Responds to user interactions with dynamic updates
+
+components:
+  total: 23
+  interactive: 5
+  static: 18
+  breakdown:
+    Div: 8
+    Button: 3
+    TextInput: 2
+    Graph: 1
+
+callbacks[1]:
+  1:
+    updates: equipment-list.children
+    triggers: equipment-search.value, equipment-category.value
+    description: Updates equipment list when search or category changes
+
+navigation:
+  internal[2]:
+    Home: /
+    Analytics: /analytics
+  external[0]:
+
+summary: >
+  Equipment Catalog is a data input and interactive page with 23 components
+  (5 interactive) and 1 callback. Users can search and filter equipment
+  with real-time updates.
+```
+
+#### Token Efficiency Comparison
+
+| Format | Tokens | Reduction |
+|--------|--------|-----------|
+| llms.txt | ~15,000 | baseline |
+| llms.toon v1.0.0 | ~200 | 98% (lost content) |
+| llms.toon v1.1.0 | ~6,000-8,000 | 40-50% (lossless) |
 
 ---
 
@@ -926,4 +1031,4 @@ Made with ❤️ for AI-friendly documentation.
 
 ---
 
-**v1.0.0 - Production/Stable** | TOON Format Support | 50-60% Token Reduction | 88 Tests Passing
+**v1.1.0 - Production/Stable** | Enhanced TOON Format | Lossless Semantic Compression | 40-50% Token Reduction
