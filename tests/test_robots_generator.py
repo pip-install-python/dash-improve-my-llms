@@ -146,7 +146,11 @@ def test_robots_txt_has_ai_search_bots():
 
 
 def test_robots_txt_has_documentation_links():
-    """Test that robots.txt includes AI-friendly documentation links."""
+    """Test that robots.txt includes AI-friendly documentation links.
+
+    Updated in 2.0: only /llms.txt is advertised in the comments now.
+    /page.json, /architecture.txt, and the .toon endpoints were removed.
+    """
     config = RobotsConfig()
     robots_content = generate_robots_txt(
         config=config,
@@ -155,8 +159,11 @@ def test_robots_txt_has_documentation_links():
     )
 
     assert "https://example.com/llms.txt" in robots_content
-    assert "https://example.com/architecture.txt" in robots_content
-    assert "https://example.com/page.json" in robots_content
+    assert "https://example.com/sitemap.xml" in robots_content
+    # 2.0: these should NOT appear — they were dropped
+    assert "/architecture.txt" not in robots_content
+    assert "/page.json" not in robots_content
+    assert "/llms.toon" not in robots_content
 
 
 def test_robots_txt_sitemap_reference():

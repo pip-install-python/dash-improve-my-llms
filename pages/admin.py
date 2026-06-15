@@ -1,18 +1,18 @@
 """
-Admin Dashboard - Visitor Analytics
+Admin Dashboard — Visitor Analytics
 
-This page demonstrates:
-1. mark_hidden() - This page is hidden from AI bots and search engines
-2. Visitor tracking - Desktop, Mobile, Tablet, and Bot visits
-3. Bot type detection - Identifies AI training, AI search, and traditional bots
-4. Plotly visualizations - Beautiful graphs showing analytics
-5. Real-time data - Updates on page refresh
+Demonstrates the mark_hidden() side of dash-improve-my-llms 2.0.
+Because this page calls mark_hidden("/admin"), the package:
 
-This page won't appear in:
-- sitemap.xml
-- robots.txt (will be blocked)
-- /admin/llms.txt (returns 404)
-- /admin/page.json (returns 404)
+- Excludes /admin from /sitemap.xml.
+- Adds /admin to the Disallow list in /robots.txt.
+- Returns 404 for /admin/llms.txt (the only doc surface 2.0 serves).
+- Returns 404 for any crawler request that lands on /admin.
+- Skips /admin when registering MCP resources on Dash 4.3+.
+
+Everything else here — Plotly charts, device-type breakdowns, bot-type
+tracking — is plain example-app code. The analytics file is populated
+by the visitor tracker in the project's app.py.
 """
 
 import dash_mantine_components as dmc
@@ -39,7 +39,7 @@ register_page_metadata(
     description="Visitor analytics dashboard with device and bot tracking - Hidden from search engines",
 )
 
-# HIDE THIS PAGE FROM AI BOTS AND SEARCH ENGINES (NEW v0.2.0!)
+# Hide this page from crawlers, sitemaps, and MCP resource registration.
 mark_hidden("/admin")
 
 # Path to analytics data
@@ -347,7 +347,7 @@ def layout():
         dmc.Divider(mt="xl", mb="lg"),
         dmc.Group([
             dcc.Link("← Home", href="/", style={"textDecoration": "none"}),
-            dcc.Link("Equipment", href="/equipment", style={"textDecoration": "none"}),
+            dcc.Link("MCP Audience", href="/audiences/mcp-clients", style={"textDecoration": "none"}),
             dcc.Link("Analytics", href="/analytics", style={"textDecoration": "none"}),
         ], gap="lg"),
 

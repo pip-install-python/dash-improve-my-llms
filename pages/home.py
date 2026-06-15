@@ -1,611 +1,523 @@
-import dash_mantine_components as dmc
+"""
+Landing page for the dash-improve-my-llms 2.0 demo app.
+
+Demonstrates the canonical v2.0 pattern: a module-level LLMS_DOC string
+is the canonical prose for this page, served verbatim at /llms.txt and
+also registered with dash.mcp as a resource when Dash 4.3+ is detected.
+"""
+
 from dash import dcc, html, register_page
-from dash_improve_my_llms import mark_important, register_page_metadata
 
-register_page(
-    __name__,
-    path="/",
-    name="Home",
-)
+from dash_improve_my_llms import register_page_metadata
 
-# Register metadata for better llms.txt generation
-register_page_metadata(
-    path="/",
-    name="Home",
-    description="Welcome page for the Equipment Management System with navigation and overview",
-)
+register_page(__name__, path="/", name="Home")
 
-# ASCII Diagram showing how dash-improve-my-llms hook works
-ARCHITECTURE_DIAGRAM = """
-╔════════════════════════════════════════════════════════════════════════════════╗
-║                    DASH-IMPROVE-MY-LLMS HOOK ARCHITECTURE                      ║
-╚════════════════════════════════════════════════════════════════════════════════╝
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  STEP 1: INTEGRATE WITH YOUR DASH APP                                          │
-└─────────────────────────────────────────────────────────────────────────────────┘
+LLMS_DOC = """\
+# dash-improve-my-llms 2.0
 
-    Your Dash Application                     Hook Integration
-    ─────────────────────                     ────────────────
+> Crawler / SEO companion for Dash apps, with a thin MCP bridge.
 
-    from dash import Dash                     from dash_improve_my_llms import (
-    from dash import dcc, html    ──────►         add_llms_routes,
-                                                   RobotsConfig,
-    app = Dash(__name__)          ──────►         mark_hidden
-                                              )
+## What this package is
 
-    # Your pages here                        # Add the hook (1 line!)
-    @app.callback(...)            ──────►    add_llms_routes(app)
-    def my_callback(...):
-        ...                                   # Optional: Configure bot management
-                                              app._robots_config = RobotsConfig(
-    app.run(debug=True)                           block_ai_training=True,
-                                                  allow_ai_search=True
-                                              )
+A small set of HTTP routes and middleware that make a Dash application
+legible to the parts of the web that *don't* speak Dash:
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  STEP 2: AUTOMATIC ROUTE GENERATION                                            │
-└─────────────────────────────────────────────────────────────────────────────────┘
+- Search-engine and AI crawlers (Googlebot, GPTBot, ClaudeBot, …)
+- Users pasting a URL into a chat window for context
+- MCP-aware clients on Dash 4.3+
 
-    Hook automatically creates these routes for EVERY page in your app:
+It is intentionally small. Dash 4.3 already ships an MCP server that
+exposes layouts and component metadata live over JSON-RPC, so this
+package no longer tries to compete on that surface.
 
-    Your Page: /                    Auto-Generated Routes:
-    ───────────                     ──────────────────────
-         │
-         ├──────────────────────────► /llms.txt            (LLM-friendly markdown)
-         │
-         ├──────────────────────────► /llms.toon           (Token-optimized TOON - NEW v1.0.0!)
-         │
-         ├──────────────────────────► /page.json           (Technical architecture)
-         │
-         ├──────────────────────────► /architecture.txt    (App overview - global)
-         │
-         └──────────────────────────► /architecture.toon   (Token-optimized - NEW v1.0.0!)
+## The three audiences
 
-    Your Page: /equipment           Auto-Generated Routes:
-    ─────────────────               ──────────────────────
-         │
-         ├──────────────────────────► /equipment/llms.txt
-         │
-         ├──────────────────────────► /equipment/llms.toon (NEW v1.0.0!)
-         │
-         └──────────────────────────► /equipment/page.json
+| Audience              | How they talk to your app       | What 2.0 gives them                          |
+|-----------------------|---------------------------------|----------------------------------------------|
+| MCP clients           | JSON-RPC over Streamable HTTP   | `LLMS_DOC` registered as `dash.mcp` resource |
+| Web crawlers          | Plain HTTPS, no JavaScript      | `/robots.txt`, `/sitemap.xml`, static HTML   |
+| Paste-into-chat users | One-shot HTTP fetch             | `/llms.txt`, `/<page>/llms.txt` as markdown  |
 
-    Your Page: /analytics           Auto-Generated Routes:
-    ─────────────────               ──────────────────────
-         │
-         ├──────────────────────────► /analytics/llms.txt
-         │
-         ├──────────────────────────► /analytics/llms.toon (NEW v1.0.0!)
-         │
-         └──────────────────────────► /analytics/page.json
+## What it serves
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  STEP 3: SEO & BOT MANAGEMENT (v0.2.0)                                         │
-└─────────────────────────────────────────────────────────────────────────────────┘
+- `/llms.txt` and `/<page>/llms.txt` — prose markdown, from `LLMS_DOC`
+- `/robots.txt` — bot-class access policies via `RobotsConfig`
+- `/sitemap.xml` — generated from `dash.page_registry`
+- Static HTML prerender — served to crawlers that hit a normal page URL
 
-    Global Routes (Auto-Generated):
-    ───────────────────────────────
+That is the entire HTTP surface. There are no `/page.json`,
+`/architecture.txt`, or `/llms.toon` endpoints in 2.0 — component-tree
+introspection lives in Dash 4.3 MCP.
 
-    /robots.txt       ───►  🤖 Bot Access Control
-                            ├─ Block AI Training Bots (GPTBot, CCBot)
-                            ├─ Allow AI Search Bots (ChatGPT-User, ClaudeBot)
-                            ├─ Allow Traditional Bots (Googlebot, Bingbot)
-                            └─ Custom crawl delays & disallowed paths
+## The LLMS_DOC pattern
 
-    /sitemap.xml      ───►  🗺️  SEO Sitemap
-                            ├─ Lists all public pages
-                            ├─ Smart priority inference (homepage=1.0, dashboards=0.9)
-                            ├─ Change frequency detection
-                            └─ Excludes hidden pages (mark_hidden)
+Every page module exports a `LLMS_DOC` string. That string is the
+literal body of `/<page>/llms.txt`:
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  STEP 4: CONTENT EXTRACTION & GENERATION                                       │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```python
+# pages/home.py
+LLMS_DOC = '''
+# Home
+...
+'''
+```
 
-    Your Dash Layout                         What Gets Extracted:
-    ───────────────                          ───────────────────
+If a page has no `LLMS_DOC`, the package emits a single warning at
+`add_llms_routes()` listing the missing pages, and the endpoint returns
+a small stub so bots still get a 200.
 
-    html.Div([                               📊 Component Tree
-        html.H1("Dashboard"),      ────►         ├─ All component types
-        dcc.Dropdown(id='filter'),               ├─ Component IDs & properties
-        dcc.Graph(id='chart'),                   └─ Nesting structure
+## Multi-backend support
 
-        mark_important(            ────►     ⭐ Important Sections
-            html.Div([                           └─ Highlighted for LLMs
-                html.H2("Key Metrics")
-            ])                                🔗 Navigation Links
-        ),                         ────►         ├─ Internal links (dcc.Link)
-                                                 └─ External links (html.A)
-        dcc.Link("Analytics",
-            href="/analytics")                🎯 Callbacks & Interactivity
-    ])                             ────►         ├─ Input components
-                                                 ├─ Output components
-    @callback(                                   ├─ State tracking
-        Output('chart', 'figure'),               └─ Data flow graph
-        Input('filter', 'value')
-    )                              ────►     📝 Page Metadata
-    def update_chart(filter_val):                ├─ Page name & description
-        ...                                      ├─ Component counts
-                                                 └─ Purpose inference
+`add_llms_routes(app)` detects whether `app.server` is Flask, FastAPI,
+or Quart and dispatches to the matching adapter. Pick one extra at
+install time:
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  STEP 5: GENERATED OUTPUT FILES                                                │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```
+pip install dash-improve-my-llms[flask]     # Dash 3.x and earlier
+pip install dash-improve-my-llms[fastapi]   # Dash 4.1+
+pip install dash-improve-my-llms[quart]     # Dash 4.1+ async
+```
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │  /llms.txt  (Markdown - LLM-Optimized Context)                          │
-    ├─────────────────────────────────────────────────────────────────────────┤
-    │  # Equipment Catalog                                                    │
-    │                                                                          │
-    │  > Browse and filter equipment with search and category filters         │
-    │                                                                          │
-    │  ## Application Context                                                 │
-    │  This page is part of a multi-page Dash application with 3 pages.      │
-    │                                                                          │
-    │  ## Interactive Elements                                                │
-    │  - TextInput (ID: equipment-search) - Search equipment...               │
-    │  - Select (ID: equipment-category) - Select category                    │
-    │                                                                          │
-    │  ## Data Flow & Callbacks                                               │
-    │  Callback 1: Updates equipment-list.children                            │
-    │    Triggered by: equipment-search.value, equipment-category.value       │
-    └─────────────────────────────────────────────────────────────────────────┘
+## Quick start
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │  /page.json  (JSON - Technical Architecture)                            │
-    ├─────────────────────────────────────────────────────────────────────────┤
-    │  {                                                                       │
-    │    "path": "/equipment",                                                │
-    │    "name": "Equipment Catalog",                                         │
-    │    "components": {                                                       │
-    │      "ids": {                                                            │
-    │        "equipment-search": {"type": "TextInput", ...},                  │
-    │        "equipment-category": {"type": "Select", ...}                    │
-    │      },                                                                  │
-    │      "categories": {                                                     │
-    │        "inputs": ["equipment-search", "equipment-category"],            │
-    │        "interactive": [...]                                             │
-    │      }                                                                   │
-    │    },                                                                    │
-    │    "interactivity": {                                                    │
-    │      "has_callbacks": true,                                             │
-    │      "callback_count": 1                                                │
-    │    }                                                                     │
-    │  }                                                                       │
-    └─────────────────────────────────────────────────────────────────────────┘
+```python
+from dash import Dash
+from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │  /architecture.txt  (ASCII Art - App Overview)                          │
-    ├─────────────────────────────────────────────────────────────────────────┤
-    │  ┌─ ENVIRONMENT                                                         │
-    │  ├─── Python Version: 3.12.3                                            │
-    │  ├─── Dash Version: 3.3.0                                               │
-    │  ├─── Key Dependencies: dash-mantine-components, plotly, pandas         │
-    │  │                                                                       │
-    │  ├─ CALLBACKS                                                           │
-    │  ├─── Total Callbacks: 4                                                │
-    │  ├─── By Module:                                                        │
-    │  │    ├─── pages.equipment: 1 callback(s)                               │
-    │  │    └─── pages.analytics: 1 callback(s)                               │
-    │  │                                                                       │
-    │  ├─ PAGES                                                               │
-    │  │  ├── Home (Path: /)                                                  │
-    │  │  │   ├─ Components: 35                                               │
-    │  │  │   └─ Interactive: 0                                               │
-    │  │  │                                                                    │
-    │  │  ├── Equipment Catalog (Path: /equipment)                            │
-    │  │  │   ├─ Components: 23                                               │
-    │  │  │   ├─ Interactive: 2                                               │
-    │  │  │   └─ Callbacks: 1                                                 │
-    │  │  │                                                                    │
-    │  │  └── Analytics Dashboard (Path: /analytics)                          │
-    │  │      ├─ Components: 41                                               │
-    │  │      └─ Interactive: 1                                               │
-    │  └─ END                                                                  │
-    └─────────────────────────────────────────────────────────────────────────┘
+app = Dash(__name__, use_pages=True)
+app._base_url = "https://myapp.com"
+app._robots_config = RobotsConfig(block_ai_training=True, allow_ai_search=True)
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  PRIVACY & BOT CONTROL (v0.2.0)                                                │
-└─────────────────────────────────────────────────────────────────────────────────┘
+mark_hidden("/admin")
+add_llms_routes(app)
+```
 
-    Hide Sensitive Pages:                    Result:
-    ────────────────────                     ───────
+## Pages in this demo
 
-    mark_hidden("/admin")          ────►     ❌ Excluded from sitemap.xml
-                                             ❌ Blocked in robots.txt
-                                             ❌ /admin/llms.txt returns 404
-                                             ❌ /admin/page.json returns 404
-                                             ✅ Still accessible to logged-in users
+Each of the three audience cards above has a dedicated demo page:
 
-    Bot Management:                          Result:
-    ──────────────                           ───────
+- `/audiences/mcp-clients` — directory of resources this app registers with dash.mcp
+- `/audiences/web-crawlers` — live /robots.txt, RobotsConfig knobs, per-page visibility
+- `/audiences/llm-context` — copy any page's LLMS_DOC to your clipboard
 
-    RobotsConfig(                  ────►     🚫 GPTBot, CCBot blocked (training)
-      block_ai_training=True,                ✅ ChatGPT-User allowed (search)
-      allow_ai_search=True,                  ✅ Googlebot allowed (traditional)
-      crawl_delay=10                         ⏱️  10s delay between requests
-    )
+Plus a few supporting pages:
 
-╔════════════════════════════════════════════════════════════════════════════════╗
-║  BENEFITS FOR LLMS & DEVELOPERS                                                ║
-╚════════════════════════════════════════════════════════════════════════════════╝
-
-    LLM Benefits:                            Developer Benefits:
-    ─────────────                            ──────────────────
-
-    ✅ Complete app context                  ✅ Auto-generated docs (always in sync)
-    ✅ Page purpose understanding            ✅ Zero maintenance overhead
-    ✅ Interactive elements mapped           ✅ One-line integration
-    ✅ Data flow comprehension               ✅ Comprehensive testing (88 tests)
-    ✅ Navigation structure                  ✅ Bot management & SEO built-in
-    ✅ Callback relationships                ✅ Privacy controls for sensitive pages
-
-═══════════════════════════════════════════════════════════════════════════════════
-
-Made with ❤️  by Pip Install Python LLC | https://pip-install-python.com
+- `/analytics` — a regular Dash page (Plotly + callbacks) with its own LLMS_DOC
+- `/admin` — hidden via `mark_hidden`, shows visitor analytics
+- `/v200-features` — walks through what changed from 1.x
 """
 
 
-# Define layout - must be named 'layout'
+register_page_metadata(
+    path="/",
+    name="Home",
+    description="dash-improve-my-llms 2.0 — crawler/SEO companion for Dash apps with an MCP bridge for Dash 4.3+.",
+)
+
+
+# -----------------------------------------------------------------------------
+# Visual layout
+# -----------------------------------------------------------------------------
+
+# Shared style chunks
+_BRAND = "#667eea"
+_INK = "#222"
+_MUTED = "#666"
+
+_CARD_STYLE = {
+    "background": "white",
+    "padding": "20px",
+    "borderRadius": "8px",
+    "boxShadow": "0 2px 4px rgba(0,0,0,0.08)",
+    "border": "1px solid #eee",
+}
+
+_HEADING_STYLE = {"color": _INK, "marginTop": "32px"}
+
+_CODE_BLOCK_STYLE = {
+    "background": "#1e1e1e",
+    "color": "#d4d4d4",
+    "padding": "16px 20px",
+    "borderRadius": "6px",
+    "fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace",
+    "fontSize": "13px",
+    "lineHeight": "1.55",
+    "overflowX": "auto",
+}
+
+
+def _audience_card(title: str, channel: str, served: str, accent: str, href: str) -> dcc.Link:
+    """Linked audience card — clicking opens the matching /audiences/* demo page."""
+    return dcc.Link(
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.Span(
+                            title,
+                            style={"fontWeight": "600", "fontSize": "15px", "color": accent},
+                        ),
+                        html.Span(
+                            "→",
+                            style={"float": "right", "color": accent, "fontWeight": "600"},
+                        ),
+                    ],
+                    style={"marginBottom": "6px"},
+                ),
+                html.Div(channel, style={"fontSize": "13px", "color": _MUTED, "marginBottom": "10px"}),
+                html.Div(served, style={"fontSize": "14px", "color": _INK, "lineHeight": "1.5"}),
+            ],
+            style={**_CARD_STYLE, "borderTop": f"3px solid {accent}", "height": "100%", "boxSizing": "border-box"},
+        ),
+        href=href,
+        style={"flex": "1", "textDecoration": "none", "color": "inherit", "minWidth": "240px"},
+    )
+
+
+def _route_link(href: str, label: str) -> html.Li:
+    return html.Li(
+        [
+            html.A(href, href=href, target="_blank", style={"fontFamily": "monospace"}),
+            html.Span(f" — {label}", style={"color": _MUTED}),
+        ],
+        style={"marginBottom": "6px"},
+    )
+
+
+def _page_card(emoji: str, name: str, blurb: str, href: str, accent: str = _BRAND) -> html.Div:
+    return html.Div(
+        [
+            html.H3(f"{emoji} {name}", style={"fontSize": "17px", "margin": "0 0 8px", "color": accent}),
+            html.P(blurb, style={"color": _MUTED, "fontSize": "14px", "minHeight": "42px"}),
+            dcc.Link(
+                f"Open {name} →",
+                href=href,
+                style={"fontWeight": "600", "color": accent, "textDecoration": "none"},
+            ),
+        ],
+        style={**_CARD_STYLE, "flex": "1"},
+    )
+
+
 def layout():
     return html.Div(
         [
-            html.H1("Welcome to dash-improve-my-llms v1.2.0"),
-            html.P(
-                "Make your Dash applications AI-friendly with automatic documentation generation, "
-                "TOON format support (50-60% fewer tokens), bot management, and SEO optimization.",
-                style={"fontSize": "18px", "marginBottom": "30px"}
-            ),
-
-            # ASCII Architecture Diagram
-            html.Div(
+            # ---------- Hero ----------
+            html.Header(
                 [
-                    html.H2("🏗️ Hook Architecture & Integration Flow"),
-                    html.Pre(
-                        ARCHITECTURE_DIAGRAM,
+                    html.Div(
+                        "v2.0",
                         style={
-                            "background": "#1e1e1e",
-                            "color": "#d4d4d4",
-                            "padding": "20px",
-                            "borderRadius": "8px",
-                            "overflow": "auto",
+                            "display": "inline-block",
+                            "background": _BRAND,
+                            "color": "white",
                             "fontSize": "12px",
-                            "fontFamily": "monospace",
-                            "lineHeight": "1.5",
-                            "border": "2px solid #667eea",
-                            "boxShadow": "0 4px 6px rgba(0,0,0,0.1)"
-                        }
+                            "fontWeight": "600",
+                            "padding": "2px 10px",
+                            "borderRadius": "10px",
+                            "letterSpacing": "0.5px",
+                            "marginBottom": "12px",
+                        },
+                    ),
+                    html.H1(
+                        "dash-improve-my-llms",
+                        style={"margin": "0 0 8px", "fontSize": "36px", "color": _INK},
+                    ),
+                    html.P(
+                        "Crawler / SEO companion for Dash apps, with a thin MCP bridge for Dash 4.3+.",
+                        style={"fontSize": "17px", "color": _MUTED, "marginTop": "0"},
                     ),
                 ],
-                style={"marginBottom": "40px"}
+                style={"marginBottom": "32px"},
             ),
 
-            # Quick Start Section
-            html.Div(
+            # ---------- Three audiences ----------
+            html.Section(
                 [
-                    html.H2("🚀 Quick Start"),
-                    html.P("Get started with just 3 lines of code:"),
+                    html.H2("Three audiences, one small package", style=_HEADING_STYLE),
+                    html.P(
+                        "Click any card to see how this package serves that audience — each has a live demo page in this app.",
+                        style={"color": _MUTED},
+                    ),
+                    html.Div(
+                        [
+                            _audience_card(
+                                "MCP clients",
+                                "JSON-RPC over Streamable HTTP",
+                                "Each page's LLMS_DOC registers as a dash.mcp resource on Dash 4.3+.",
+                                "#667eea",
+                                href="/audiences/mcp-clients",
+                            ),
+                            _audience_card(
+                                "Web crawlers",
+                                "Plain HTTPS, often no JavaScript",
+                                "/robots.txt, /sitemap.xml, plus a static-HTML prerender of every page.",
+                                "#51cf66",
+                                href="/audiences/web-crawlers",
+                            ),
+                            _audience_card(
+                                "Paste-into-chat users",
+                                "One-shot HTTP fetch into an LLM context window",
+                                "/llms.txt and /<page>/llms.txt return the page's LLMS_DOC verbatim.",
+                                "#e599f7",
+                                href="/audiences/llm-context",
+                            ),
+                        ],
+                        style={"display": "flex", "gap": "16px", "flexWrap": "wrap", "alignItems": "stretch"},
+                    ),
+                ]
+            ),
+
+            # ---------- Live routes ----------
+            html.Section(
+                [
+                    html.H2("Try it on this app", style=_HEADING_STYLE),
+                    html.P(
+                        "Every link below is generated by this very page hitting the running app:",
+                        style={"color": _MUTED},
+                    ),
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.H3("Site-wide", style={"fontSize": "15px", "color": _INK}),
+                                    html.Ul(
+                                        [
+                                            _route_link("/llms.txt", "this page's prose"),
+                                            _route_link("/robots.txt", "bot policy"),
+                                            _route_link("/sitemap.xml", "non-hidden pages"),
+                                        ],
+                                        style={"paddingLeft": "18px"},
+                                    ),
+                                ],
+                                style={"flex": "1"},
+                            ),
+                            html.Div(
+                                [
+                                    html.H3("Per page", style={"fontSize": "15px", "color": _INK}),
+                                    html.Ul(
+                                        [
+                                            _route_link("/audiences/mcp-clients/llms.txt", "MCP audience prose"),
+                                            _route_link("/audiences/web-crawlers/llms.txt", "crawler audience prose"),
+                                            _route_link("/audiences/llm-context/llms.txt", "paste-to-chat prose"),
+                                            _route_link("/analytics/llms.txt", "regular Dash page"),
+                                            _route_link("/admin/llms.txt", "404 — page is hidden"),
+                                        ],
+                                        style={"paddingLeft": "18px"},
+                                    ),
+                                ],
+                                style={"flex": "1"},
+                            ),
+                        ],
+                        style={"display": "flex", "gap": "24px", "flexWrap": "wrap"},
+                    ),
+                ]
+            ),
+
+            # ---------- Quick start ----------
+            html.Section(
+                [
+                    html.H2("Quick start", style=_HEADING_STYLE),
                     html.Pre(
-                        """from dash import Dash
-from dash_improve_my_llms import add_llms_routes
-
-app = Dash(__name__, use_pages=True)
-add_llms_routes(app)  # ✨ That's it!
-
-app.run(debug=True)""",
-                        style={
-                            "background": "#f8f9fa",
-                            "padding": "15px",
-                            "borderRadius": "5px",
-                            "border": "1px solid #e0e0e0",
-                            "fontFamily": "monospace",
-                            "fontSize": "14px"
-                        }
+                        "from dash import Dash\n"
+                        "from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden\n"
+                        "\n"
+                        "app = Dash(__name__, use_pages=True)\n"
+                        "app._base_url = \"https://myapp.com\"\n"
+                        "app._robots_config = RobotsConfig(\n"
+                        "    block_ai_training=True,\n"
+                        "    allow_ai_search=True,\n"
+                        ")\n"
+                        "\n"
+                        "mark_hidden(\"/admin\")\n"
+                        "add_llms_routes(app)\n",
+                        style=_CODE_BLOCK_STYLE,
                     ),
-                ],
-                style={"marginBottom": "30px"}
+                ]
             ),
 
-            # Quick Links Section
-            mark_important(
-                html.Div(
-                    [
-                        html.H2("🔗 Try the Generated Documentation"),
-                        html.P("See the hook in action - explore the auto-generated routes:"),
-                        html.Div(
-                            [
-                                # Documentation Routes
-                                html.Div(
-                                    [
-                                        html.H3("📄 Documentation Routes", style={"fontSize": "18px"}),
-                                        html.Ul(
-                                            [
-                                                html.Li([
-                                                    html.A("/llms.txt", href="/llms.txt", target="_blank"),
-                                                    " - LLM-friendly markdown context"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/page.json", href="/page.json", target="_blank"),
-                                                    " - Technical architecture JSON"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/architecture.txt", href="/architecture.txt", target="_blank"),
-                                                    " - ASCII art app overview"
-                                                ]),
-                                            ]
-                                        ),
-                                    ],
-                                    style={"flex": "1", "marginRight": "15px"}
-                                ),
-
-                                # TOON Format Routes (v1.2.0!)
-                                html.Div(
-                                    [
-                                        html.H3("🎯 TOON Format (v1.2.0)", style={"fontSize": "18px", "color": "#e599f7"}),
-                                        html.Ul(
-                                            [
-                                                html.Li([
-                                                    html.A("/llms.toon", href="/llms.toon", target="_blank"),
-                                                    " - Token-optimized (40-60% fewer tokens)"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/v120-features/llms.toon", href="/v120-features/llms.toon", target="_blank"),
-                                                    " - Documentation-optimized TOON (v1.2.0)"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/architecture.toon", href="/architecture.toon", target="_blank"),
-                                                    " - Token-optimized architecture"
-                                                ]),
-                                            ]
-                                        ),
-                                    ],
-                                    style={"flex": "1", "marginRight": "15px"}
-                                ),
-
-                                # SEO Routes
-                                html.Div(
-                                    [
-                                        html.H3("🤖 SEO Routes", style={"fontSize": "18px", "color": "#51cf66"}),
-                                        html.Ul(
-                                            [
-                                                html.Li([
-                                                    html.A("/robots.txt", href="/robots.txt", target="_blank"),
-                                                    " - Bot access control"
-                                                ]),
-                                                html.Li([
-                                                    html.A("/sitemap.xml", href="/sitemap.xml", target="_blank"),
-                                                    " - SEO sitemap"
-                                                ]),
-                                            ]
-                                        ),
-                                    ],
-                                    style={"flex": "1"}
-                                ),
-                            ],
-                            style={"display": "flex"}
-                        ),
-
-                        # Page-Specific Routes
-                        html.Div(
-                            [
-                                html.H3("📑 Page-Specific Routes", style={"fontSize": "18px", "marginTop": "20px"}),
-                                html.P("Every page gets its own documentation:"),
-                                html.Ul(
-                                    [
-                                        html.Li([
-                                            html.A("/equipment/llms.txt", href="/equipment/llms.txt", target="_blank"),
-                                            " - Equipment page context"
-                                        ]),
-                                        html.Li([
-                                            html.A("/equipment/page.json", href="/equipment/page.json", target="_blank"),
-                                            " - Equipment page architecture"
-                                        ]),
-                                        html.Li([
-                                            html.A("/analytics/llms.txt", href="/analytics/llms.txt", target="_blank"),
-                                            " - Analytics page context"
-                                        ]),
-                                        html.Li([
-                                            html.A("/analytics/page.json", href="/analytics/page.json", target="_blank"),
-                                            " - Analytics page architecture"
-                                        ]),
-                                    ]
-                                ),
-                            ]
-                        ),
-                    ],
-                    id="quick-links",
-                    style={
-                        "background": "linear-gradient(135deg, #667eea15 0%, #764ba215 100%)",
-                        "padding": "25px",
-                        "borderRadius": "10px",
-                        "border": "2px solid #667eea"
-                    }
-                )
-            ),
-
-            # Navigation to Other Pages
-            html.Div(
+            # ---------- LLMS_DOC pattern ----------
+            html.Section(
                 [
-                    html.H2("📱 Explore Example Pages"),
+                    html.H2("The LLMS_DOC pattern", style=_HEADING_STYLE),
+                    html.P(
+                        [
+                            "Every page module exports a ",
+                            html.Code("LLMS_DOC"),
+                            " string. That string is the literal body of ",
+                            html.Code("/<page>/llms.txt"),
+                            ". No layout walking, no extraction:",
+                        ],
+                        style={"color": _MUTED},
+                    ),
+                    html.Pre(
+                        "# pages/analytics.py\n"
+                        "LLMS_DOC = '''\n"
+                        "# Analytics Dashboard\n"
+                        "\n"
+                        "Headline metrics, a trend chart, and a recent-activity feed.\n"
+                        "...\n"
+                        "'''\n",
+                        style=_CODE_BLOCK_STYLE,
+                    ),
+                    html.P(
+                        [
+                            "If a page has no ",
+                            html.Code("LLMS_DOC"),
+                            ", you'll see a single ",
+                            html.Code("UserWarning"),
+                            " at ",
+                            html.Code("add_llms_routes()"),
+                            " naming the missing pages, and the endpoint returns a small "
+                            "stub so bots still get a 200 instead of a 404.",
+                        ],
+                        style={"color": _MUTED, "fontSize": "14px"},
+                    ),
+                ]
+            ),
+
+            # ---------- Multi-backend ----------
+            html.Section(
+                [
+                    html.H2("Multi-backend (Dash 4.1+)", style=_HEADING_STYLE),
+                    html.P(
+                        [
+                            html.Code("add_llms_routes(app)"),
+                            " detects whether ",
+                            html.Code("app.server"),
+                            " is Flask, FastAPI, or Quart and dispatches to the matching "
+                            "adapter. Pick one extra at install time:",
+                        ],
+                        style={"color": _MUTED},
+                    ),
+                    html.Pre(
+                        "pip install dash-improve-my-llms[flask]     # Dash 3.x and earlier\n"
+                        "pip install dash-improve-my-llms[fastapi]   # Dash 4.1+\n"
+                        "pip install dash-improve-my-llms[quart]     # Dash 4.1+ async\n",
+                        style=_CODE_BLOCK_STYLE,
+                    ),
+                ]
+            ),
+
+            # ---------- Other pages tour ----------
+            html.Section(
+                [
+                    html.H2("Other pages in this demo", style=_HEADING_STYLE),
+                    html.P(
+                        "Beyond the three audience demos above:",
+                        style={"color": _MUTED, "marginBottom": "16px"},
+                    ),
                     html.Div(
                         [
-                            html.Div(
-                                [
-                                    html.H3("🔧 Equipment", style={"fontSize": "18px"}),
-                                    html.P("Browse and filter equipment catalog with interactive filters"),
-                                    dcc.Link("View Equipment →", href="/equipment", style={"fontWeight": "bold"})
-                                ],
-                                style={
-                                    "flex": "1",
-                                    "background": "white",
-                                    "padding": "20px",
-                                    "borderRadius": "8px",
-                                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
-                                    "marginRight": "15px"
-                                }
+                            _page_card(
+                                "📊",
+                                "Analytics",
+                                "A regular Dash page (Plotly metrics + callbacks) wired up with its own LLMS_DOC.",
+                                "/analytics",
                             ),
-                            html.Div(
-                                [
-                                    html.H3("📊 Analytics", style={"fontSize": "18px"}),
-                                    html.P("Real-time analytics dashboard with Plotly visualizations"),
-                                    dcc.Link("View Analytics →", href="/analytics", style={"fontWeight": "bold"})
-                                ],
-                                style={
-                                    "flex": "1",
-                                    "background": "white",
-                                    "padding": "20px",
-                                    "borderRadius": "8px",
-                                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
-                                    "marginRight": "15px"
-                                }
+                            _page_card(
+                                "🔒",
+                                "Admin",
+                                "Hidden from sitemap and robots — the mark_hidden() side of the package.",
+                                "/admin",
+                                accent="#ff6b6b",
                             ),
-                            html.Div(
-                                [
-                                    html.H3("🔒 Admin", style={"fontSize": "18px", "color": "#ff6b6b"}),
-                                    html.P("Hidden admin dashboard with visitor analytics (mark_hidden demo)"),
-                                    dcc.Link("View Admin →", href="/admin", style={"fontWeight": "bold", "color": "#ff6b6b"})
-                                ],
-                                style={
-                                    "flex": "1",
-                                    "background": "white",
-                                    "padding": "20px",
-                                    "borderRadius": "8px",
-                                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
-                                }
+                            _page_card(
+                                "📚",
+                                "v2.0 Features",
+                                "What changed from 1.x and how the LLMS_DOC pattern works.",
+                                "/v200-features",
                             ),
                         ],
-                        style={"display": "flex"}
+                        style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
                     ),
-                    # v1.2.0 Features Page
-                    html.Div(
-                        [
-                            html.Div(
-                                [
-                                    html.H3("📚 v1.2.0 Features", style={"fontSize": "18px", "color": "#667eea"}),
-                                    html.P("Documentation-aware TOON generation with PageType detection, prose extraction, and optimized output"),
-                                    dcc.Link("Explore v1.2.0 →", href="/v120-features", style={"fontWeight": "bold", "color": "#667eea"})
-                                ],
-                                style={
-                                    "background": "linear-gradient(135deg, #667eea15 0%, #764ba215 100%)",
-                                    "padding": "20px",
-                                    "borderRadius": "8px",
-                                    "border": "2px solid #667eea",
-                                    "marginTop": "15px"
-                                }
-                            ),
-                        ]
-                    ),
-                ],
-                style={"marginTop": "40px"}
+                ]
             ),
 
-            # Features Section
-            html.Div(
+            # ---------- Migration note ----------
+            html.Section(
                 [
-                    html.H2("✨ v1.2.0 Features"),
+                    html.H2("Migrating from 1.x", style=_HEADING_STYLE),
                     html.Div(
                         [
                             html.Div(
                                 [
-                                    html.H3("📚 Doc-Aware TOON (v1.2.0)", style={"fontSize": "16px", "color": "#e599f7"}),
+                                    html.H3("Kept", style={"color": "#51cf66", "fontSize": "15px"}),
                                     html.Ul(
                                         [
-                                            html.Li("PageType detection (DOC/INTERACTIVE/HYBRID)"),
-                                            html.Li("Full prose extraction from dcc.Markdown"),
-                                            html.Li("Code block & table preservation"),
-                                            html.Li("Adaptive TOON generation"),
-                                        ],
-                                        style={"fontSize": "14px"}
+                                            html.Li("/llms.txt and /<page>/llms.txt (prose only)"),
+                                            html.Li("/robots.txt with RobotsConfig"),
+                                            html.Li("/sitemap.xml"),
+                                            html.Li("mark_hidden(), register_page_metadata()"),
+                                            html.Li("Bot detection middleware"),
+                                        ]
                                     ),
                                 ],
-                                style={"flex": "1", "marginRight": "15px"}
+                                style={"flex": "1"},
                             ),
                             html.Div(
                                 [
-                                    html.H3("🤖 Bot Management", style={"fontSize": "16px", "color": "#667eea"}),
+                                    html.H3("Dropped", style={"color": "#ff6b6b", "fontSize": "15px"}),
                                     html.Ul(
                                         [
-                                            html.Li("Block AI training bots"),
-                                            html.Li("Allow AI search bots"),
-                                            html.Li("Control search engines"),
-                                            html.Li("Custom crawl delays"),
-                                        ],
-                                        style={"fontSize": "14px"}
+                                            html.Li("/page.json"),
+                                            html.Li("/architecture.txt"),
+                                            html.Li("/architecture.toon and /<page>/llms.toon"),
+                                            html.Li("Component-tree extraction in /llms.txt"),
+                                            html.Li("mark_important() and mark_component_hidden() (no-op shims)"),
+                                        ]
                                     ),
                                 ],
-                                style={"flex": "1", "marginRight": "15px"}
+                                style={"flex": "1"},
                             ),
                             html.Div(
                                 [
-                                    html.H3("🗺️ SEO Optimization", style={"fontSize": "16px", "color": "#51cf66"}),
+                                    html.H3("New", style={"color": _BRAND, "fontSize": "15px"}),
                                     html.Ul(
                                         [
-                                            html.Li("Automatic sitemap.xml"),
-                                            html.Li("Smart priority inference"),
-                                            html.Li("robots.txt policies"),
-                                            html.Li("Hidden page exclusion"),
-                                        ],
-                                        style={"fontSize": "14px"}
+                                            html.Li("FastAPI and Quart backend adapters"),
+                                            html.Li("dash.mcp resource registration (Dash 4.3+)"),
+                                            html.Li("LLMS_DOC pattern + missing-doc warning"),
+                                            html.Li("Pure framework-agnostic handlers"),
+                                            html.Li("llms_doc= kwarg on register_page_metadata()"),
+                                        ]
                                     ),
                                 ],
-                                style={"flex": "1", "marginRight": "15px"}
-                            ),
-                            html.Div(
-                                [
-                                    html.H3("🔐 Privacy Controls", style={"fontSize": "16px", "color": "#ff6b6b"}),
-                                    html.Ul(
-                                        [
-                                            html.Li("mark_hidden() pages"),
-                                            html.Li("Component hiding"),
-                                            html.Li("404 for bot requests"),
-                                            html.Li("Sitemap exclusion"),
-                                        ],
-                                        style={"fontSize": "14px"}
-                                    ),
-                                ],
-                                style={"flex": "1"}
+                                style={"flex": "1"},
                             ),
                         ],
-                        style={"display": "flex"}
+                        style={"display": "flex", "gap": "24px", "flexWrap": "wrap"},
                     ),
-                ],
-                style={
-                    "marginTop": "40px",
-                    "background": "#f8f9fa",
-                    "padding": "20px",
-                    "borderRadius": "8px"
-                }
+                ]
             ),
 
-            # Test Report
-            html.Div(
+            # ---------- Footer ----------
+            html.Footer(
                 [
-                    html.H2("🧪 Quality Assurance"),
-                    html.P([
-                        "✅ ",
-                        html.Strong("88/88 Tests Passing (100%)"),
-                        " - Comprehensive test coverage with 98-100% for new modules"
-                    ]),
-                    html.P([
-                        "📊 View the complete ",
-                        html.A(
-                            "Test Report",
-                            href="https://github.com/yourusername/dash-improve-my-llms/blob/main/TEST_REPORT.md",
-                            target="_blank",
-                            style={"color": "#51cf66"}
-                        ),
-                        " for detailed test results and coverage analysis."
-                    ]),
-                ],
-                style={
-                    "marginTop": "30px",
-                    "background": "#e3f2fd",
-                    "padding": "20px",
-                    "borderRadius": "8px",
-                    "border": "1px solid #2196f3"
-                }
+                    html.Hr(style={"border": "none", "borderTop": "1px solid #eee", "margin": "40px 0 16px"}),
+                    html.P(
+                        [
+                            "Built by ",
+                            html.A(
+                                "Pip Install Python LLC",
+                                href="https://pip-install-python.com",
+                                target="_blank",
+                                style={"color": _BRAND},
+                            ),
+                            ".",
+                        ],
+                        style={"color": _MUTED, "fontSize": "13px", "textAlign": "center"},
+                    ),
+                ]
             ),
         ],
-        style={"maxWidth": "1200px"}
+        style={
+            "maxWidth": "1000px",
+            "margin": "0 auto",
+            "padding": "32px 24px",
+            "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            "color": _INK,
+            "lineHeight": "1.6",
+        },
     )

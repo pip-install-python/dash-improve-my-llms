@@ -1,939 +1,256 @@
 # dash-improve-my-llms
 
-**Make your Dash applications AI-friendly with automatic documentation, TOON format support, bot management, and SEO optimization.**
+**Crawler / SEO companion for Dash apps, with a thin MCP bridge for Dash 4.3+.**
 
-[![PyPI version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
+[![PyPI version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-88%20passed-success.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-98%25-success.svg)](htmlcov/)
-[![Status](https://img.shields.io/badge/status-Production%2FStable-brightgreen.svg)](https://pypi.org/project/dash-improve-my-llms/)
+[![Dash 3.x · 4.1+](https://img.shields.io/badge/dash-3.x%20·%204.1+-blue.svg)](https://dash.plotly.com/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
-## 🎯 Overview
+## What 2.0 is
 
-`dash-improve-my-llms` is a comprehensive plugin that automatically generates **AI-friendly documentation and SEO resources** for your Dash application:
+A small package that handles the parts of "making your Dash app
+AI-friendly" that Dash itself doesn't:
 
-### Automatic Documentation
+- **`/robots.txt`** — bot-class access policies (block AI training,
+  allow AI search, etc.)
+- **`/sitemap.xml`** — generated from `dash.page_registry` minus hidden
+  pages
+- **`/<page>/llms.txt`** — each page's hand-written prose at a
+  predictable URL
+- **Static-HTML prerender** — bot middleware serves crawlers the prose
+  view instead of an empty Dash JS shell
+- **MCP bridge** — registers each page's prose as a `dash.mcp` resource
+  on Dash 4.3+
 
-1. **`llms.txt`** - Comprehensive, context-rich markdown optimized for LLM understanding
-2. **`llms.toon`** - **NEW v1.0.0!** Token-optimized TOON format (50-60% fewer tokens)
-3. **`page.json`** - Detailed technical architecture with interactivity and data flow
-4. **`architecture.txt`** - ASCII art representation of entire application
-5. **`architecture.toon`** - **NEW v1.0.0!** Token-optimized architecture in TOON format
+It does **not** try to introspect your layouts or callbacks. Dash 4.3's
+MCP server does that natively and better.
 
-### Bot Management & SEO
+## The three audiences
 
-6. **`robots.txt`** - Intelligent bot control with AI training bot blocking
-7. **`sitemap.xml`** - SEO-optimized sitemap with intelligent priority inference
-8. **Static HTML** - Bot-friendly pages with structured data
+| Audience              | How they reach the app          | What 2.0 serves them                         |
+|-----------------------|---------------------------------|----------------------------------------------|
+| MCP clients           | JSON-RPC over Streamable HTTP   | `LLMS_DOC` registered as `dash.mcp` resource |
+| Web crawlers          | Plain HTTPS, often no JS        | `/robots.txt`, `/sitemap.xml`, static HTML   |
+| Paste-into-chat users | One-shot HTTP fetch             | `/llms.txt`, `/<page>/llms.txt` as markdown  |
 
-### Privacy Controls
+FastAPI's `/docs` describes HTTP routes, not callbacks or layouts. MCP
+fills that gap for audience #1. Audiences #2 and #3 are unchanged by
+either — and they have no native Dash story. That's the gap this
+package fills.
 
-- **`mark_hidden()`** - Hide sensitive pages from AI bots and search engines
-- **Bot Detection** - Differentiate between AI training, AI search, and traditional bots
-- **Configurable Policies** - Fine-grained control over which bots can access what
+## Install
 
----
-
-## 🚀 Quick Start
-
-### Installation
+Pick the extra that matches your Dash backend:
 
 ```bash
-pip install dash-improve-my-llms
+pip install "dash-improve-my-llms[flask]"     # Dash 3.x (default)
+pip install "dash-improve-my-llms[fastapi]"   # Dash 4.1+
+pip install "dash-improve-my-llms[quart]"     # Dash 4.1+ async
+pip install "dash-improve-my-llms[all]"       # all three
 ```
 
-### Basic Setup (30 seconds)
+The package detects which backend `app.server` is using and dispatches
+to the right adapter. Your code looks the same regardless.
+
+## Quick start
 
 ```python
-from dash import Dash
-from dash_improve_my_llms import add_llms_routes
+from dash import Dash, register_page
+from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden
 
 app = Dash(__name__, use_pages=True)
-add_llms_routes(app)  # That's it! 🎉
-
-if __name__ == '__main__':
-    app.run(debug=True)
-```
-
-Now visit:
-- `http://localhost:8050/llms.txt` - LLM-friendly page context
-- `http://localhost:8050/page.json` - Technical architecture
-- `http://localhost:8050/architecture.txt` - App overview
-- `http://localhost:8050/robots.txt` - Bot access control **NEW!**
-- `http://localhost:8050/sitemap.xml` - SEO sitemap **NEW!**
-
----
-
-## ✨ Key Features
-
-### 📄 Automatic Documentation
-
-- **Three comprehensive formats** (llms.txt, page.json, architecture.txt)
-- **Smart context extraction** - Understands your app structure
-- **Callback tracking** - Documents all data flows
-- **Component categorization** - Automatic classification by purpose
-- **Navigation mapping** - Tracks all internal/external links
-
-### 🤖 Bot Management (NEW in v0.2.0)
-
-- **AI Training Bot Blocking** - Block GPTBot, Claude-Web, CCBot, etc.
-- **AI Search Allowance** - Allow ChatGPT-User, ClaudeBot, PerplexityBot
-- **Traditional Search Engines** - Full support for Google, Bing, etc.
-- **Configurable Policies** - Fine-grained control via `RobotsConfig`
-- **Bot Detection** - Accurately identify bot types from user agents
-
-### 🔒 Privacy Controls (NEW in v0.2.0)
-
-- **Hide Sensitive Pages** - `mark_hidden()` excludes pages from AI/bots
-- **Component Hiding** - Hide specific components from extraction
-- **Automatic Exclusion** - Hidden pages removed from sitemaps/robots.txt
-- **404 for Hidden Routes** - Bots get 404 on hidden page docs
-
-### 🌐 SEO Optimization (NEW in v0.2.0)
-
-- **Smart Sitemap Generation** - Automatic priority inference
-- **Priority System** - Homepage=1.0, Dashboards=0.9, Reports=0.8, Docs=0.7
-- **Change Frequency** - Intelligent frequency detection (daily, weekly, monthly)
-- **Static HTML for Bots** - Schema.org structured data, Open Graph tags
-- **Noscript Fallbacks** - Content for non-JS crawlers
-
-### 🧪 Fully Tested
-
-- **88 comprehensive tests** - 100% pass rate
-- **98-100% coverage** - All new modules fully tested
-- **Integration tests** - Real-world scenario coverage
-- **Fast execution** - 0.22s for entire test suite
-
----
-
-## 📖 Complete Example
-
-### Setup with Bot Control
-
-```python
-from dash import Dash, html, dcc
-from dash_improve_my_llms import (
-    add_llms_routes,
-    mark_important,
-    mark_hidden,
-    register_page_metadata,
-    RobotsConfig
-)
-
-# Create app
-app = Dash(__name__, use_pages=True)
-
-# Configure bot policies
-robots_config = RobotsConfig(
-    block_ai_training=True,      # Block GPTBot, CCBot, etc.
-    allow_ai_search=True,         # Allow ClaudeBot, ChatGPT-User
-    allow_traditional=True,       # Allow Googlebot, Bingbot
-    crawl_delay=10,               # 10 second delay between requests
-    disallowed_paths=["/admin", "/api/*"]  # Block specific paths
-)
-
-# Set base URL for SEO
 app._base_url = "https://myapp.com"
-app._robots_config = robots_config
+app._robots_config = RobotsConfig(
+    block_ai_training=True,    # GPTBot, CCBot, anthropic-ai → 403
+    allow_ai_search=True,      # ClaudeBot, ChatGPT-User → allowed
+    allow_traditional=True,    # Googlebot, Bingbot → allowed
+)
 
-# Add LLMS routes with all features
+mark_hidden("/admin")
 add_llms_routes(app)
 
-# Hide admin pages from AI bots
-mark_hidden("/admin")
-mark_hidden("/settings")
-
-# Add custom metadata for better SEO
-register_page_metadata(
-    path="/",
-    name="Equipment Management System",
-    description="Comprehensive equipment tracking and analytics platform"
-)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
 ```
 
-### Page with Important Sections
+Every page module then exports the prose for its own `/llms.txt`:
 
 ```python
 # pages/equipment.py
-from dash import html, Input, Output, callback
-from dash_improve_my_llms import mark_important, register_page_metadata
-import dash_mantine_components as dmc
-
-register_page_metadata(
-    path="/equipment",
-    name="Equipment Catalog",
-    description="Browse and filter the complete equipment catalog"
-)
-
-def layout():
-    return html.Div([
-        html.H1("Equipment Catalog"),
-
-        # Mark filters as important for AI understanding
-        mark_important(
-            html.Div([
-                html.H2("Filters"),
-                dmc.TextInput(
-                    id="equipment-search",
-                    placeholder="Search equipment...",
-                ),
-                dmc.Select(
-                    id="equipment-category",
-                    data=[
-                        {"value": "all", "label": "All Categories"},
-                        {"value": "tools", "label": "Tools"},
-                        {"value": "machinery", "label": "Machinery"},
-                    ],
-                    value="all"
-                ),
-            ], id="filters")
-        ),
-
-        html.Div(id="equipment-list"),
-    ])
-
-@callback(
-    Output("equipment-list", "children"),
-    Input("equipment-search", "value"),
-    Input("equipment-category", "value"),
-)
-def update_list(search, category):
-    # Your filtering logic here
-    return html.Div("Equipment items...")
-```
-
-### Hidden Admin Page
-
-```python
-# pages/admin.py
 from dash import html, register_page
-from dash_improve_my_llms import mark_hidden
 
-register_page(__name__, path="/admin", name="Admin Panel")
+register_page(__name__, path="/equipment", name="Equipment Catalog")
 
-# This page won't appear in sitemaps or llms.txt
-mark_hidden("/admin")
+LLMS_DOC = """\\
+# Equipment Catalog
+
+Browse the equipment library with text search and a category dropdown.
+
+## What this page does
+...
+"""
 
 def layout():
-    return html.Div([
-        html.H1("Admin Panel"),
-        html.P("Sensitive administrative controls")
-    ])
+    return html.Div([...])
 ```
 
----
+That's the whole pattern. The `LLMS_DOC` string IS the body of
+`/equipment/llms.txt`, byte-for-byte.
 
-## 🤖 Bot Management
+If a page has no `LLMS_DOC`, you'll see a single `UserWarning` at
+`add_llms_routes()` naming the missing pages, and the endpoint returns
+a small placeholder stub so bots still get a 200.
 
-### RobotsConfig Options
+## What gets served
+
+| Route | What it returns | For |
+|---|---|---|
+| `/llms.txt` | Home page's `LLMS_DOC` | Paste-into-chat |
+| `/<page>/llms.txt` | That page's `LLMS_DOC` | Paste-into-chat, AI-aware crawlers |
+| `/robots.txt` | Bot policy generated from `RobotsConfig` | Crawlers |
+| `/sitemap.xml` | Non-hidden pages from `page_registry` | Crawlers, search engines |
+| (any URL with crawler UA) | Static HTML with the page's `LLMS_DOC` rendered | Crawlers that can't run JS |
+
+Plus, on Dash 4.3+:
+
+| Surface | What | For |
+|---|---|---|
+| `llms:///<page-path>` | MCP resource carrying that page's `LLMS_DOC` | Claude Desktop, agentic IDEs, MCP clients |
+
+## Public API
 
 ```python
-from dash_improve_my_llms import RobotsConfig
-
-# Default configuration (recommended)
-config = RobotsConfig(
-    block_ai_training=True,      # Block AI training bots
-    allow_ai_search=True,         # Allow AI search bots
-    allow_traditional=True,       # Allow traditional search engines
-    crawl_delay=None,             # No delay
-    custom_rules=[],              # No custom rules
-    disallowed_paths=[]           # No additional blocks
+from dash_improve_my_llms import (
+    add_llms_routes,           # main entry point
+    LLMSConfig,                # opt-out flags
+    RobotsConfig,              # bot-class policies
+    register_page_metadata,    # name, description, llms_doc, schema.org fields
+    mark_hidden,               # exclude path from sitemap/robots/MCP
+    is_hidden,                 # query
 )
+```
 
-# Strict configuration (block everything except Google)
-strict_config = RobotsConfig(
+### `LLMSConfig`
+
+```python
+LLMSConfig(
+    enabled=True,                       # set False to no-op the package
+    warn_missing_llms_doc=True,         # the startup UserWarning
+    register_mcp_resources=True,        # set False to skip MCP bridge
+)
+```
+
+### `RobotsConfig`
+
+```python
+RobotsConfig(
     block_ai_training=True,
-    allow_ai_search=False,
-    allow_traditional=True,
-    crawl_delay=30,
-    disallowed_paths=["/admin", "/api", "/internal/*"]
-)
-
-# Open configuration (allow everything)
-open_config = RobotsConfig(
-    block_ai_training=False,
     allow_ai_search=True,
-    allow_traditional=True
+    allow_traditional=True,
+    crawl_delay=10,                     # seconds between requests
+    custom_rules=[],                    # extra robots.txt lines
+    disallowed_paths=["/admin"],
 )
-
-# Apply to app
-app._robots_config = config
 ```
 
-### Bot Detection
+## Bot classes
 
-The plugin automatically detects and handles different bot types:
+The middleware classifies User-Agents into three buckets:
 
-| Bot Type | Examples | Default Policy |
-|----------|----------|----------------|
-| **AI Training** | GPTBot, Claude-Web, CCBot, Google-Extended, anthropic-ai | ❌ Blocked |
-| **AI Search** | ChatGPT-User, ClaudeBot, PerplexityBot | ✅ Allowed |
-| **Traditional** | Googlebot, Bingbot, Yahoo, DuckDuckBot | ✅ Allowed |
+- **AI Training** (default: blocked) — GPTBot, anthropic-ai,
+  Claude-Web, CCBot, Google-Extended, FacebookBot, Omgili, ByteSpider
+- **AI Search** (default: allowed) — ChatGPT-User, ClaudeBot,
+  PerplexityBot, OAI-SearchBot
+- **Traditional** (default: allowed) — Googlebot, Bingbot, DuckDuckBot,
+  Yandex, plus generic patterns
 
-```python
-from dash_improve_my_llms.bot_detection import (
-    is_ai_training_bot,
-    is_ai_search_bot,
-    is_traditional_bot,
-    get_bot_type
-)
-
-user_agent = "Mozilla/5.0 (compatible; GPTBot/1.0)"
-
-if is_ai_training_bot(user_agent):
-    print("AI training bot detected - blocking")
-
-bot_type = get_bot_type(user_agent)  # Returns: "training", "search", "traditional", or "unknown"
-```
-
----
-
-## 🗺️ SEO Optimization
-
-### Sitemap Generation
-
-The plugin automatically generates an SEO-optimized sitemap with intelligent priority inference:
-
-```python
-# Automatic priority based on page type:
-# - Homepage (/)           → Priority 1.0
-# - Dashboards             → Priority 0.9
-# - Reports/Analytics      → Priority 0.8
-# - Documentation/Help     → Priority 0.7
-# - Other pages            → Priority 0.5
-
-# Change frequency inference:
-# - Dashboards/Live        → daily
-# - Reports/Analytics      → weekly
-# - Documentation          → monthly
-# - Static pages           → yearly
-```
-
-Example sitemap entry:
-```xml
-<url>
-  <loc>https://myapp.com/</loc>
-  <lastmod>2025-11-04</lastmod>
-  <changefreq>weekly</changefreq>
-  <priority>1.0</priority>
-</url>
-```
-
-### Bot Response Middleware (The Key Feature!)
-
-**Problem**: AI crawlers cannot execute JavaScript, so they see empty `<div id="react-entry-point">` placeholders instead of your actual content.
-
-**Solution**: The middleware automatically detects bots and serves them llms.txt content wrapped in readable HTML.
-
-```python
-# What bots receive:
-✅ Search Bots (ClaudeBot, ChatGPT-User) → llms.txt content in HTML
-✅ Traditional Bots (Googlebot, Bingbot)  → llms.txt content in HTML
-❌ Training Bots (GPTBot, anthropic-ai)   → 403 Forbidden
-✅ Regular Users (Chrome, Firefox)        → Full Dash React app
-```
-
-**Before Middleware** (❌ Bad):
-```html
-<!-- Bots saw this - empty until JavaScript executes -->
-<div id="react-entry-point">
-    <div class="_dash-loading">Loading...</div>
-</div>
-```
-
-**After Middleware** (✅ Good):
-```html
-<!-- Bots now see this - readable content immediately -->
-<div class="bot-notice">
-    🤖 Bot-Optimized Content
-    Also available: llms.txt | page.json | architecture.txt
-</div>
-<pre>
-# Equipment Catalog
-
-> Browse and filter the complete equipment catalog
-
-## Key Content
-- Equipment search and filtering
-- Category selection
-...
-</pre>
-```
-
-**Features:**
-- **Automatic Detection**: Identifies bot type from user agent
-- **Smart Serving**: llms.txt content for bots, React app for users
-- **SEO Optimized**: Includes Schema.org, Open Graph, meta tags
-- **Privacy Enforced**: Training bots get 403 when blocked
-- **No JavaScript Required**: Bots see content immediately
-
-### Static HTML Components
-
-The HTML served to bots includes:
-
-- **Schema.org JSON-LD** - Structured data for search engines
-- **Open Graph tags** - Social media previews
-- **Meta tags** - Description, robots, viewport
-- **Navigation links** - Accessible site structure
-- **Bot notice banner** - Links to documentation formats
-- **llms.txt content** - Full page context in `<pre>` tag
-
----
-
-## 🔒 Privacy Controls
-
-### Hiding Pages
-
-```python
-from dash_improve_my_llms import mark_hidden, is_hidden
-
-# Hide sensitive pages
-mark_hidden("/admin")
-mark_hidden("/settings")
-mark_hidden("/internal/metrics")
-
-# Check if page is hidden
-if is_hidden("/admin"):
-    print("Admin page is hidden from bots")
-
-# Hidden pages are automatically:
-# - Excluded from sitemap.xml
-# - Blocked in robots.txt
-# - Return 404 for /page-path/llms.txt
-# - Return 404 for /page-path/page.json
-```
-
-### Hiding Components
-
-```python
-from dash_improve_my_llms import mark_component_hidden, is_component_hidden
-from dash import html
-
-# Hide sensitive components from extraction
-api_key_display = html.Div([
-    html.P("API Key: sk-..."),
-    html.P("Secret: abc123"),
-], id="api-keys")
-
-mark_component_hidden(api_key_display)
-
-# Check if component is hidden
-if is_component_hidden("api-keys"):
-    print("Component excluded from llms.txt")
-```
-
----
-
-## 📊 Generated Documentation
-
-### llms.txt (Comprehensive Context)
-
-```markdown
-# Equipment Catalog
-
-> Browse and filter the complete equipment catalog
-
-## Application Context
-This page is part of a multi-page Dash application with 3 total pages.
-
-## Page Purpose
-- **Data Input**: Contains form elements
-- **Interactive**: Responds to user interactions
-
-## Interactive Elements
-**User Inputs:**
-- TextInput (ID: equipment-search)
-- Select (ID: equipment-category)
-
-## Data Flow & Callbacks
-**Callback 1:**
-- Updates: equipment-list.children
-- Triggered by: equipment-search.value, equipment-category.value
-```
-
-### page.json (Technical Architecture)
-
-```json
-{
-  "path": "/equipment",
-  "components": {
-    "ids": {
-      "equipment-search": {
-        "type": "TextInput",
-        "module": "dash_mantine_components"
-      }
-    },
-    "categories": {
-      "inputs": ["equipment-search", "equipment-category"],
-      "interactive": ["equipment-search", "equipment-category"]
-    }
-  },
-  "callbacks": {
-    "list": [
-      {
-        "output": "equipment-list.children",
-        "inputs": ["equipment-search.value"]
-      }
-    ]
-  }
-}
-```
-
-### robots.txt (Bot Control)
-
-```
-# Robots.txt for Dash Application
-# Block AI training bots, allow search bots
-
-User-agent: GPTBot
-Disallow: /
-
-User-agent: anthropic-ai
-Disallow: /
-
-User-agent: ClaudeBot
-Allow: /
-
-User-agent: *
-Allow: /
-Crawl-delay: 10
-Disallow: /admin
-Disallow: /api/*
-
-Sitemap: https://myapp.com/sitemap.xml
-```
-
----
-
-## 🧪 Testing
-
-The package has **comprehensive test coverage**:
+Verify with curl:
 
 ```bash
-# Run all 88 tests
-pytest tests/ -v
+# Training bot — 403 when block_ai_training=True
+curl -A "Mozilla/5.0 (compatible; GPTBot/1.0)" https://myapp.com/
 
-# Run with coverage
-pytest tests/ --cov=dash_improve_my_llms --cov-report=term-missing
-
-# Test results:
-# ✅ Bot Detection: 14/14 tests (100% coverage)
-# ✅ HTML Generator: 20/20 tests (100% coverage)
-# ✅ Robots Generator: 16/16 tests (100% coverage)
-# ✅ Sitemap Generator: 33/33 tests (98% coverage)
-# ✅ Integration: 15/15 tests (Complete workflows)
-# ✅ Total: 88/88 tests passing in 0.22s
+# Search bot — prerendered static HTML
+curl -A "Mozilla/5.0 (compatible; Googlebot/2.1)" https://myapp.com/
 ```
 
-See [TEST_REPORT.md](TEST_REPORT.md) for detailed test documentation.
+## The MCP bridge
 
----
+When `dash.mcp` is available (Dash 4.3+ RC and later), 2.0 registers
+each non-hidden page's `LLMS_DOC` as an MCP resource:
 
-## 🎨 API Reference
+- **URI**: `llms:///<page-path>` (e.g. `llms:///audiences/mcp-clients`)
+- **mimeType**: `text/markdown`
+- **content**: the page's `LLMS_DOC`, byte-for-byte identical to
+  `/<page>/llms.txt`
 
-### Core Functions
+MCP-aware clients (Claude Desktop, agentic IDEs) can `resources/list`
+to discover what's available and `resources/read` by URI to fetch.
 
-#### `add_llms_routes(app, config=None)`
+On Dash 3.x or 4.1/4.2 stable, the bridge is a silent no-op — only
+the HTTP surfaces serve docs.
 
-Add all LLMS routes to your Dash app (llms.txt, page.json, architecture.txt, robots.txt, sitemap.xml).
+## Migrating from 1.x
 
-```python
-from dash_improve_my_llms import add_llms_routes, LLMSConfig
+Most of the change is removal. Run the package against your app and
+the startup `UserWarning` will tell you which pages need attention.
 
-config = LLMSConfig(
-    enabled=True,
-    max_depth=20,
-    include_css=True,
-    include_callbacks=True
-)
+1. **Add `LLMS_DOC`** at module scope on each page module:
 
-add_llms_routes(app, config)
-```
+   ```python
+   LLMS_DOC = """\\
+   # Page Title
 
-#### `mark_important(component, component_id=None)`
+   Short description.
 
-Mark a component as important for LLM context. All children inherit importance.
+   ## What this page does
+   ...
+   """
+   ```
 
-```python
-important_section = mark_important(
-    html.Div([...], id="key-metrics")
-)
-```
+   Or pass it via `register_page_metadata(path, llms_doc="...")`.
 
-#### `mark_hidden(page_path)`
+2. **Remove `mark_important()` and `mark_component_hidden()` calls.**
+   They're deprecation no-ops in 2.0 and will be deleted in 2.1.
 
-Hide a page from AI bots, search engines, and sitemaps.
+3. **Remove links to dropped routes**: `/page.json`,
+   `/architecture.txt`, `/architecture.toon`, `/llms.toon` (and their
+   per-page variants) all return 404 now.
 
-```python
-mark_hidden("/admin")
-mark_hidden("/settings")
-```
+4. **Install the matching backend extra**: `[flask]`, `[fastapi]`, or
+   `[quart]`. The bare `dash-improve-my-llms` install no longer pulls
+   Flask automatically.
 
-#### `register_page_metadata(path, name=None, description=None, **kwargs)`
+The HTTP surfaces that survived (`/llms.txt`, `/robots.txt`,
+`/sitemap.xml`) and the `RobotsConfig`, `mark_hidden`,
+`register_page_metadata` APIs are byte-compatible with 1.x.
 
-Register custom metadata for better SEO and documentation.
+## Example app
 
-```python
-register_page_metadata(
-    path="/analytics",
-    name="Analytics Dashboard",
-    description="Real-time business analytics",
-    category="reporting"
-)
-```
-
-### Bot Management
-
-#### `RobotsConfig`
-
-Configuration for robots.txt generation.
-
-**Parameters:**
-- `block_ai_training` (bool): Block AI training bots (default: True)
-- `allow_ai_search` (bool): Allow AI search bots (default: True)
-- `allow_traditional` (bool): Allow traditional search engines (default: True)
-- `crawl_delay` (int, optional): Delay between requests in seconds
-- `custom_rules` (list, optional): Additional robots.txt rules
-- `disallowed_paths` (list, optional): Paths to block
-
-```python
-from dash_improve_my_llms import RobotsConfig
-
-config = RobotsConfig(
-    block_ai_training=True,
-    crawl_delay=15,
-    disallowed_paths=["/admin", "/api/*"]
-)
-app._robots_config = config
-```
-
-### Bot Detection Functions
-
-```python
-from dash_improve_my_llms.bot_detection import (
-    is_ai_training_bot,
-    is_ai_search_bot,
-    is_traditional_bot,
-    is_any_bot,
-    get_bot_type
-)
-
-user_agent = request.headers.get('User-Agent', '')
-
-# Check bot type
-is_ai_training_bot(user_agent)  # Returns bool
-is_ai_search_bot(user_agent)     # Returns bool
-is_traditional_bot(user_agent)   # Returns bool
-is_any_bot(user_agent)           # Returns bool
-get_bot_type(user_agent)         # Returns "training", "search", "traditional", or "unknown"
-```
-
----
-
-## 🔧 Advanced Usage
-
-### Custom Sitemap Entries
-
-```python
-from dash_improve_my_llms.sitemap_generator import SitemapEntry
-
-custom_entry = SitemapEntry(
-    loc="https://myapp.com/special",
-    changefreq="monthly",
-    priority=0.6
-)
-
-# Add to sitemap via configuration
-```
-
-### Programmatic Access
-
-```python
-from dash_improve_my_llms import (
-    generate_llms_txt,
-    generate_page_json,
-    generate_architecture_txt
-)
-from dash_improve_my_llms.robots_generator import generate_robots_txt
-from dash_improve_my_llms.sitemap_generator import generate_sitemap_xml
-
-# Generate documentation programmatically
-llms_content = generate_llms_txt("/mypage", layout_func, "My Page", app)
-page_arch = generate_page_json("/mypage", layout_func, app)
-app_arch = generate_architecture_txt(app)
-
-# Generate SEO files
-robots_content = generate_robots_txt(robots_config, sitemap_url, base_url)
-sitemap_content = generate_sitemap_xml(pages, base_url)
-```
-
----
-
-## 🚀 Migration Guide
-
-### Upgrading from v0.1.0 to v0.2.0
-
-v0.2.0 is **fully backward compatible**. All v0.1.0 code works without changes.
-
-**New features (optional):**
-
-```python
-# 1. Configure bot policies
-app._robots_config = RobotsConfig(block_ai_training=True)
-
-# 2. Set base URL for SEO
-app._base_url = "https://myapp.com"
-
-# 3. Hide sensitive pages
-from dash_improve_my_llms import mark_hidden
-mark_hidden("/admin")
-
-# That's it! Enjoy:
-# - /robots.txt
-# - /sitemap.xml
-# - Better SEO
-# - Bot control
-```
-
----
-
-## 🎉 What's New in v0.3.0
-
-### Critical Fix: AI Chatbots Can Now See Your App! 🤖
-
-**The Problem (v0.2.0 and earlier):**
-- Users shared Dash app URLs with ChatGPT, Claude, etc.
-- Bots saw only "Loading..." because they can't execute JavaScript
-- AI assistants couldn't help users understand the app
-
-**The Solution (v0.3.0):**
-- ✅ Bots now receive **comprehensive static HTML** with full content
-- ✅ Complete **Schema.org structured data** for AI understanding
-- ✅ Full **navigation structure** for proper crawling
-- ✅ **SEO meta tags** and Open Graph support
-- ✅ **Important sections** rendered as proper HTML
-
-### Technical Improvements
-
-**Enhanced Bot Middleware:**
-```python
-# v0.3.0 now generates comprehensive static HTML for bots
-# instead of simple HTML wrappers
-
-# What AI bots now receive:
-✓ Full Schema.org JSON-LD structured data
-✓ Complete navigation with all pages
-✓ Rich meta tags (description, robots, viewport)
-✓ Important content sections as HTML
-✓ AI discovery links (llms.txt, page.json, architecture.txt)
-✓ Noscript fallback content
-```
-
-**Before vs After:**
-
-| Feature | v0.2.0 | v0.3.0 |
-|---------|--------|--------|
-| Bot HTML | Simple wrapper | Comprehensive HTML |
-| Schema.org | ❌ Not included | ✅ Full JSON-LD |
-| Navigation | ❌ Not included | ✅ Complete structure |
-| Meta Tags | Minimal | ✅ Full SEO suite |
-| AI Understanding | Limited | ✅ Excellent |
-
-### Migration
-
-**Zero changes required!** Just upgrade:
+This repository's `app.py` is a working demo. From a clone:
 
 ```bash
-pip install --upgrade dash-improve-my-llms
+pip install -e ".[all,dev]"
+python app.py
+# Browse http://localhost:8959/
 ```
 
-Your existing v0.2.0 code automatically benefits from the v0.3.0 improvements.
+The `/audiences/*` pages walk through each of the three audiences in
+the running app, including a copy-to-clipboard demo for grabbing any
+page's prose.
 
-### Testing the Fix
+## Documentation
 
-```bash
-# Test with ClaudeBot user agent
-curl -H "User-Agent: Mozilla/5.0 (compatible; ClaudeBot/1.0)" \
-  https://yourapp.com/ | grep "@context"
+- [docs/SKILLS.md](docs/SKILLS.md) — practical guide for using and
+  configuring the package (also written as a reference for AI coding
+  assistants)
+- [CHANGELOG.md](CHANGELOG.md) — full release history including 1.x
 
-# Should now see Schema.org structured data!
-```
+## License
 
-**See:** [RELEASE_NOTES_v0.3.0.md](RELEASE_NOTES_v0.3.0.md) for complete details.
+MIT. See [LICENSE](LICENSE).
 
----
-
-## 🎉 What's New in v1.0.0 - TOON Format Support
-
-### Token-Oriented Object Notation (TOON) 🎯
-
-v1.0.0 introduces **TOON format support** - a token-optimized alternative to markdown that achieves **50-60% fewer tokens** when consumed by LLMs.
-
-### New Endpoints
-
-| Route | Description |
-|-------|-------------|
-| `/llms.toon` | Token-optimized LLM documentation |
-| `/<page>/llms.toon` | Per-page TOON format |
-| `/architecture.toon` | Token-optimized architecture |
-
-### TOON Format Benefits
-
-- **50-60% fewer tokens** compared to markdown llms.txt
-- **Tabular arrays** for uniform data structures
-- **Explicit length markers** for LLM validation
-- **YAML-like readability** with JSON-compatible data model
-
-### Example Comparison
-
-**Markdown llms.txt (~312 tokens):**
-```markdown
-## Interactive Elements
-**User Inputs:**
-- TextInput (ID: `equipment-search`) - Search equipment...
-- Select (ID: `equipment-category`)
-```
-
-**TOON format (~127 tokens):**
-```toon
-interactive:
-  inputs[2]{id,type,placeholder}:
-    equipment-search,TextInput,Search equipment...
-    equipment-category,Select,
-```
-
-### New API Exports
-
-```python
-from dash_improve_my_llms import (
-    TOONConfig,           # Configuration for TOON output
-    toon_encode,          # Low-level encoder
-    generate_llms_toon,   # Generate page TOON
-    generate_architecture_toon,  # Generate app architecture TOON
-)
-```
-
-### Migration
-
-**Zero changes required!** Existing code works as-is. New TOON routes are automatically available.
-
-```bash
-pip install --upgrade dash-improve-my-llms
-```
-
-**See:** [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) and [TOON_INTEGRATION_PLAN.md](TOON_INTEGRATION_PLAN.md) for complete details.
-
----
-
-## 📦 What's New in v0.2.0
-
-### New Features
-
-- ✅ **Bot Detection** - Identify AI training, AI search, and traditional bots
-- ✅ **Robots.txt Generation** - Automatic with configurable policies
-- ✅ **Sitemap.xml Generation** - Smart priorities and change frequencies
-- ✅ **Static HTML for Bots** - Schema.org structured data
-- ✅ **Privacy Controls** - mark_hidden() for sensitive pages
-- ✅ **Component Hiding** - Exclude components from extraction
-
-### Improvements
-
-- ✅ **88 Comprehensive Tests** - 100% pass rate in 0.22s
-- ✅ **98-100% Coverage** - All new modules fully tested
-- ✅ **Better SEO** - Priority inference, change frequency detection
-- ✅ **Bot Differentiation** - Fine-grained control per bot type
-
-### Files Added
-
-- `dash_improve_my_llms/bot_detection.py` - Bot user agent detection
-- `dash_improve_my_llms/robots_generator.py` - robots.txt generation
-- `dash_improve_my_llms/sitemap_generator.py` - sitemap.xml generation
-- `dash_improve_my_llms/html_generator.py` - Static HTML for bots
-- `tests/test_bot_detection.py` - 14 comprehensive tests
-- `tests/test_robots_generator.py` - 16 comprehensive tests
-- `tests/test_sitemap_generator.py` - 33 comprehensive tests
-- `tests/test_html_generator.py` - 20 comprehensive tests
-- `tests/test_integration.py` - 15 integration tests
-- `TEST_REPORT.md` - Complete test documentation
-
----
-
-## 📊 Compatibility
-
-- **Python:** 3.8, 3.9, 3.10, 3.11, 3.12+
-- **Dash:** 3.2.0+
-- **Dash Mantine Components:** 2.3.0+ (optional)
-
-Works with:
-- ✅ Dash Pages (`dash.register_page`)
-- ✅ Manual routing (`dcc.Location`)
-- ✅ Multi-page apps
-- ✅ Single-page apps
-- ✅ All Dash component libraries
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all 88 tests pass
-5. Submit a pull request
-
-```bash
-# Run tests
-pytest tests/ -v
-
-# Run tests with coverage
-pytest tests/ --cov=dash_improve_my_llms --cov-report=html
-
-# Format code
-black dash_improve_my_llms/ tests/
-```
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Credits
-
-Built by [Pip Install Python LLC](https://pip-install-python.com) for the Dash community.
-
-Inspired by:
-- [llms.txt specification](https://llmstxt.org/)
-- [dmc-docs](https://www.dash-mantine-components.com/llms)
-
-Special thanks to the Dash community and Plotly team.
-
----
-
-## 🔗 Links
-
-- **Documentation:** [CLAUDE.md](CLAUDE.md)
-- **Test Report:** [TEST_REPORT.md](TEST_REPORT.md)
-- **PyPI:** [dash-improve-my-llms](https://pypi.org/project/dash-improve-my-llms/)
-- **Dash:** [dash.plotly.com](https://dash.plotly.com/)
-- **Plotly Pro:** [plotly.pro](https://plotly.pro)
-- **Issues:** [GitHub Issues](https://github.com/yourusername/dash-improve-my-llms/issues)
-
----
-
-<div align="center">
-
-**Made with ❤️ for the Dash community**
-
-[⭐ Star on GitHub](https://github.com/yourusername/dash-improve-my-llms) | [📖 Read the Docs](CLAUDE.md) | [🐛 Report Bug](https://github.com/yourusername/dash-improve-my-llms/issues)
-
-</div>
+Built by [Pip Install Python LLC](https://pip-install-python.com).

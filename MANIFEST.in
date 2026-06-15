@@ -1,10 +1,13 @@
 # Include important documentation and metadata files
 include README.md
+include CHANGELOG.md
 include LICENSE
 include requirements.txt
 include requirements-dev.txt
 include pyproject.toml
-include claude.md
+
+# Documentation
+recursive-include docs *.md
 
 # Include all Python files
 recursive-include dash_improve_my_llms *.py
@@ -18,9 +21,14 @@ global-exclude *.so
 global-exclude .git*
 
 # Exclude test and development files
-exclude test_plugin.py
 exclude app.py
+exclude visitor_analytics.json
 recursive-exclude tests *
 recursive-exclude pages *
+recursive-exclude templates *
 recursive-exclude .venv *
 recursive-exclude .idea *
+recursive-exclude .claude *
+recursive-exclude htmlcov *
+recursive-exclude dist *
+recursive-exclude build *

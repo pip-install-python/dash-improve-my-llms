@@ -189,10 +189,11 @@ def generate_robots_txt(
             "# For AI agents and LLMs, we provide structured",
             "# documentation in multiple formats:",
             "#",
-            f"# {base_url}/llms.txt - LLM-friendly content structure",
-            f"# {base_url}/architecture.txt - Application architecture",
-            f"# {base_url}/page.json - Page metadata (JSON)",
+            f"# {base_url}/llms.txt - LLM-friendly prose documentation",
             f"# {base_url}/sitemap.xml - Complete sitemap",
+            "#",
+            "# MCP-aware clients can also fetch per-page docs as",
+            "# resources via Dash 4.3+ MCP server endpoints.",
             "",
         ]
     )

@@ -1,0 +1,3735 @@
+# UI/UX Design Principles for Web Applications
+
+> Comprehensive guide to UI/UX design principles for creating beautiful, accessible, and user-friendly web applications.
+> These principles complement component libraries like Dash Mantine Components by providing guidance on how to use components effectively.
+>
+> This documentation covers fundamental design principles including visual hierarchy, spacing, layout, color theory, typography, and interaction design.
+> All principles are applicable to modern web applications and can be implemented using component libraries.
+>
+> The following sections describe core UI/UX principles, best practices, common pitfalls to avoid, and practical examples.
+> Assume the reader is a developer or designer building web applications who wants to create exceptional user experiences.
+
+================================================================================
+
+## Visual Hierarchy
+
+Visual hierarchy is the arrangement of elements on a screen to show their level of importance. The goal is to guide the user's eye, attention, and actions through strategic use of size, color, weight, and position.
+
+Category: Core Principles
+
+### Purpose
+
+Visual hierarchy helps users:
+- Quickly understand what's most important
+- Navigate content efficiently
+- Take appropriate actions
+- Process information in logical order
+
+### Key Techniques
+
+**Size and Scale**
+- Larger elements naturally draw more attention
+- Use size to indicate importance: primary headings should be largest, followed by subheadings, then body text
+- Scale should create clear distinction between hierarchy levels
+
+**Weight and Contrast**
+- Bold or thick fonts signal importance
+- Higher contrast (darker colors) draws attention
+- Lower contrast (lighter colors) indicates secondary information
+
+**Color**
+- Vibrant colors highlight critical elements like primary CTAs
+- Darker colors draw more attention than lighter colors
+- Use color sparingly for important elements to avoid dilution
+
+**Position and Layout**
+- Elements at the top are perceived as more important
+- Left-aligned content (in LTR languages) is scanned first
+- Centered elements can emphasize importance for short content
+
+### Establishing Clear Actions
+
+Differentiate between action types:
+- **Primary actions**: Most prominent styling (e.g., solid button with brand color)
+- **Secondary actions**: Less prominent (e.g., outlined button or muted color)
+- **Tertiary actions**: Minimal styling (e.g., text link)
+
+**Example - Shopping Cart Buttons**:
+```python
+# Bad: All buttons have equal weight
+dmc.Button("Remove", color="red")
+dmc.Button("Continue Shopping", color="blue")  
+dmc.Button("Checkout", color="green")
+
+# Good: Clear hierarchy
+dmc.Button("Checkout", size="lg", color="green")  # Primary
+dmc.Button("Continue Shopping", variant="subtle")  # Secondary  
+dmc.Text("Remove", c="red", style={"cursor": "pointer"})  # Tertiary
+```
+
+### Common Mistakes
+
+**Over-emphasizing Unimportant Information**
+- Don't make images larger than necessary
+- Avoid bold text for metadata (dates, counts) when data values are more important
+- Don't use bright colors for decorative elements
+
+**Prioritize Important Information**
+```python
+# Bad: Label larger than value
+dmc.Stack([
+    dmc.Title("Earnings", order=2),
+    dmc.Text("$4,981.00", size="sm")
+])
+
+# Good: Value is prominent
+dmc.Stack([
+    dmc.Title("$4,981.00", order=2),
+    dmc.Text("Earnings", size="sm", c="dimmed")
+])
+```
+
+### Implementation Guidelines
+
+1. **Before designing**: List all elements by importance
+2. **Use contrast wisely**: Dark text for important items, light gray for supporting text  
+3. **Limit emphasis**: If everything is bold or large, nothing stands out
+4. **Test scannability**: Users should grasp the page in 3-5 seconds
+
+### Best Practices for Web Applications
+
+- Use one clear primary action per screen or section
+- Keep navigation items at consistent hierarchy level
+- Ensure form labels are clearly associated with inputs
+- Make error messages prominent but not alarming
+- Use size progression: H1 → H2 → H3 → Body should be obvious
+
+================================================================================
+
+## Proximity
+
+Proximity is the grouping of related elements together. Based on Gestalt psychology's Law of Proximity, elements close to each other are perceived as related, while those far apart are seen as separate.
+
+Category: Core Principles
+
+### Purpose
+
+Proper use of proximity:
+- Reduces cognitive load
+- Creates logical groupings
+- Improves scanability
+- Makes relationships clear
+
+### The Proximity Rule
+
+**Elements that belong together should be close together**
+- Related items: smaller spacing (8px-16px)
+- Unrelated items: larger spacing (24px-48px)
+- Section breaks: even larger spacing (48px-96px)
+
+### Form Field Spacing
+
+Critical for forms:
+```python
+# Bad: Ambiguous label spacing
+dmc.TextInput(label="Name", mt=28, mb=28)  # Equal spacing above and below
+dmc.TextInput(label="Email", mt=28, mb=28)
+
+# Good: Clear association
+dmc.TextInput(label="Name", mt=32, mb=12)  # Closer to own field
+dmc.TextInput(label="Email", mt=32, mb=12)
+```
+
+**Spacing Guidelines for Forms**:
+- Label to input: 4-8px
+- Input to next label: 24-32px
+- Between form sections: 48px+
+
+### Content Grouping
+
+Use proximity to group related content:
+```python
+# Good: Related information grouped
+dmc.Card([
+    # Contact info group
+    dmc.Stack([
+        dmc.Title("Contact Information", order=4),
+        dmc.Text("John Doe"),
+        dmc.Text("john@example.com"),
+        dmc.Text("+1 234 567 8900"),
+    ], gap="xs"),  # Small gap within group
+    
+    # Address info group - separated by larger gap  
+    dmc.Stack([
+        dmc.Title("Address", order=4, mt="xl"),  # Larger top margin
+        dmc.Text("123 Main Street"),
+        dmc.Text("New York, NY 10001"),
+    ], gap="xs"),
+])
+```
+
+### Visual Techniques
+
+Beyond spacing:
+- **Borders**: Subtle borders can group items
+- **Background color**: Shared background indicates grouping
+- **Cards**: Contain related elements in a card component
+
+### Implementation Guidelines
+
+**Establish a Spacing System**:
+Use multiples of a base unit (commonly 4px or 8px):
+- 4px, 8px, 16px, 24px, 32px, 48px, 64px, 96px
+- Avoid random values like 7px, 19px, 31px
+
+```python
+# Good: Systematic spacing
+theme = {
+    "spacing": {
+        "xs": 8,   # 8px
+        "sm": 12,  # 12px  
+        "md": 16,  # 16px
+        "lg": 24,  # 24px
+        "xl": 32,  # 32px
+    }
+}
+
+# Use in components
+dmc.Stack(gap="md")  # 16px between items
+dmc.Box(mt="xl", mb="lg")  # 32px top, 24px bottom
+```
+
+### Common Mistakes
+
+- Equal spacing between labels and different form fields
+- Inconsistent spacing breaking up related content
+- Too little whitespace making everything feel cramped
+- Random spacing values creating visual chaos
+
+================================================================================
+
+## Clarity
+
+Clarity ensures users can easily understand how to interact with an interface. This involves straightforward navigation, intuitive layouts, clear labels, and readable text.
+
+Category: Core Principles
+
+### Balance: Simplicity vs Completeness
+
+**Avoid Oversimplification**
+- Don't remove essential context
+- Icons alone are often unclear without labels
+- Provide necessary information for decisions
+
+```python
+# Bad: Icons without labels
+dmc.Group([
+    dmc.Switch(id="switch-1"),
+    dmc.Switch(id="switch-2"),
+    dmc.Switch(id="switch-3"),
+])
+
+# Good: Clear labels
+dmc.Stack([
+    dmc.Switch(label="Home security", id="security"),
+    dmc.Switch(label="Lights", id="lights"),
+    dmc.Switch(label="Air conditioning", id="ac"),
+])
+```
+
+**Avoid Overwhelming Complexity**
+- Don't show all options at once
+- Progressive disclosure: show more as needed
+- Focus on primary use cases
+
+```python
+# Bad: Too many options at once
+dmc.Card([
+    dmc.Stack([
+        dmc.Button("Quick Add"),
+        dmc.Button("Advanced Add"),
+        dmc.Button("Batch Import"),
+        dmc.Button("Add from Template"),
+        dmc.Button("Add with Wizard"),
+        # ... 10 more buttons
+    ])
+])
+
+# Good: Progressive disclosure
+dmc.Card([
+    dmc.Button("Add New", size="lg"),
+    dmc.Menu([
+        dmc.MenuItem("Quick Add"),
+        dmc.MenuItem("Advanced Options..."),
+        dmc.MenuItem("Import..."),
+    ])
+])
+```
+
+### Clear Instructions
+
+Use positive, direct language:
+```python
+# Bad: Double negative, confusing
+dmc.Modal([
+    dmc.Title("Unselect items you want to remove"),
+    dmc.Checkbox(label="Item 1", checked=True),
+])
+
+# Good: Clear and direct
+dmc.Modal([
+    dmc.Title("Select items to remove"),
+    dmc.Checkbox(label="Item 1"),
+])
+```
+
+### Visual Clarity Principles
+
+**Text Readability**:
+- Minimum 12px font size for body text
+- Standard body text: 14-16px  
+- Sufficient line height: 1.5-1.6 for paragraphs
+- High contrast: minimum 4.5:1 for normal text
+
+**Clear Affordances**:
+- Buttons should look clickable
+- Links should be distinguishable
+- Interactive elements need hover states
+- Disabled states should be obvious
+
+**Consistent Terminology**:
+- Use same words for same concepts
+- Avoid jargon unless audience-appropriate
+- Keep labels concise but descriptive
+
+### Implementation Guidelines
+
+**Information Hierarchy**:
+```python
+# Present information in order of importance
+dmc.Stack([
+    dmc.Title("Critical Action Required", order=2),
+    dmc.Text("This will delete all your data.", size="md"),
+    dmc.Text("Action cannot be undone.", size="sm", c="dimmed"),
+    dmc.Group([
+        dmc.Button("Cancel", variant="outline"),
+        dmc.Button("Delete Forever", color="red"),
+    ])
+])
+```
+
+**Progressive Enhancement**:
+- Start with core functionality
+- Add advanced features in collapsed sections
+- Use tooltips for additional context
+- Provide help text inline, not hidden
+
+### Common Mistakes
+
+- Using unclear icon-only buttons
+- Ambiguous button labels ("Submit" vs "Continue to Payment")
+- Hidden navigation requiring exploration
+- Too many options causing decision paralysis
+- Insufficient context for actions
+
+================================================================================
+
+## Alignment
+
+Alignment creates visual order and harmony by arranging elements along common axes. Proper alignment makes interfaces look professional and organized.
+
+Category: Core Principles
+
+### Alignment Types
+
+**Left Alignment**
+- Default for most text content
+- Creates clean, strong left edge
+- Easiest to read for long-form content
+- Standard for LTR languages
+
+**Right Alignment**  
+- Useful for numbers in tables (easy comparison)
+- Required for RTL languages
+- Can be used for timestamps or metadata
+
+**Center Alignment**
+- Best for titles and short standalone content
+- Good for calls-to-action that need emphasis
+- Avoid for long paragraphs (hard to read)
+
+### Consistent Alignment
+
+All related elements should share alignment:
+```python
+# Bad: Mixed alignment
+dmc.Card([
+    dmc.Title("Product Name", style={"textAlign": "left"}),
+    dmc.Text("$19.99", style={"textAlign": "center"}),
+    dmc.Button("Add to Cart", style={"alignSelf": "center"}),
+])
+
+# Good: Consistent left alignment  
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Product Name"),
+        dmc.Text("$19.99"),
+        dmc.Button("Add to Cart", fullWidth=True),
+    ], align="stretch")
+])
+```
+
+### Grid Systems
+
+Use grids for consistent alignment:
+```python
+# Using Grid for alignment
+dmc.Grid([
+    dmc.GridCol([
+        dmc.TextInput(label="First Name"),
+    ], span=6),
+    dmc.GridCol([
+        dmc.TextInput(label="Last Name"),  
+    ], span=6),
+    dmc.GridCol([
+        dmc.TextInput(label="Email"),
+    ], span=12),
+])
+```
+
+### Alignment Best Practices
+
+**In Forms**:
+- Align all labels (left, right, or top)
+- Align all input fields
+- Buttons should align with inputs or be centered
+
+**In Cards**:
+- All text should follow same alignment
+- Images and content should align to edges or center consistently
+- CTAs should align with content
+
+**In Navigation**:
+- Menu items should align consistently
+- Icons and text should align within items
+- Spacing should be uniform
+
+### Implementation Guidelines
+
+**Use Layout Components**:
+```python
+# Stack for vertical alignment
+dmc.Stack([
+    dmc.Title("Title"),
+    dmc.Text("Description"),  
+    dmc.Button("Action"),
+], align="flex-start")  # All left-aligned
+
+# Group for horizontal alignment  
+dmc.Group([
+    dmc.Button("Cancel"),
+    dmc.Button("Save"),
+], justify="flex-end")  # Both right-aligned
+```
+
+**Auto-layout Features**:
+- Use Flexbox properties (`align`, `justify`)
+- Use Grid span properties for alignment
+- Leverage layout component props
+
+### Common Mistakes
+
+- Elements slightly off-alignment (use design tools/grids)
+- Mixing center and left alignment arbitrarily
+- Not aligning labels with their inputs
+- Icons not vertically centered with text
+- Inconsistent button alignment across similar screens
+
+### Tools and Techniques
+
+**Design System**:
+- Define standard spacing increments
+- Create reusable aligned components
+- Document alignment patterns
+
+**Visual Debugging**:
+- Use browser dev tools to check alignment
+- Create guides in design tools
+- Validate with design tokens
+
+================================================================================
+
+## Contrast
+
+Contrast makes different elements stand out from each other, improving readability, guiding focus, and ensuring accessibility.
+
+Category: Core Principles
+
+### Purpose of Contrast
+
+1. **Readability**: Ensures text is legible
+2. **Focus**: Directs attention to important elements  
+3. **Accessibility**: Makes content usable for people with visual impairments
+4. **Hierarchy**: Reinforces importance levels
+
+### Color Contrast
+
+**WCAG Standards**:
+- Normal text (< 18px): minimum 4.5:1 contrast ratio
+- Large text (≥ 18px or 14px bold): minimum 3:1 contrast ratio
+- Level AAA: 7:1 for normal text, 4.5:1 for large text
+
+```python
+# Bad: Low contrast
+dmc.Badge("In Progress", color="blue.2", variant="filled")  # Light blue on light background
+
+# Good: High contrast
+dmc.Badge("In Progress", color="blue.9", variant="light")  # Dark blue on light badge
+```
+
+### Text Over Images
+
+Ensure text is always readable:
+```python
+# Bad: Direct text over complex image
+dmc.BackgroundImage(
+    src="busy-image.jpg",
+    children=[
+        dmc.Title("Heading", c="white")  # May be illegible
+    ]
+)
+
+# Good: Overlay for guaranteed contrast
+dmc.BackgroundImage(
+    src="busy-image.jpg",
+    children=[
+        dmc.Box([
+            dmc.Title("Heading", c="white")
+        ], style={
+            "backgroundColor": "rgba(0, 0, 0, 0.6)",
+            "padding": "1rem"
+        })
+    ]
+)
+
+# Alternative: Blur background behind text
+dmc.BackgroundImage(
+    src="busy-image.jpg",
+    children=[
+        dmc.Box([
+            dmc.Title("Heading")
+        ], style={
+            "backdropFilter": "blur(8px)",
+            "backgroundColor": "rgba(255, 255, 255, 0.9)",
+            "padding": "1rem"
+        })
+    ]
+)
+```
+
+### Contrast Techniques
+
+**Font Weight**:
+```python
+# Create hierarchy through weight
+dmc.Stack([
+    dmc.Title("Main Heading", fw=700),  # Bold
+    dmc.Title("Subheading", order=3, fw=500),  # Medium  
+    dmc.Text("Body text", fw=400),  # Regular
+])
+```
+
+**Size Contrast**:
+```python
+# Use size for importance
+dmc.Stack([
+    dmc.Title("$4,981.00", order=1, size="3rem"),  # Large
+    dmc.Text("Total Revenue", size="lg"),  # Medium
+    dmc.Text("Last 30 days", size="sm", c="dimmed"),  # Small
+])
+```
+
+**Color Contrast**:
+```python
+# Use color to differentiate
+dmc.Stack([
+    dmc.Text("Error: Invalid input", c="red.7", fw=500),
+    dmc.Text("Success: Changes saved", c="green.7", fw=500),
+    dmc.Text("Info: Updates available", c="blue.7", fw=500),
+])
+```
+
+**Borders and Shadows**:
+```python
+# Add separation through borders
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Content"),
+        dmc.Text("Description"),
+    ])
+], withBorder=True, shadow="sm")
+```
+
+### Accessibility Considerations
+
+**Test Contrast**:
+- Use browser dev tools contrast checker
+- Test with color blindness simulators
+- Verify in both light and dark modes
+
+**Don't Rely on Color Alone**:
+```python
+# Bad: Color only
+dmc.Badge("High Priority", color="red")
+
+# Good: Color + icon + text
+dmc.Badge([
+    DashIconify(icon="tabler:alert-circle", width=16),
+    "High Priority"
+], color="red")
+```
+
+### Implementation Guidelines
+
+**Status Colors**:
+```python
+# System status colors with good contrast
+status_colors = {
+    "error": {"bg": "red.0", "text": "red.9"},  # Light bg, dark text
+    "success": {"bg": "green.0", "text": "green.9"},
+    "warning": {"bg": "yellow.0", "text": "yellow.9"},
+    "info": {"bg": "blue.0", "text": "blue.9"},
+}
+
+dmc.Alert(
+    "Error message",
+    color="red",
+    variant="light",  # Automatically provides good contrast
+)
+```
+
+**Dark Mode Considerations**:
+```python
+# Use theme-aware colors
+dmc.Text(
+    "Content",
+    c="gray.9",  # Dark in light mode
+    # Automatically adjusts in dark mode
+)
+```
+
+### Common Mistakes
+
+- Using light gray text on white backgrounds
+- Colored buttons with insufficient contrast
+- Status indicators using only color
+- Low contrast in hover states
+- Ignoring contrast in dark mode
+
+================================================================================
+
+## Simplicity
+
+Simplicity means reducing elements and content to their most essential forms. A simple design prioritizes essential features and makes it straightforward for users to accomplish their goals.
+
+Category: Core Principles
+
+### Purpose
+
+Simplicity:
+- Reduces cognitive load
+- Speeds up task completion
+- Reduces errors
+- Improves learnability
+- Increases satisfaction
+
+### What to Keep vs Remove
+
+**Ask for Each Element**:
+- Is this necessary for the user's goal?
+- Does this help the user make a decision?
+- Can this be moved to a secondary screen?
+- Can this be inferred or automated?
+
+### Simplification Strategies
+
+**Progressive Disclosure**:
+Show advanced options only when needed:
+```python
+# Bad: All options visible
+dmc.Stack([
+    dmc.TextInput(label="Name"),
+    dmc.TextInput(label="Color"),
+    dmc.TextInput(label="Size"),
+    dmc.TextInput(label="Material"),
+    dmc.TextInput(label="Manufacturer"),
+    dmc.TextInput(label="SKU"),
+    dmc.TextInput(label="Weight"),
+    # ... 10 more fields
+])
+
+# Good: Essential first, advanced hidden
+dmc.Stack([
+    dmc.TextInput(label="Name"),
+    dmc.NumberInput(label="Price"),
+    dmc.Select(label="Category", data=categories),
+    dmc.Accordion([
+        dmc.AccordionItem([
+            dmc.AccordionControl("Advanced Options"),
+            dmc.AccordionPanel([
+                dmc.TextInput(label="SKU"),
+                dmc.TextInput(label="Weight"),
+                # ... more fields
+            ])
+        ])
+    ], variant="separated")
+])
+```
+
+**Smart Defaults**:
+```python
+# Reduce choices with sensible defaults
+dmc.Select(
+    label="Country",
+    value="US",  # Pre-selected based on user location
+    data=countries,
+)
+```
+
+**Contextual Actions**:
+Show actions only when relevant:
+```python
+# Bad: Always showing all actions
+dmc.Group([
+    dmc.Button("Edit"),
+    dmc.Button("Delete"),
+    dmc.Button("Archive"),
+    dmc.Button("Share"),
+    dmc.Button("Duplicate"),
+])
+
+# Good: Primary action visible, others in menu
+dmc.Group([
+    dmc.Button("Edit"),
+    dmc.Menu([
+        dmc.MenuItem("Delete"),
+        dmc.MenuItem("Archive"),
+        dmc.MenuItem("Share"),
+        dmc.MenuItem("Duplicate"),
+    ])
+])
+```
+
+### Focused Interfaces
+
+**Single Purpose per Screen**:
+```python
+# Bad: Multi-purpose screen
+dmc.Container([
+    dmc.Title("Dashboard and Settings and Reports"),
+    # ... mixed content
+])
+
+# Good: Focused screen
+dmc.Container([
+    dmc.Title("Upload Document"),
+    dmc.FileDropzone(
+        "Drag file here or click to select",
+        id="upload-area",
+    ),
+    dmc.Button("Upload", mt="md"),
+])
+```
+
+**Minimal Navigation**:
+```python
+# Keep navigation simple and focused
+dmc.NavLink([
+    dmc.NavLink(label="Home", leftSection=icon_home),
+    dmc.NavLink(label="Projects", leftSection=icon_projects),
+    dmc.NavLink(label="Settings", leftSection=icon_settings),
+])
+# Don't add every possible page to main navigation
+```
+
+### Content Simplification
+
+**Remove Unnecessary Text**:
+```python
+# Bad: Verbose
+dmc.Text(
+    "Please click on the button below in order to proceed to the next step"
+)
+
+# Good: Concise
+dmc.Text("Click to continue")
+```
+
+**Eliminate Redundancy**:
+```python
+# Bad: Redundant labels
+dmc.Stack([
+    dmc.TextInput(label="Email Address", placeholder="Enter your email address"),
+    dmc.PasswordInput(label="Password", placeholder="Enter your password"),
+])
+
+# Good: Concise labels
+dmc.Stack([
+    dmc.TextInput(label="Email", placeholder="you@example.com"),
+    dmc.PasswordInput(label="Password", placeholder="••••••••"),
+])
+```
+
+### When Simplicity Goes Too Far
+
+**Don't Remove Essential Information**:
+```python
+# Too simple: Missing critical details
+dmc.Card([
+    dmc.Text("$99"),
+    dmc.Button("Buy"),
+])
+
+# Right balance: Essential info included
+dmc.Card([
+    dmc.Title("Premium Plan", order=4),
+    dmc.Text("$99/month"),
+    dmc.List([
+        dmc.ListItem("10 users"),
+        dmc.ListItem("100GB storage"),
+        dmc.ListItem("Priority support"),
+    ], size="sm"),
+    dmc.Button("Start Free Trial"),
+])
+```
+
+### Implementation Guidelines
+
+1. **Start Minimal**: Begin with core features only
+2. **Test with Users**: Verify nothing essential is missing
+3. **Add Strategically**: Include features only when needed
+4. **Refactor Regularly**: Remove unused or low-value features
+
+### Common Mistakes
+
+- Hiding too much in menus (balance simplicity with discoverability)
+- Removing labels to save space (clarity trumps space-saving)
+- Oversimplifying forms (collect necessary data)
+- Generic error messages (be specific enough to help)
+
+================================================================================
+
+## Whitespace
+
+Whitespace (or negative space) is the unmarked area between design elements. Proper use of whitespace enhances readability, guides focus, and creates breathing room.
+
+Category: Core Principles
+
+### Purpose
+
+Effective whitespace:
+- Improves readability
+- Creates visual hierarchy
+- Groups related elements
+- Provides focus areas
+- Adds sophistication
+
+### Spacing System
+
+Use a consistent spacing scale based on a base unit:
+
+**8px Base System** (Common):
+```python
+spacing = {
+    "xxs": 4,   # 0.5 × base
+    "xs": 8,    # 1 × base
+    "sm": 12,   # 1.5 × base
+    "md": 16,   # 2 × base  
+    "lg": 24,   # 3 × base
+    "xl": 32,   # 4 × base
+    "xxl": 48,  # 6 × base
+}
+```
+
+**4px Base System** (Fine-grained control):
+```python
+spacing = {
+    "0": 0,
+    "1": 4,
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 20,
+    "6": 24,
+    "8": 32,
+    "10": 40,
+    "12": 48,
+    "16": 64,
+}
+```
+
+### Spacing Principles
+
+**Micro Whitespace** (within components):
+```python
+# Spacing within a card
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Card Title", order=4),  # Default gap
+        dmc.Text("Card description text."),
+        dmc.Button("Action", mt="md"),  # Extra spacing before CTA
+    ], gap="xs")  # Tight spacing within
+], p="lg")  # Generous padding around
+```
+
+**Macro Whitespace** (between components):
+```python
+# Spacing between sections
+dmc.Stack([
+    dmc.Title("Section 1", order=2),
+    dmc.Text("Content..."),
+    
+    dmc.Title("Section 2", order=2, mt="xl"),  # Large gap between sections
+    dmc.Text("Content..."),
+], gap="md")  # Medium gap between related items
+```
+
+### Whitespace Guidelines
+
+**Start with Too Much**:
+It's easier to reduce spacing than add it later:
+```python
+# Start generous
+dmc.Container([
+    dmc.Title("Heading", mb="xl"),
+    dmc.Text("Paragraph", mb="xl"),
+    dmc.Button("Action", mt="xl"),
+], p="xl")
+
+# Refine as needed
+dmc.Container([
+    dmc.Title("Heading", mb="lg"),
+    dmc.Text("Paragraph", mb="md"),
+    dmc.Button("Action", mt="lg"),
+], p="lg")
+```
+
+**Consistent Rhythm**:
+```python
+# Bad: Random spacing
+dmc.Stack([
+    dmc.TextInput(label="Name", mb=7),
+    dmc.TextInput(label="Email", mb=19),
+    dmc.TextInput(label="Phone", mb=13),
+])
+
+# Good: Rhythmic spacing
+dmc.Stack([
+    dmc.TextInput(label="Name", mb="md"),
+    dmc.TextInput(label="Email", mb="md"),
+    dmc.TextInput(label="Phone", mb="md"),
+])
+```
+
+### Breathing Room
+
+**Don't Cram Content**:
+```python
+# Bad: Cramped
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Title"),
+        dmc.Text("Description"),
+        dmc.Button("Action"),
+    ], gap=0)
+], p="xs")
+
+# Good: Spacious
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Title"),
+        dmc.Text("Description"),
+        dmc.Button("Action"),
+    ], gap="md")
+], p="lg")
+```
+
+**Line Height**:
+```python
+# Proper line height for readability
+dmc.Text(
+    "Long paragraph text content...",
+    style={"lineHeight": 1.6}  # 1.5-1.6 for body text
+)
+
+# Tighter for headings
+dmc.Title(
+    "Heading Text",
+    order=2,
+    style={"lineHeight": 1.2}  # 1.2-1.3 for headings
+)
+```
+
+### Layout Whitespace
+
+**Container Spacing**:
+```python
+# Desktop: generous margins
+dmc.Container([
+    # content
+], size="lg", px="xl", py="xl")
+
+# Mobile: reduced margins
+dmc.Container([
+    # content
+], size="lg", px="md", py="md")
+```
+
+**Grid Gaps**:
+```python
+dmc.Grid([
+    dmc.GridCol([...], span=6),
+    dmc.GridCol([...], span=6),
+], gutter="xl")  # Space between columns
+```
+
+### Advanced Techniques
+
+**Negative Space as Design Element**:
+```python
+# Use space to create focus
+dmc.Center([
+    dmc.Card([
+        dmc.Title("Important Message"),
+        dmc.Text("Description"),
+    ], p="xl")
+], h="100vh")  # Card surrounded by space
+```
+
+**Asymmetric Spacing**:
+```python
+# Different spacing on different sides
+dmc.Box([
+    dmc.Title("Heading"),
+], pt="xl", pb="sm", px="md")  # More space on top
+```
+
+### Common Mistakes
+
+- Inconsistent spacing values (7px, 13px, 19px)
+- Too little space making content cramped
+- Equal spacing everywhere (no hierarchy)
+- Ignoring mobile spacing requirements
+- Not accounting for line height in spacing
+
+### Implementation with DMC
+
+```python
+# Using DMC spacing props
+dmc.Stack([
+    dmc.Title("Section", order=2, mb="lg"),
+    dmc.Text("Content", mb="md"),
+    dmc.Divider(my="xl"),  # Divider with spacing
+    dmc.Title("Next Section", order=2, mb="lg"),
+], gap="md")
+
+# Using inline styles for specific needs
+dmc.Box([
+    # content
+], style={
+    "marginTop": "var(--mantine-spacing-xl)",
+    "paddingBlock": "var(--mantine-spacing-lg)",
+})
+```
+
+================================================================================
+
+## Layout
+
+Layout is the structural framework that combines aesthetics and usability. It determines where and how elements are placed on the screen to guide users logically through tasks.
+
+Category: Core Principles
+
+### Layout Principles
+
+**F-Pattern and Z-Pattern**:
+- **F-Pattern**: Users scan in F-shape (common for content-heavy pages)
+  - Top horizontal: Header and navigation
+  - Left vertical: Sidebar or main content start
+  - Second horizontal: Subheadings and important content
+- **Z-Pattern**: Users scan in Z-shape (common for simple pages)
+  - Top-left to top-right: Logo to CTA
+  - Diagonal: Natural eye movement
+  - Bottom-left to bottom-right: Secondary content to action
+
+**Visual Weight**:
+Place heavier (more important) elements where they'll be seen first:
+```python
+# Good: Important action top-right
+dmc.AppShell([
+    dmc.AppShellHeader([
+        dmc.Group([
+            dmc.Title("App Name", order=3),
+            dmc.Button("Create New", ml="auto"),  # Top-right
+        ], justify="space-between")
+    ]),
+])
+```
+
+### Layout Patterns
+
+**Single Column** (Mobile-first):
+```python
+dmc.Stack([
+    dmc.Image(src="product.jpg"),
+    dmc.Title("Product Name", order=2),
+    dmc.Text("Description..."),
+    dmc.Text("$99.99", size="xl", fw=700),
+    dmc.Button("Add to Cart", fullWidth=True),
+], gap="md")
+```
+
+**Two Column**:
+```python
+dmc.Grid([
+    dmc.GridCol([
+        dmc.Image(src="product.jpg"),
+    ], span={"base": 12, "md": 6}),
+    dmc.GridCol([
+        dmc.Stack([
+            dmc.Title("Product Name", order=2),
+            dmc.Text("Description..."),
+            dmc.Text("$99.99", size="xl", fw=700),
+            dmc.Button("Add to Cart"),
+        ])
+    ], span={"base": 12, "md": 6}),
+])
+```
+
+**Dashboard Layout**:
+```python
+dmc.Grid([
+    # Top stats row
+    dmc.GridCol([dmc.Card("Metric 1")], span=3),
+    dmc.GridCol([dmc.Card("Metric 2")], span=3),
+    dmc.GridCol([dmc.Card("Metric 3")], span=3),
+    dmc.GridCol([dmc.Card("Metric 4")], span=3),
+    
+    # Charts row
+    dmc.GridCol([dmc.Card("Main Chart")], span=8),
+    dmc.GridCol([dmc.Card("Side Chart")], span=4),
+])
+```
+
+### Content Prioritization
+
+**Order Matters**:
+```python
+# Bad: Price first (seems focused on cost)
+dmc.Stack([
+    dmc.Text("$199.99", size="xl"),
+    dmc.Image(src="pizza.jpg"),
+    dmc.Title("Deluxe Pizza"),
+    dmc.Text("Description..."),
+])
+
+# Good: Image first (appetite appeal)
+dmc.Stack([
+    dmc.Image(src="pizza.jpg"),
+    dmc.Title("Deluxe Pizza"),
+    dmc.Text("Description..."),
+    dmc.Text("$19.99", size="xl", fw=700),
+    dmc.Button("Order Now"),
+])
+```
+
+### Layout Components
+
+**Stack** (Vertical):
+```python
+dmc.Stack([
+    component1,
+    component2,
+    component3,
+], gap="md", align="stretch")
+```
+
+**Group** (Horizontal):
+```python
+dmc.Group([
+    component1,
+    component2,
+    component3,
+], justify="space-between", align="center")
+```
+
+**Flex** (Custom):
+```python
+dmc.Flex([
+    component1,
+    component2,
+], direction="row", wrap="wrap", gap="md")
+```
+
+**Grid** (Responsive):
+```python
+dmc.Grid([
+    dmc.GridCol(component1, span={"base": 12, "sm": 6, "lg": 4}),
+    dmc.GridCol(component2, span={"base": 12, "sm": 6, "lg": 4}),
+    dmc.GridCol(component3, span={"base": 12, "sm": 12, "lg": 4}),
+])
+```
+
+### Responsive Layout
+
+**Mobile-First Approach**:
+```python
+# Start with mobile layout
+dmc.Stack([
+    dmc.Title("Heading"),
+    dmc.Text("Description"),
+    dmc.Button("Action", fullWidth=True),
+], gap="md")
+
+# Enhance for larger screens
+dmc.Grid([
+    dmc.GridCol([
+        dmc.Stack([
+            dmc.Title("Heading"),
+            dmc.Text("Description"),
+        ])
+    ], span={"base": 12, "md": 8}),
+    dmc.GridCol([
+        dmc.Button("Action", fullWidth=True),
+    ], span={"base": 12, "md": 4}),
+])
+```
+
+**Breakpoint Guidelines**:
+```python
+breakpoints = {
+    "xs": 576,   # Small phone
+    "sm": 768,   # Large phone / small tablet
+    "md": 992,   # Tablet
+    "lg": 1200,  # Desktop
+    "xl": 1400,  # Large desktop
+}
+```
+
+### Form Layout
+
+**Form Layout Inspired by Output**:
+Design forms to mirror their final output:
+```python
+# If final output shows image at top, name and price side-by-side:
+dmc.Stack([
+    dmc.FileInput(label="Image"),
+    dmc.Group([
+        dmc.TextInput(label="Name", style={"flex": 1}),
+        dmc.NumberInput(label="Price", style={"width": "150px"}),
+    ]),
+    dmc.Textarea(label="Description"),
+])
+```
+
+**Vertical vs Horizontal Labels**:
+```python
+# Vertical (recommended for most forms)
+dmc.Stack([
+    dmc.TextInput(label="Name"),
+    dmc.TextInput(label="Email"),
+])
+
+# Horizontal (space-efficient, harder to scan)
+dmc.Grid([
+    dmc.GridCol(dmc.Text("Name", fw=500), span=3),
+    dmc.GridCol(dmc.TextInput(), span=9),
+])
+```
+
+### Common Layout Mistakes
+
+- Not considering mobile layout first
+- Equal spacing between unrelated items
+- Poor use of visual hierarchy in layout
+- Too many columns (3+ columns can be overwhelming)
+- Inconsistent alignment across layouts
+- Not accounting for dynamic content heights
+
+### Best Practices
+
+1. **Progressive Enhancement**: Start simple, add complexity
+2. **Test on Real Devices**: Emulators don't show everything
+3. **Maintain Consistent Patterns**: Users learn your layout
+4. **Guide the Eye**: Use layout to create visual flow
+5. **Account for Content**: Layout should flex with content
+
+================================================================================
+
+## Balance and Harmony
+
+Balance and harmony ensure all elements work together to create a cohesive, pleasant experience. This involves proportion, color coordination, and element relationships.
+
+Category: Core Principles
+
+### Visual Balance
+
+**Symmetrical Balance**:
+Equal visual weight on both sides:
+```python
+dmc.Group([
+    dmc.Button("Cancel"),
+    dmc.Button("Save"),
+], justify="center", gap="md")
+```
+
+**Asymmetrical Balance**:
+Different elements with equal visual weight:
+```python
+dmc.Group([
+    dmc.Title("Dashboard", order=2),  # Heavy, left
+    dmc.Group([  # Multiple light elements, right
+        dmc.Badge("3 new"),
+        dmc.ActionIcon(DashIconify(icon="tabler:bell")),
+        dmc.Avatar(src="user.jpg", radius="xl"),
+    ]),
+], justify="space-between")
+```
+
+### Proportion and Scale
+
+**Balanced Sizing**:
+```python
+# Bad: Image too large, text too small
+dmc.Card([
+    dmc.Image(src="product.jpg", h=400),
+    dmc.Text("Product", size="xs"),
+    dmc.Text("$99", size="xs"),
+])
+
+# Good: Balanced proportions
+dmc.Card([
+    dmc.Image(src="product.jpg", h=200),
+    dmc.Title("Product Name", order=4),
+    dmc.Text("$99", size="xl", fw=700),
+])
+```
+
+**Golden Ratio** (1:1.618):
+```python
+# Apply golden ratio to layout
+dmc.Grid([
+    dmc.GridCol([...], span={"md": 7}),  # ~62% (1/1.618)
+    dmc.GridCol([...], span={"md": 5}),  # ~38%
+])
+```
+
+### Color Harmony
+
+**Complementary Colors**:
+```python
+# Colors opposite on color wheel
+dmc.Group([
+    dmc.Badge("Primary", color="blue"),
+    dmc.Badge("Accent", color="orange"),
+])
+```
+
+**Analogous Colors**:
+```python
+# Adjacent colors on wheel
+dmc.Group([
+    dmc.Badge("Tag 1", color="blue"),
+    dmc.Badge("Tag 2", color="cyan"),
+    dmc.Badge("Tag 3", color="teal"),
+])
+```
+
+**Monochromatic**:
+```python
+# Same hue, different shades
+dmc.Stack([
+    dmc.Badge("Light", color="blue.2"),
+    dmc.Badge("Medium", color="blue.5"),
+    dmc.Badge("Dark", color="blue.8"),
+])
+```
+
+### Avoid Color Overload
+
+```python
+# Bad: Too many colors fighting for attention
+dmc.Card([
+    dmc.Image(src="green-image.jpg", style={"background": "green"}),
+    dmc.Title("Product", c="blue"),
+    dmc.Text("$99", c="red"),
+    dmc.Button("Buy", color="pink"),
+], style={"background": "orange"})
+
+# Good: Restrained color palette
+dmc.Card([
+    dmc.Image(src="product.jpg"),
+    dmc.Title("Product Name", order=4),
+    dmc.Text("$99", size="xl", fw=700),
+    dmc.Button("Add to Cart", color="blue"),
+])
+```
+
+### Element Relationships
+
+**Size Relationships**:
+```python
+# Establish clear size hierarchy
+dmc.Stack([
+    dmc.Title("Main", order=1, size="2.5rem"),      # Largest
+    dmc.Title("Sub", order=2, size="1.75rem"),      # Medium
+    dmc.Text("Body", size="1rem"),                  # Standard
+    dmc.Text("Caption", size="0.875rem", c="dimmed"), # Smallest
+])
+```
+
+**Spacing Relationships**:
+```python
+# Consistent relationships between similar elements
+dmc.Stack([
+    # Each section has same internal structure
+    dmc.Stack([
+        dmc.Title("Section 1", order=3),
+        dmc.Text("Content"),
+    ], gap="xs"),
+    
+    dmc.Stack([
+        dmc.Title("Section 2", order=3),
+        dmc.Text("Content"),
+    ], gap="xs"),
+], gap="xl")  # Larger gap between sections
+```
+
+### Visual Weight Distribution
+
+**Balanced Cards**:
+```python
+# Good: Balanced card composition
+dmc.Card([
+    dmc.Image(src="product.jpg", h=160),  # 40% of card
+    dmc.Stack([
+        dmc.Group([
+            dmc.Badge("New", size="sm"),
+            dmc.Text("$99", fw=700, ml="auto"),
+        ], justify="space-between"),
+        dmc.Title("Product Name", order=4, lineClamp=2),
+        dmc.Text("Description...", size="sm", c="dimmed", lineClamp=2),
+        dmc.Button("View Details", fullWidth=True, mt="sm"),
+    ], gap="xs", p="md")  # 60% of card
+])
+```
+
+### Common Mistakes
+
+- One oversized element dominating the layout
+- Too many different font sizes
+- Chaotic color usage
+- Imbalanced button sizes in button groups
+- Inconsistent spacing creating visual chaos
+
+### Implementation Guidelines
+
+1. **Establish Ratios**: Use consistent sizing ratios (1.5x, 2x, etc.)
+2. **Limit Colors**: Primary + 1-2 accent colors maximum
+3. **Test Composition**: Step back and view as a whole
+4. **Use Alignment**: Alignment creates harmony
+5. **Maintain Rhythm**: Consistent patterns throughout
+
+================================================================================
+
+## Consistency
+
+Consistency creates predictability and reduces cognitive load. When elements look and behave the same way throughout an interface, users learn faster and make fewer errors.
+
+Category: Core Principles
+
+### Types of Consistency
+
+**Visual Consistency**:
+- Same colors for same purposes
+- Same icon styles throughout
+- Same corner radius on all components
+- Same spacing increments
+
+**Functional Consistency**:
+- Same interactions produce same results
+- Same keyboard shortcuts work everywhere
+- Same patterns for similar tasks
+
+**External Consistency**:
+- Follow platform conventions (OS, web standards)
+- Match user expectations from other apps
+- Use familiar patterns (e.g., shopping cart icon)
+
+### Component Consistency
+
+**Button Styles**:
+```python
+# Bad: Inconsistent button styles
+dmc.Stack([
+    dmc.Button("Action 1", color="blue"),
+    dmc.Button("Action 2", color="red", radius="xl"),
+    dmc.Button("Action 3", color="green", variant="outline", size="xs"),
+])
+
+# Good: Consistent style, varying by hierarchy
+dmc.Stack([
+    dmc.Button("Primary Action", color="blue"),
+    dmc.Button("Secondary Action", color="blue", variant="outline"),
+    dmc.Button("Tertiary Action", color="blue", variant="subtle"),
+], gap="sm")
+```
+
+**Corner Radius**:
+```python
+# Define in theme for consistency
+theme = {
+    "defaultRadius": "md",  # All components use this by default
+}
+
+# All these will have the same radius:
+dmc.Button("Button")
+dmc.Card("Card content")
+dmc.TextInput(label="Input")
+```
+
+**Icon Consistency**:
+```python
+# Bad: Mixed icon styles
+from dash_iconify import DashIconify
+
+dmc.Stack([
+    DashIconify(icon="mdi:home", width=20),           # Filled
+    DashIconify(icon="tabler:settings", width=20),    # Outline
+    DashIconify(icon="fa-solid:user", width=20),      # Different family
+])
+
+# Good: Consistent icon family and style
+dmc.Stack([
+    DashIconify(icon="tabler:home", width=20),
+    DashIconify(icon="tabler:settings", width=20),
+    DashIconify(icon="tabler:user", width=20),
+])
+```
+
+### Color Consistency
+
+**Semantic Colors**:
+```python
+# Define semantic meanings consistently
+colors = {
+    "primary": "blue",
+    "success": "green",
+    "warning": "yellow",
+    "error": "red",
+    "info": "cyan",
+}
+
+# Use throughout app
+dmc.Alert("Success!", color="green")
+dmc.Badge("Error", color="red")
+dmc.Button("Primary Action", color="blue")
+```
+
+**State Colors**:
+```python
+# Consistent state representation
+states = {
+    "active": "green",
+    "inactive": "gray",
+    "pending": "yellow",
+    "failed": "red",
+}
+```
+
+### Layout Consistency
+
+**Page Structure**:
+```python
+# Consistent page layout template
+def page_layout(title, content):
+    return dmc.Container([
+        dmc.Title(title, order=1, mb="xl"),
+        dmc.Divider(mb="lg"),
+        content,
+    ], size="lg", py="xl")
+```
+
+**Card Layouts**:
+```python
+# Consistent card structure
+def info_card(title, value, icon):
+    return dmc.Card([
+        dmc.Group([
+            DashIconify(icon=icon, width=24, color="blue"),
+            dmc.Title(title, order=4),
+        ]),
+        dmc.Text(value, size="xl", fw=700, mt="md"),
+    ], p="lg", withBorder=True)
+```
+
+### Form Consistency
+
+**Input Sizing**:
+```python
+# All inputs same size
+dmc.Stack([
+    dmc.TextInput(label="Name", size="md"),
+    dmc.TextInput(label="Email", size="md"),
+    dmc.Select(label="Country", data=[], size="md"),
+])
+```
+
+**Label Position**:
+```python
+# Consistent label placement
+dmc.Stack([
+    dmc.TextInput(label="First Name"),  # Top-aligned labels
+    dmc.TextInput(label="Last Name"),
+    dmc.TextInput(label="Email"),
+])
+```
+
+**Validation Feedback**:
+```python
+# Consistent error styling
+dmc.TextInput(
+    label="Email",
+    error="Please enter a valid email",  # Always below input
+    withAsterisk=True,  # Required fields marked consistently
+)
+```
+
+### Navigation Consistency
+
+**Menu Structure**:
+```python
+# Consistent navigation pattern
+def nav_item(label, icon, active=False):
+    return dmc.NavLink(
+        label=label,
+        leftSection=DashIconify(icon=icon, width=20),
+        active=active,
+    )
+
+dmc.Stack([
+    nav_item("Dashboard", "tabler:home", active=True),
+    nav_item("Projects", "tabler:folder"),
+    nav_item("Settings", "tabler:settings"),
+])
+```
+
+### Typography Consistency
+
+**Heading Hierarchy**:
+```python
+# Consistent heading sizes
+dmc.Stack([
+    dmc.Title("H1 Main Title", order=1),        # 2.5rem
+    dmc.Title("H2 Section Title", order=2),     # 2rem
+    dmc.Title("H3 Subsection", order=3),        # 1.75rem
+    dmc.Title("H4 Card Title", order=4),        # 1.5rem
+    dmc.Text("Body text", size="md"),           # 1rem
+])
+```
+
+### Image Consistency
+
+**Container Shapes**:
+```python
+# Consistent image container
+def product_card(name, image_src):
+    return dmc.Card([
+        dmc.AspectRatio(ratio=16/9, children=[  # Consistent ratio
+            dmc.Image(src=image_src, radius="md")
+        ]),
+        dmc.Title(name, order=4, mt="md"),
+    ])
+```
+
+### Card Height Consistency
+
+```python
+# Bad: Varying card heights
+dmc.Grid([
+    dmc.GridCol(dmc.Card("Short content"), span=4),
+    dmc.GridCol(dmc.Card("Much longer content that makes this card taller"), span=4),
+    dmc.GridCol(dmc.Card("Medium content here"), span=4),
+])
+
+# Good: Uniform card heights with aligned CTAs
+dmc.Grid([
+    dmc.GridCol(
+        dmc.Card([
+            dmc.Stack([
+                dmc.Text("Content", flex=1),  # Takes available space
+                dmc.Button("Action", fullWidth=True),  # Aligned at bottom
+            ], justify="space-between", h="100%")
+        ], h=300),  # Fixed height
+        span=4
+    ),
+    # ... more cards with same structure
+])
+```
+
+### Exceptions to Consistency
+
+**When to Break Consistency**:
+- To emphasize critical actions (e.g., delete button in red)
+- For distinct sections of the app
+- When external consistency demands it (e.g., matching OS conventions)
+
+```python
+# Justified exception: Destructive action
+dmc.Modal([
+    dmc.Stack([
+        dmc.Title("Delete Account?"),
+        dmc.Text("This action cannot be undone."),
+        dmc.Group([
+            dmc.Button("Cancel", variant="outline"),
+            dmc.Button("Delete", color="red"),  # Red for danger
+        ])
+    ])
+])
+```
+
+### Implementation Strategy
+
+**Design System**:
+Create reusable components:
+```python
+# components.py
+def primary_button(text, **kwargs):
+    return dmc.Button(text, size="md", **kwargs)
+
+def section_header(text):
+    return dmc.Title(text, order=2, mb="lg")
+```
+
+**Theme Configuration**:
+```python
+theme = {
+    "primaryColor": "blue",
+    "defaultRadius": "md",
+    "fontFamily": "Inter, sans-serif",
+    "spacing": {"xs": 8, "sm": 12, "md": 16, "lg": 24, "xl": 32},
+}
+
+app.layout = dmc.MantineProvider(theme=theme, children=[...])
+```
+
+### Common Mistakes
+
+- Different button styles for same action type
+- Mixing rounded and square corners
+- Inconsistent spacing between similar elements
+- Using different icon families
+- Varying card structures for same content type
+
+================================================================================
+
+## Visual Cues
+
+Visual cues like illustrations, icons, images, and animations help users understand content faster and make interfaces more engaging and memorable.
+
+Category: Core Principles
+
+### Purpose
+
+Visual cues:
+- Speed up comprehension
+- Create emotional connection
+- Guide attention
+- Improve memorability
+- Break up text-heavy content
+
+### Icons
+
+**Use Cases**:
+- Navigation items
+- Actions and buttons
+- Status indicators
+- Feature lists
+- Input fields
+
+```python
+# Icons enhance understanding
+dmc.Stack([
+    dmc.NavLink(
+        label="Dashboard",
+        leftSection=DashIconify(icon="tabler:home", width=20),
+    ),
+    dmc.NavLink(
+        label="Analytics",
+        leftSection=DashIconify(icon="tabler:chart-bar", width=20),
+    ),
+    dmc.NavLink(
+        label="Settings",
+        leftSection=DashIconify(icon="tabler:settings", width=20),
+    ),
+])
+```
+
+**Icon Best Practices**:
+```python
+# Good: Icon + label for clarity
+dmc.Button([
+    DashIconify(icon="tabler:download", width=16, style={"marginRight": "8px"}),
+    "Download"
+])
+
+# Acceptable: Icon only if universally understood
+dmc.ActionIcon(
+    DashIconify(icon="tabler:x", width=16),  # Close icon is universal
+    variant="subtle",
+)
+
+# Better: Icon only with tooltip
+dmc.Tooltip([
+    dmc.ActionIcon(
+        DashIconify(icon="tabler:help", width=16),
+        variant="subtle",
+    ),
+    "Click for help"
+])
+```
+
+### Illustrations
+
+**Empty States**:
+```python
+# Engaging empty state
+dmc.Center([
+    dmc.Stack([
+        dmc.Image(
+            src="/illustrations/empty-inbox.svg",
+            h=200,
+            w="auto",
+        ),
+        dmc.Title("No messages yet", order=3, ta="center"),
+        dmc.Text(
+            "When you receive messages, they'll appear here",
+            c="dimmed",
+            ta="center",
+        ),
+        dmc.Button("Compose Message", variant="light"),
+    ], align="center")
+], h=400)
+```
+
+**Onboarding**:
+```python
+# Step illustrations
+dmc.Stepper([
+    dmc.StepperStep(
+        label="Create account",
+        description="Sign up details",
+        children=[
+            dmc.Image(src="/illustrations/signup.svg", h=150),
+            dmc.Text("Create your account to get started"),
+        ]
+    ),
+    # More steps...
+])
+```
+
+### Avatar Images
+
+**User Identification**:
+```python
+# Bad: Initials only
+dmc.Group([
+    dmc.Avatar("JD", color="blue", radius="xl"),
+    dmc.Text("John Doe"),
+])
+
+# Good: Actual photo + fallback
+dmc.Group([
+    dmc.Avatar(
+        src="user-photo.jpg",  # Photo if available
+        alt="John Doe",
+        radius="xl",
+        children="JD",  # Fallback to initials
+    ),
+    dmc.Text("John Doe"),
+])
+```
+
+**Organization Logos**:
+```python
+# Email inbox with logos
+dmc.Stack([
+    dmc.Group([
+        dmc.Avatar(src="/logos/company.png", radius="sm"),
+        dmc.Stack([
+            dmc.Text("Acme Corp", fw=500),
+            dmc.Text("New message", size="sm", c="dimmed"),
+        ], gap=0),
+    ]),
+])
+```
+
+### Process Steps
+
+**Visual Step Indicators**:
+```python
+# Order process with icons
+dmc.Stepper([
+    dmc.StepperStep(
+        icon=DashIconify(icon="tabler:shopping-cart"),
+        label="Order",
+        description="Place your order",
+    ),
+    dmc.StepperStep(
+        icon=DashIconify(icon="tabler:truck"),
+        label="Shipping",
+        description="On the way",
+    ),
+    dmc.StepperStep(
+        icon=DashIconify(icon="tabler:check"),
+        label="Delivered",
+        description="Order complete",
+    ),
+])
+```
+
+### Status Indicators
+
+**Combine Color + Icon + Text**:
+```python
+# Don't rely on color alone
+dmc.Stack([
+    dmc.Alert(
+        "Operation successful",
+        title="Success",
+        color="green",
+        icon=DashIconify(icon="tabler:check"),
+    ),
+    dmc.Alert(
+        "An error occurred",
+        title="Error",
+        color="red",
+        icon=DashIconify(icon="tabler:alert-circle"),
+    ),
+])
+```
+
+### Loading States
+
+**Skeleton Screens**:
+```python
+# Show structure while loading
+dmc.Stack([
+    dmc.Skeleton(height=30, width="60%"),
+    dmc.Skeleton(height=20, mt="md"),
+    dmc.Skeleton(height=20),
+    dmc.Skeleton(height=20, width="80%"),
+], gap="sm")
+```
+
+**Progress Indicators**:
+```python
+# Show progress visually
+dmc.Stack([
+    dmc.Text("Uploading..."),
+    dmc.Progress(value=65, color="blue", size="lg"),
+    dmc.Text("65% complete", size="sm", c="dimmed"),
+])
+```
+
+### Badges and Tags
+
+**Quick Recognition**:
+```python
+dmc.Group([
+    dmc.Badge("New", color="blue"),
+    dmc.Badge("Sale", color="red"),
+    dmc.Badge("Limited", color="yellow"),
+])
+```
+
+### Animation
+
+**Micro-interactions**:
+```python
+# Hover states, transitions
+dmc.Button(
+    "Hover Me",
+    styles={
+        "root": {
+            "transition": "all 0.2s ease",
+            "&:hover": {
+                "transform": "translateY(-2px)",
+                "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
+            }
+        }
+    }
+)
+```
+
+### When to Use Visual Cues
+
+**Do Use**:
+- Complex processes that benefit from visualization
+- Empty states that need engagement
+- Navigation that needs quick recognition
+- Status that needs immediate clarity
+- Data that's better shown than described
+
+**Don't Overuse**:
+- Don't add icons to every button
+- Don't use illustrations just for decoration
+- Don't animate everything (causes distraction)
+- Don't use inconsistent visual styles
+
+### Common Mistakes
+
+- Icons without labels where meaning is unclear
+- Decorative images that add no value
+- Too many different illustration styles
+- Relying only on color for status
+- Animations that slow down interactions
+
+================================================================================
+
+## Depth and Texture
+
+Depth and texture, created through shadows, gradients, borders, and layering, help establish visual hierarchy, improve usability, and guide user focus.
+
+Category: Core Principles
+
+### Shadows
+
+**Purpose of Shadows**:
+- Create separation between layers
+- Indicate elevation
+- Show interactivity
+- Direct focus
+
+**Shadow Types**:
+```python
+# Flat (no shadow)
+dmc.Card("Content", shadow="")
+
+# Subtle shadow
+dmc.Card("Content", shadow="xs")  # Slight elevation
+
+# Medium shadow  
+dmc.Card("Content", shadow="md")  # Standard elevation
+
+# Strong shadow
+dmc.Card("Content", shadow="xl")  # High elevation
+```
+
+**Use Cases**:
+```python
+# Dropdown menus (need to stand out)
+dmc.Menu([
+    dmc.MenuTarget(dmc.Button("Menu")),
+    dmc.MenuDropdown([
+        dmc.MenuItem("Option 1"),
+        dmc.MenuItem("Option 2"),
+    ], shadow="lg"),  # Strong shadow for separation
+])
+
+# Cards (subtle separation)
+dmc.Card("Content", shadow="sm", withBorder=True)
+
+# Modals (maximum elevation)
+dmc.Modal(
+    title="Dialog",
+    children="Content",
+    shadow="xl",  # Strong shadow for focus
+)
+```
+
+### Soft Shadows
+
+**Avoid Harsh Shadows**:
+```python
+# Bad: Harsh shadow
+style = {
+    "boxShadow": "0 2px 4px #000000"  # Pure black, sharp
+}
+
+# Good: Soft shadow
+style = {
+    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.08)"  # Soft, subtle
+}
+```
+
+**Shadow Best Practices**:
+- Use subtle, diffused shadows
+- Larger blur radius for softer effect
+- Lower opacity for subtlety
+- Match shadow color to background
+
+### Matching Shadow Color to Background
+
+**Pro Technique**:
+```python
+# On white background
+dmc.Card(
+    "Content",
+    style={"boxShadow": "0 4px 12px rgba(0, 0, 0, 0.08)"}
+)
+
+# On colored background (blue)
+dmc.Box([
+    dmc.Card(
+        "Content",
+        style={"boxShadow": "0 4px 12px rgba(100, 150, 200, 0.2)"}  # Blue-tinted shadow
+    )
+], style={"background": "var(--mantine-color-blue-0)"})
+```
+
+### Shadow System
+
+**Define Standard Shadows**:
+```python
+shadows = {
+    "xs": "0 1px 3px rgba(0, 0, 0, 0.05)",
+    "sm": "0 2px 8px rgba(0, 0, 0, 0.08)",
+    "md": "0 4px 12px rgba(0, 0, 0, 0.10)",
+    "lg": "0 8px 24px rgba(0, 0, 0, 0.12)",
+    "xl": "0 16px 48px rgba(0, 0, 0, 0.15)",
+}
+
+# Use in theme
+theme = {"shadows": shadows}
+```
+
+**Usage by Element**:
+- Buttons: `shadow="xs"` or none
+- Cards: `shadow="sm"`
+- Dropdowns: `shadow="md"`
+- Modals: `shadow="lg"`
+- Popovers: `shadow="md"`
+
+### Borders
+
+**Purpose**:
+- Separate sections
+- Define boundaries
+- Add subtle depth
+- Create focus
+
+**Border Styles**:
+```python
+# Subtle border
+dmc.Card("Content", withBorder=True)  # Uses theme border
+
+# Custom border
+dmc.Box(
+    "Content",
+    style={
+        "border": "1px solid var(--mantine-color-gray-3)",
+        "borderRadius": "var(--mantine-radius-md)",
+    }
+)
+```
+
+### Don't Overuse Borders
+
+```python
+# Bad: Borders everywhere
+dmc.Stack([
+    dmc.TextInput(label="Name", style={"border": "1px solid gray"}),
+    dmc.Divider(),
+    dmc.TextInput(label="Email", style={"border": "1px solid gray"}),
+    dmc.Divider(),
+    dmc.TextInput(label="Phone", style={"border": "1px solid gray"}),
+])
+
+# Good: Use whitespace instead
+dmc.Stack([
+    dmc.TextInput(label="Name"),
+    dmc.TextInput(label="Email", mt="md"),
+    dmc.TextInput(label="Phone", mt="md"),
+])
+```
+
+### Thin, Light Borders
+
+**Border Guidelines**:
+```python
+# Bad: Thick, dark border
+style = {"border": "3px solid #000"}
+
+# Good: Thin, light border
+style = {"border": "1px solid var(--mantine-color-gray-3)"}
+```
+
+### Background Depth
+
+**Layering with Background Colors**:
+```python
+# Create depth through background layers
+dmc.Box([
+    dmc.Container([
+        dmc.Card([
+            dmc.Stack([
+                dmc.Title("Content"),
+                dmc.Text("Description"),
+            ])
+        ], p="lg")  # White card
+    ], py="xl")  # Light gray container
+], style={"background": "var(--mantine-color-gray-0)"})  # Lightest background
+```
+
+**Depth Hierarchy**:
+1. Page background (lightest)
+2. Container background (light)
+3. Card background (white/prominent)
+4. Elevated elements (shadow)
+
+### Glassmorphism
+
+**Modern Glass Effect**:
+```python
+# Frosted glass effect
+dmc.Box([
+    dmc.Stack([
+        dmc.Title("Title", c="white"),
+        dmc.Text("Description", c="white"),
+        dmc.Button("Action", variant="white"),
+    ], p="xl")
+], style={
+    "background": "rgba(255, 255, 255, 0.1)",
+    "backdropFilter": "blur(10px)",
+    "border": "1px solid rgba(255, 255, 255, 0.2)",
+    "borderRadius": "var(--mantine-radius-lg)",
+})
+```
+
+**Glassmorphism Guidelines**:
+- Works best over colorful/complex backgrounds
+- Requires sufficient backdrop complexity
+- Ensure text contrast remains accessible
+- Use sparingly (can be distracting)
+- May not work on light/simple backgrounds
+
+### Elevation Levels
+
+**Z-Axis Hierarchy**:
+```python
+# Level 0: Base content
+dmc.Text("Base content")
+
+# Level 1: Cards
+dmc.Card("Content", shadow="sm")
+
+# Level 2: Sticky elements
+dmc.AppShellHeader(shadow="md")
+
+# Level 3: Dropdowns
+dmc.Menu(shadow="lg")
+
+# Level 4: Modals
+dmc.Modal(shadow="xl")
+
+# Level 5: Notifications (highest)
+dmc.Notification(shadow="xl")
+```
+
+### Common Mistakes
+
+- Harsh, black shadows that look unnatural
+- Too many elevation levels creating confusion
+- Overuse of borders creating visual noise
+- Glassmorphism on plain backgrounds (invisible)
+- Inconsistent shadow sizes for similar elements
+
+### Implementation Tips
+
+**In CSS/Styles**:
+```python
+# Use CSS variables for consistency
+style = {
+    "boxShadow": "var(--mantine-shadow-sm)",
+    "border": "1px solid var(--mantine-color-gray-3)",
+    "borderRadius": "var(--mantine-radius-md)",
+}
+```
+
+**Hover States**:
+```python
+# Increase elevation on hover
+dmc.Card(
+    "Content",
+    shadow="sm",
+    styles={
+        "root": {
+            "transition": "box-shadow 0.2s",
+            "&:hover": {
+                "boxShadow": "var(--mantine-shadow-md)",
+                "cursor": "pointer",
+            }
+        }
+    }
+)
+```
+
+================================================================================
+
+## Color
+
+Color is fundamental to user experience. It sets mood, conveys brand personality, establishes hierarchy, and influences user behavior.
+
+Category: Core Principles
+
+### Color Psychology
+
+**Color Meanings** (Western cultures):
+- **Blue**: Trust, professionalism, calm (most common for primary)
+- **Green**: Success, growth, nature, go
+- **Red**: Error, danger, urgency, stop, excitement
+- **Yellow**: Warning, caution, optimism
+- **Orange**: Friendly, affordable, creative
+- **Purple**: Luxury, creativity, wisdom
+- **Black**: Elegance, sophistication, power
+- **White**: Purity, simplicity, cleanliness
+
+### Less is More
+
+**Avoid Color Overload**:
+```python
+# Bad: Too many colors
+dmc.Card([
+    dmc.Image(src="image.jpg", style={"background": "lime"}),
+    dmc.Title("Title", c="blue"),
+    dmc.Text("Price", c="red"),
+    dmc.Button("Action", color="pink"),
+], style={"background": "yellow"})
+
+# Good: Restrained palette
+dmc.Card([
+    dmc.Image(src="image.jpg"),
+    dmc.Title("Title"),
+    dmc.Text("$99", size="xl", fw=700),
+    dmc.Button("Add to Cart", color="blue"),  # Only brand color
+])
+```
+
+**Primary Color Usage**:
+- Use primary color for main actions and links
+- Avoid using it for everything
+- Reserve it for clickable/interactive elements
+- Don't use it for large backgrounds
+
+```python
+# Good: Strategic primary color use
+dmc.Stack([
+    dmc.Title("Heading"),  # Default text color
+    dmc.Text("Description text"),  # Default text color
+    dmc.Button("Primary Action", color="blue"),  # Primary color
+    dmc.Anchor("Learn more", c="blue"),  # Primary color
+])
+```
+
+### Background Colors
+
+**Neutral Backgrounds**:
+```python
+# Good: Neutral background lets content shine
+dmc.Container([
+    dmc.Card("Content"),
+], style={"background": "var(--mantine-color-gray-0)"})  # Light gray
+
+# Also good: Dark background
+dmc.Container([
+    dmc.Card("Content"),
+], style={"background": "var(--mantine-color-dark-7)"})  # Dark gray
+```
+
+**Colored Backgrounds** (use sparingly):
+```python
+# Hero sections can use color
+dmc.Box([
+    dmc.Container([
+        dmc.Title("Welcome", c="white", order=1),
+        dmc.Text("Subtitle", c="white"),
+        dmc.Button("Get Started", color="white", variant="outline"),
+    ])
+], style={
+    "background": "var(--mantine-color-blue-6)",
+    "padding": "4rem 0",
+})
+```
+
+### Don't Rely on Color Alone
+
+**Accessibility Requirement**:
+```python
+# Bad: Color only
+dmc.Badge("Error", color="red")
+
+# Good: Color + icon + text
+dmc.Badge([
+    DashIconify(icon="tabler:alert-circle", width=14),
+    "Error"
+], color="red")
+
+# Better: Multiple indicators
+dmc.Alert(
+    "An error occurred. Please try again.",
+    title="Error",
+    color="red",
+    icon=DashIconify(icon="tabler:alert-circle"),
+)
+```
+
+### Color Conventions
+
+**System States**:
+```python
+# Standard color meanings
+states = {
+    "success": "green",
+    "error": "red",
+    "warning": "yellow",
+    "info": "blue",
+}
+
+# Don't break conventions
+dmc.Alert("Success!", color="green")  # ✓ Expected
+dmc.Alert("Error!", color="green")    # ✗ Confusing
+```
+
+### Color Palettes
+
+**Building a Palette**:
+```python
+# Define in theme
+theme = {
+    "primaryColor": "blue",
+    "colors": {
+        "brand": [
+            "#E6F7FF",  # 0 - Lightest
+            "#BAE7FF",  # 1
+            "#91D5FF",  # 2
+            "#69C0FF",  # 3
+            "#40A9FF",  # 4
+            "#1890FF",  # 5 - Base
+            "#096DD9",  # 6
+            "#0050B3",  # 7
+            "#003A8C",  # 8
+            "#002766",  # 9 - Darkest
+        ]
+    }
+}
+```
+
+### 60-30-10 Rule
+
+**Color Distribution**:
+- **60%**: Dominant color (background, neutral)
+- **30%**: Secondary color (cards, sections)
+- **10%**: Accent color (CTAs, links, highlights)
+
+```python
+# Applied to a page
+dmc.Box([  # 60% - Neutral background
+    dmc.Container([
+        dmc.Card([  # 30% - Secondary (cards)
+            dmc.Title("Content"),
+            dmc.Text("Description"),
+            dmc.Button("Action", color="blue"),  # 10% - Accent
+        ])
+    ])
+], style={"background": "var(--mantine-color-gray-0)"})
+```
+
+### Color Accessibility
+
+**Contrast Requirements**:
+```python
+# Check contrast ratios
+# Normal text: 4.5:1 minimum
+# Large text: 3:1 minimum
+
+# Bad: Insufficient contrast
+dmc.Text("Text", c="gray.3")  # On white: ~2:1
+
+# Good: Sufficient contrast
+dmc.Text("Text", c="gray.9")  # On white: ~11:1
+```
+
+**Test Tools**:
+- Browser DevTools contrast checker
+- Color blindness simulators
+- WCAG compliance checkers
+
+### Dark Mode
+
+**Support Both Schemes**:
+```python
+# Colors that work in both modes
+dmc.Text(
+    "Content",
+    c="gray.9",  # Dark in light mode, light in dark mode (auto-adjusts)
+)
+
+# Custom dark mode colors in CSS
+```css
+.custom-element {
+  color: var(--mantine-color-gray-9);
+  background: var(--mantine-color-gray-0);
+}
+
+[data-mantine-color-scheme="dark"] .custom-element {
+  color: var(--mantine-color-gray-2);
+  background: var(--mantine-color-dark-6);
+}
+```
+```
+
+### Color Temperature
+
+**Warm vs Cool**:
+```python
+# Warm colors (energetic, friendly)
+warm_palette = ["red", "orange", "yellow"]
+
+# Cool colors (calm, professional)
+cool_palette = ["blue", "cyan", "teal"]
+
+# Neutral (versatile, clean)
+neutral_palette = ["gray"]
+```
+
+### Semantic Color Usage
+
+```python
+# Define semantic colors
+semantic_colors = {
+    "primary": "blue",      # Main actions
+    "success": "green",     # Positive outcomes
+    "danger": "red",        # Destructive actions
+    "warning": "yellow",    # Caution
+    "info": "cyan",         # Informational
+    "secondary": "gray",    # Secondary actions
+}
+
+# Use consistently
+dmc.Button("Save", color="blue")      # Primary
+dmc.Button("Delete", color="red")     # Danger
+dmc.Button("Cancel", color="gray")    # Secondary
+```
+
+### Common Mistakes
+
+- Using too many different colors
+- Low contrast text
+- Breaking color conventions (red for success)
+- Relying only on color for information
+- Not testing in dark mode
+- Using vibrant colors for large areas
+
+================================================================================
+
+## Typography
+
+Typography is the backbone of good design. The way text is presented affects readability, hierarchy, and the overall user experience.
+
+Category: Core Principles
+
+### Font Selection
+
+**Choose Appropriate Fonts**:
+```python
+# Formal/Professional (Finance, Law)
+fonts = {"fontFamily": "Georgia, serif"}
+
+# Modern/Tech
+fonts = {"fontFamily": "Inter, sans-serif"}
+
+# Friendly/Lifestyle
+fonts = {"fontFamily": "Montserrat, sans-serif"}
+
+# Define in theme
+theme = {
+    "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "headings": {"fontFamily": "Poppins, sans-serif"}
+}
+```
+
+**Recommended Sans-Serif Fonts**:
+- Inter
+- Roboto
+- Open Sans
+- Lato
+- Manrope
+- Source Sans Pro
+- Work Sans
+
+### Use Maximum 2 Fonts
+
+```python
+# Bad: Too many fonts
+style1 = {"fontFamily": "Arial"}
+style2 = {"fontFamily": "Times New Roman"}
+style3 = {"fontFamily": "Courier"}
+style4 = {"fontFamily": "Comic Sans"}
+
+# Good: One versatile font with weights
+theme = {
+    "fontFamily": "Inter, sans-serif"
+}
+
+# Hierarchy through weight and size
+dmc.Title("Heading", order=1, fw=700)
+dmc.Title("Subheading", order=3, fw=500)
+dmc.Text("Body text", fw=400)
+```
+
+**Font Pairing** (if using two fonts):
+```python
+# Serif heading + Sans-serif body
+theme = {
+    "fontFamily": "Open Sans, sans-serif",
+    "headings": {"fontFamily": "Playfair Display, serif"}
+}
+```
+
+### Font Size
+
+**Standard Sizes**:
+```python
+# Define size scale
+sizes = {
+    "xs": 12,   # Captions, fine print
+    "sm": 14,   # Secondary text
+    "md": 16,   # Body text (default)
+    "lg": 18,   # Emphasized body
+    "xl": 20,   # Small headings
+}
+
+# Minimum size: 12px for body text
+# Never go below 12px for readability
+```
+
+**Hierarchy**:
+```python
+# Clear size progression
+dmc.Stack([
+    dmc.Title("H1 Main Title", order=1, size="2.5rem"),   # 40px
+    dmc.Title("H2 Section", order=2, size="2rem"),        # 32px
+    dmc.Title("H3 Subsection", order=3, size="1.5rem"),   # 24px
+    dmc.Text("Body text", size="1rem"),                   # 16px
+    dmc.Text("Caption", size="0.875rem", c="dimmed"),     # 14px
+])
+```
+
+### Font Weight
+
+**Weight Hierarchy**:
+```python
+# Use weight for emphasis
+dmc.Stack([
+    dmc.Title("Bold Heading", fw=700),        # Bold
+    dmc.Text("Emphasized text", fw=600),      # Semibold
+    dmc.Text("Normal text", fw=400),          # Regular
+    dmc.Text("De-emphasized", fw=300),        # Light
+])
+```
+
+**Best Practices**:
+- Headings: 600-700 (semibold to bold)
+- Body: 400 (regular)
+- Captions: 400-500 (regular to medium)
+- Avoid very thin weights (< 300) for body text
+
+### Line Height
+
+**Optimal Line Heights**:
+```python
+# Body text: 1.5-1.6
+dmc.Text(
+    "Paragraph text...",
+    style={"lineHeight": 1.6}
+)
+
+# Headings: 1.2-1.3
+dmc.Title(
+    "Heading Text",
+    order=2,
+    style={"lineHeight": 1.2}
+)
+
+# UI elements: 1.0-1.2
+dmc.Button("Button", style={"lineHeight": 1.0})
+```
+
+### Line Length
+
+**Optimal Reading Width**:
+```python
+# Desktop: 45-75 characters per line
+dmc.Container([
+    dmc.Text("Content..."),
+], size="sm")  # ~600px max-width
+
+# Mobile: 30-40 characters per line
+dmc.Container([
+    dmc.Text("Content..."),
+], size="xs")  # ~400px max-width
+```
+
+### Paragraph Breaks
+
+```python
+# Bad: Long wall of text
+dmc.Text("Very long paragraph with many sentences that goes on and on without any breaks making it hard to read and overwhelming for users...")
+
+# Good: Broken into chunks
+dmc.Stack([
+    dmc.Text("First thought expressed in 2-3 sentences. This makes it easier to read."),
+    dmc.Text("Second thought in another short paragraph. Readers can scan and digest better."),
+], gap="md")
+```
+
+### Subheadings
+
+```python
+# Add subheadings for scannability
+dmc.Stack([
+    dmc.Title("Main Heading", order=2),
+    dmc.Text("Introduction paragraph..."),
+    
+    dmc.Title("First Section", order=4, mt="xl"),
+    dmc.Text("Content about first section..."),
+    
+    dmc.Title("Second Section", order=4, mt="xl"),
+    dmc.Text("Content about second section..."),
+])
+```
+
+### Color and Contrast
+
+**Typography Colors**:
+```python
+# Headings: darker
+dmc.Title("Heading", c="gray.9")
+
+# Body: medium
+dmc.Text("Body text", c="gray.7")
+
+# Secondary text: lighter
+dmc.Text("Caption", c="dimmed")  # or c="gray.5"
+```
+
+**Avoid Pure Black on White**:
+```python
+# Bad: Harsh contrast
+style = {"color": "#000000"}  # Pure black
+
+# Good: Softer contrast
+style = {"color": "#1A1A1A"}  # Near-black (gray.9)
+
+# Also good: Use theme colors
+dmc.Text("Content", c="gray.9")
+```
+
+### Text Alignment
+
+**Left-Align for Readability**:
+```python
+# Good: Left-aligned paragraphs
+dmc.Text("Longer paragraph text...", ta="left")
+
+# Good: Center for short content
+dmc.Stack([
+    dmc.Title("Welcome", order=1, ta="center"),
+    dmc.Text("Short tagline", ta="center"),
+], align="center")
+
+# Avoid: Center-aligned paragraphs
+# (Hard to read for long content)
+```
+
+### Typography Best Practices
+
+**Do**:
+```python
+# ✓ Use sufficient contrast (4.5:1+)
+dmc.Text("Text", c="gray.9")  # On white
+
+# ✓ Use readable font sizes (16px+ for body)
+dmc.Text("Body text", size="md")
+
+# ✓ Use appropriate line height (1.5+ for body)
+dmc.Text("Paragraph", style={"lineHeight": 1.6})
+
+# ✓ Use sans-serif for body text
+theme = {"fontFamily": "Inter, sans-serif"}
+
+# ✓ Left-align paragraphs
+dmc.Text("Content", ta="left")
+```
+
+**Don't**:
+```python
+# ✗ Pure black on white
+style = {"color": "#000"}
+
+# ✗ Same weight for headings and body
+dmc.Title("Heading", fw=400)  # Too light
+
+# ✗ Bigger line-height for headings than body
+dmc.Title("Heading", style={"lineHeight": 2.0})  # Too much
+
+# ✗ Font sizes below 12px for body
+dmc.Text("Body", size=10)  # Too small
+
+# ✗ Extra thin weights for body
+dmc.Text("Body", fw=100)  # Unreadable
+
+# ✗ More than 2 fonts
+# (Creates visual chaos)
+
+# ✗ Style over readability
+# (Always prioritize legibility)
+```
+
+### Responsive Typography
+
+```python
+# Adjust sizes for mobile
+dmc.Title(
+    "Heading",
+    order=1,
+    style={
+        "fontSize": "2rem",  # Desktop
+        "@media (max-width: 768px)": {
+            "fontSize": "1.5rem"  # Mobile
+        }
+    }
+)
+```
+
+### Special Characters
+
+```python
+# Use proper characters
+dmc.Text("Price: $99.99")  # ✓
+dmc.Text("50% off")  # ✓
+dmc.Text('Say "hello"')  # ✓ Proper quotes
+
+# Avoid
+dmc.Text("Price: $99.99")  # ✗ Straight quotes
+dmc.Text("50 percent off")  # ✗ Write out when symbol works
+```
+
+================================================================================
+
+## Interaction Cost
+
+Interaction cost is the sum of mental, physical, and time effort users must invest to achieve their goals. Good design minimizes this cost.
+
+Category: Core Principles
+
+### Components of Interaction Cost
+
+1. **Cognitive Effort**: Mental processing required
+2. **Physical Effort**: Clicks, taps, scrolling, typing
+3. **Time Effort**: Duration to complete tasks
+
+### Minimizing Cognitive Effort
+
+**Hick's Law** (More choices = slower decisions):
+```python
+# Bad: Too many choices
+dmc.Group([
+    dmc.Button("Option 1"),
+    dmc.Button("Option 2"),
+    dmc.Button("Option 3"),
+    dmc.Button("Option 4"),
+    dmc.Button("Option 5"),
+    dmc.Button("Option 6"),
+])
+
+# Good: Fewer, clearer choices
+dmc.Group([
+    dmc.Button("Start Project", color="blue"),
+    dmc.Menu([
+        dmc.MenuItem("Advanced Options..."),
+    ])
+])
+
+# Better: Recommended choice
+dmc.Stack([
+    dmc.Button("Recommended: Start Free Trial", variant="filled"),
+    dmc.Button("Purchase Now", variant="outline"),
+], gap="sm")
+```
+
+**Miller's Law** (Working memory limited to ~7 items):
+```python
+# Bad: Long, unorganized list
+dmc.List([
+    dmc.ListItem("Item 1"),
+    dmc.ListItem("Item 2"),
+    # ... 15 more items
+])
+
+# Good: Chunked into categories
+dmc.Accordion([
+    dmc.AccordionItem([
+        dmc.AccordionControl("Category 1"),
+        dmc.AccordionPanel([
+            dmc.List([
+                dmc.ListItem("Item 1"),
+                dmc.ListItem("Item 2"),
+            ])
+        ])
+    ]),
+    dmc.AccordionItem([
+        dmc.AccordionControl("Category 2"),
+        # ... more items
+    ]),
+])
+```
+
+**Recognition Over Recall**:
+```python
+# Bad: Require remembering
+dmc.TextInput(label="Enter your user ID")
+
+# Good: Show and let select
+dmc.Select(
+    label="Select your account",
+    data=[
+        {"label": "john@example.com (Personal)", "value": "123"},
+        {"label": "john@work.com (Work)", "value": "456"},
+    ]
+)
+```
+
+### Minimizing Physical Effort
+
+**Fitts's Law** (Closer targets are easier to hit):
+```python
+# Bad: Action far from content
+dmc.Stack([
+    dmc.Card([
+        dmc.Title("Product"),
+        dmc.Text("Description"),
+    ]),
+    dmc.Button("Add to Cart", mt="xl"),  # Far away
+])
+
+# Good: Action near related content
+dmc.Card([
+    dmc.Stack([
+        dmc.Title("Product"),
+        dmc.Text("Description"),
+        dmc.Button("Add to Cart", fullWidth=True),  # Adjacent
+    ])
+])
+```
+
+**Reduce Clicks**:
+```python
+# Bad: Multi-step process for simple action
+# Click "Edit" → Click field → Type → Click "Save"
+
+# Good: Inline editing
+dmc.TextInput(
+    value="Current value",
+    # Edit directly without extra clicks
+)
+```
+
+**Keyboard Shortcuts**:
+```python
+# Add keyboard shortcuts for common actions
+dmc.Button(
+    "Save (Ctrl+S)",
+    id="save-btn"
+)
+
+# Implement with clientside callback
+```
+
+### Minimizing Time Effort
+
+**Auto-fill and Defaults**:
+```python
+# Pre-fill known information
+dmc.TextInput(
+    label="Email",
+    value="john@example.com",  # Pre-filled
+)
+
+# Smart defaults
+dmc.Select(
+    label="Country",
+    value="US",  # Default to user's location
+    data=countries,
+)
+```
+
+**Progressive Disclosure**:
+```python
+# Show advanced options only when needed
+dmc.Stack([
+    dmc.TextInput(label="Name"),
+    dmc.NumberInput(label="Age"),
+    dmc.Collapse(
+        dmc.Stack([
+            dmc.TextInput(label="Middle Name"),
+            dmc.TextInput(label="Suffix"),
+        ]),
+        in_=show_advanced  # Collapse advanced fields
+    ),
+    dmc.Button("Show Advanced", variant="subtle"),
+])
+```
+
+**Eliminate Repetition**:
+```python
+# Bad: Repeat same info for each item
+dmc.Stack([
+    dmc.TextInput(label="Item 1 Name"),
+    dmc.NumberInput(label="Item 1 Quantity"),
+    dmc.TextInput(label="Item 2 Name"),
+    dmc.NumberInput(label="Item 2 Quantity"),
+])
+
+# Good: Batch operations
+dmc.Stack([
+    dmc.Group([
+        dmc.Button("Apply to All", variant="light"),
+        dmc.NumberInput(label="Quantity"),
+    ]),
+    # ... items list
+])
+```
+
+### Streamlined Forms
+
+**Combine Fields**:
+```python
+# Bad: Separate fields for related data
+dmc.Grid([
+    dmc.GridCol(dmc.TextInput(label="Street"), span=12),
+    dmc.GridCol(dmc.TextInput(label="City"), span=6),
+    dmc.GridCol(dmc.TextInput(label="State"), span=3),
+    dmc.GridCol(dmc.TextInput(label="ZIP"), span=3),
+])
+
+# Better: Address autocomplete
+dmc.TextInput(
+    label="Address",
+    placeholder="Start typing address...",
+    # Use address autocomplete API
+)
+```
+
+**Remove Unnecessary Fields**:
+```python
+# Bad: Ask for everything
+dmc.Stack([
+    dmc.TextInput(label="First Name"),
+    dmc.TextInput(label="Middle Name"),
+    dmc.TextInput(label="Last Name"),
+    dmc.TextInput(label="Suffix"),
+    dmc.TextInput(label="Preferred Name"),
+])
+
+# Good: Ask for essentials only
+dmc.Stack([
+    dmc.TextInput(label="Full Name"),
+    dmc.TextInput(label="Email"),
+])
+```
+
+### Avoid Distractions
+
+**During Critical Tasks**:
+```python
+# Bad: Distractions during checkout
+dmc.Stack([
+    dmc.Title("Checkout"),
+    dmc.Alert("Special offer! 20% off another product!"),  # Distraction
+    dmc.Card([...]),  # Payment form
+    dmc.Image(src="ad-banner.jpg"),  # Distraction
+])
+
+# Good: Focused checkout
+dmc.Stack([
+    dmc.Title("Checkout"),
+    dmc.Card([...]),  # Payment form only
+    dmc.Text("Secure checkout", size="sm", c="dimmed"),
+])
+```
+
+**Reduce Modal Interruptions**:
+```python
+# Bad: Intrusive popup
+dmc.Modal(
+    opened=True,  # Auto-opens
+    children="Sign up for newsletter!"  # Interrupts task
+)
+
+# Good: Non-intrusive notification
+dmc.Notification(
+    title="Save progress?",
+    message="Auto-save is enabled",
+    action="showNotification",
+)
+```
+
+### Feedback and Confirmation
+
+**Immediate Feedback**:
+```python
+# Show action results immediately
+@callback(
+    Output("notification", "children"),
+    Input("save-btn", "n_clicks")
+)
+def save_data(n):
+    # Save data
+    return dmc.Notification(
+        title="Saved",
+        message="Changes saved successfully",
+        color="green",
+    )
+```
+
+**Smart Confirmations**:
+```python
+# Confirm only for destructive actions
+dmc.Modal([
+    dmc.Title("Delete Account?"),
+    dmc.Text("This action cannot be undone."),
+    dmc.Group([
+        dmc.Button("Cancel", variant="outline"),
+        dmc.Button("Delete", color="red"),
+    ])
+])
+
+# Don't confirm for safe actions (saving, etc.)
+```
+
+### Mobile Optimization
+
+**Touch-Friendly Targets**:
+```python
+# Minimum 44x44px touch targets
+dmc.Button("Action", size="lg", h=44)
+
+# Adequate spacing between buttons
+dmc.Group([
+    dmc.Button("Cancel"),
+    dmc.Button("Save"),
+], gap="lg")  # At least 8px between
+```
+
+**Thumb Zone**:
+```python
+# Place primary actions in easy-to-reach areas
+dmc.AppShell([
+    dmc.AppShellMain([...]),
+    dmc.AppShellFooter([  # Bottom = easy to reach
+        dmc.Button("Primary Action", fullWidth=True, size="lg"),
+    ])
+])
+```
+
+### Common High-Cost Interactions
+
+**Avoid**:
+- Multi-page forms (use single page with sections)
+- Asking for same info twice (address, billing, etc.)
+- CAPTCHAs (use invisible alternatives)
+- Required account creation (allow guest checkout)
+- Too many form fields
+- Requiring password on every login (use "remember me")
+
+### Best Practices
+
+1. **Reduce steps**: Combine or eliminate unnecessary steps
+2. **Smart defaults**: Pre-fill whenever possible
+3. **Inline validation**: Show errors immediately
+4. **Save progress**: Auto-save or persist data
+5. **Skip steps**: Allow skipping optional sections
+6. **Learn from users**: Track where users get stuck
+
+================================================================================
+
+## Best Practices Summary
+
+Quick reference for implementing excellent UI/UX in web applications.
+
+Category: Reference
+
+### Visual Hierarchy Checklist
+
+- [ ] Primary actions are most prominent
+- [ ] Headings clearly larger than body text
+- [ ] Important info uses darker/bolder text
+- [ ] Secondary info uses lighter/smaller text
+- [ ] One clear primary action per screen
+
+### Spacing Checklist
+
+- [ ] Using systematic spacing (4px/8px base)
+- [ ] Related items are close together
+- [ ] Unrelated items have more space
+- [ ] Form labels closer to their inputs
+- [ ] Generous whitespace around content
+- [ ] Consistent spacing patterns
+
+### Layout Checklist
+
+- [ ] Mobile-first responsive design
+- [ ] Important content above the fold
+- [ ] Clear visual flow (F or Z pattern)
+- [ ] Proper use of grids/columns
+- [ ] Content prioritized by importance
+
+### Color Checklist
+
+- [ ] Primary color used sparingly
+- [ ] Text contrast meets WCAG standards (4.5:1)
+- [ ] Not relying on color alone
+- [ ] Following color conventions (red=error, green=success)
+- [ ] Dark mode support if applicable
+- [ ] Color palette limited to 3-4 colors
+
+### Typography Checklist
+
+- [ ] Maximum 2 font families
+- [ ] Body text 16px or larger
+- [ ] Line height 1.5-1.6 for paragraphs
+- [ ] Left-aligned for long text
+- [ ] Clear heading hierarchy
+- [ ] Sufficient contrast
+- [ ] Proper line length (45-75 characters)
+
+### Consistency Checklist
+
+- [ ] Same button styles for same actions
+- [ ] Consistent icon family/style
+- [ ] Consistent spacing throughout
+- [ ] Consistent corner radius
+- [ ] Same form field sizes
+- [ ] Predictable navigation
+
+### Interaction Cost Checklist
+
+- [ ] Minimal required form fields
+- [ ] Smart defaults and pre-filled data
+- [ ] Inline validation
+- [ ] Auto-save when possible
+- [ ] Keyboard shortcuts for power users
+- [ ] No unnecessary confirmations
+- [ ] Touch-friendly on mobile (44px targets)
+
+### Accessibility Checklist
+
+- [ ] Color contrast sufficient
+- [ ] Not relying on color alone
+- [ ] Keyboard navigation works
+- [ ] Focus indicators visible
+- [ ] Alt text for images
+- [ ] Form labels properly associated
+- [ ] Error messages clear and actionable
+
+### Performance Checklist
+
+- [ ] Images optimized
+- [ ] Lazy loading for images
+- [ ] Minimal animation delays
+- [ ] Fast load times
+- [ ] Responsive on mobile devices
+
+### Content Checklist
+
+- [ ] Clear, concise copy
+- [ ] Active voice
+- [ ] Scannable (short paragraphs)
+- [ ] Helpful subheadings
+- [ ] No jargon (or explained)
+- [ ] Proper grammar and spelling
+
+================================================================================
+
+## Anti-Patterns to Avoid
+
+Common design mistakes that harm user experience.
+
+Category: Reference
+
+### Visual Hierarchy Anti-Patterns
+
+**Over-emphasizing Everything**
+- Making all text bold or large
+- Using many different colors
+- Multiple large CTAs competing
+
+**Under-emphasizing Important Actions**
+- Primary action styled like secondary
+- CTA same size as body text
+- Important info in light gray
+
+### Layout Anti-Patterns
+
+**Information Overload**
+- Too many options visible at once
+- Cluttered dashboard with everything
+- No clear starting point
+
+**Poor Mobile Experience**
+- Tiny touch targets (< 44px)
+- Horizontal scrolling required
+- Text too small to read
+
+### Color Anti-Patterns
+
+**Poor Contrast**
+- Light gray text on white
+- Low contrast CTA buttons
+- Unreadable text over images
+
+**Breaking Conventions**
+- Red for success, green for errors
+- Purple for warnings
+- Inconsistent color meanings
+
+### Typography Anti-Patterns
+
+**Readability Issues**
+- Font size below 12px
+- Center-aligned paragraphs
+- All caps body text
+- Insufficient line height
+
+**Too Many Fonts**
+- 3+ different font families
+- Mixing conflicting styles
+- Decorative fonts for body text
+
+### Interaction Anti-Patterns
+
+**High Friction**
+- Requiring account for simple actions
+- No auto-save/progress saving
+- Asking for same info multiple times
+- CAPTCHA for every action
+
+**Poor Feedback**
+- No loading indicators
+- Silent failures
+- Unclear error messages
+- No success confirmation
+
+### Form Anti-Patterns
+
+**Unnecessary Fields**
+- Asking for too much information
+- Required fields that aren't necessary
+- Splitting name into 5 fields
+
+**Poor Validation**
+- Only validating on submit
+- Unclear error messages
+- No indication of required fields
+- Confusing password requirements
+
+### Consistency Anti-Patterns
+
+**Visual Inconsistency**
+- Different button styles everywhere
+- Mixed icon styles
+- Random spacing values
+- Varying border radius
+
+**Behavioral Inconsistency**
+- Same action does different things
+- Different workflows for similar tasks
+- Inconsistent navigation patterns
+
+================================================================================
+
+## Implementation Guide
+
+Practical guidance for implementing UI/UX principles with Dash Mantine Components.
+
+Category: Reference
+
+### Setting Up Design System
+
+**1. Define Theme**
+```python
+from dash import Dash
+import dash_mantine_components as dmc
+
+theme = {
+    "primaryColor": "blue",
+    "fontFamily": "Inter, -apple-system, sans-serif",
+    "defaultRadius": "md",
+    "spacing": {
+        "xs": 8,
+        "sm": 12,
+        "md": 16,
+        "lg": 24,
+        "xl": 32,
+    },
+    "colors": {
+        "brand": [
+            "#E6F7FF", "#BAE7FF", "#91D5FF", "#69C0FF", "#40A9FF",
+            "#1890FF", "#096DD9", "#0050B3", "#003A8C", "#002766"
+        ]
+    }
+}
+
+app = Dash(__name__)
+app.layout = dmc.MantineProvider(
+    theme=theme,
+    children=[
+        # Your app content
+    ]
+)
+```
+
+**2. Create Reusable Components**
+```python
+# components.py
+def primary_button(text, **kwargs):
+    return dmc.Button(text, color="blue", size="md", **kwargs)
+
+def secondary_button(text, **kwargs):
+    return dmc.Button(text, variant="outline", size="md", **kwargs)
+
+def page_header(title, description=None):
+    return dmc.Stack([
+        dmc.Title(title, order=1),
+        dmc.Text(description, c="dimmed") if description else None,
+    ], gap="sm")
+
+def info_card(title, value, icon):
+    return dmc.Card([
+        dmc.Group([
+            DashIconify(icon=icon, width=24, color="blue"),
+            dmc.Title(title, order=4),
+        ]),
+        dmc.Text(value, size="xl", fw=700, mt="md"),
+    ], p="lg", withBorder=True, shadow="sm")
+```
+
+**3. Consistent Layouts**
+```python
+# layouts.py
+def centered_layout(content):
+    return dmc.Container(
+        dmc.Center(content, h="100vh"),
+        size="sm"
+    )
+
+def dashboard_layout(content):
+    return dmc.AppShell([
+        dmc.AppShellHeader([
+            # Header content
+        ]),
+        dmc.AppShellMain([
+            dmc.Container(content, size="xl", py="xl")
+        ])
+    ])
+```
+
+### Responsive Design Patterns
+
+```python
+# Responsive Grid
+dmc.Grid([
+    dmc.GridCol([
+        # Content
+    ], span={"base": 12, "sm": 6, "lg": 4}),
+])
+
+# Responsive Spacing
+dmc.Container([
+    # Content
+], px={"base": "md", "sm": "lg", "lg": "xl"})
+
+# Hide/Show at Breakpoints
+dmc.Box([
+    # Desktop only content
+], visibleFrom="md")
+
+dmc.Box([
+    # Mobile only content
+], hiddenFrom="md")
+```
+
+### Form Patterns
+
+```python
+def form_section(title, fields):
+    return dmc.Stack([
+        dmc.Title(title, order=3),
+        dmc.Divider(),
+        *fields
+    ], gap="md")
+
+# Usage
+form_section("Personal Information", [
+    dmc.TextInput(label="Full Name"),
+    dmc.TextInput(label="Email"),
+])
+```
+
+### Loading States
+
+```python
+# Skeleton Loading
+dmc.Stack([
+    dmc.Skeleton(height=40, mb="md"),
+    dmc.Skeleton(height=20),
+    dmc.Skeleton(height=20),
+    dmc.Skeleton(height=20, width="70%"),
+])
+
+# Button Loading
+dmc.Button(
+    "Save",
+    loading=is_loading,
+    loaderProps={"type": "dots"}
+)
+```
+
+### Error Handling
+
+```python
+# Form Validation
+dmc.TextInput(
+    label="Email",
+    error="Please enter a valid email address",
+    withAsterisk=True
+)
+
+# Error Alerts
+dmc.Alert(
+    "An error occurred while saving your changes. Please try again.",
+    title="Error",
+    color="red",
+    icon=DashIconify(icon="tabler:alert-circle"),
+)
+```
+
+### Success Feedback
+
+```python
+# Success Notification
+dmc.Notification(
+    title="Success",
+    message="Your changes have been saved",
+    color="green",
+    action="showNotification",
+)
+
+# Inline Success
+dmc.Alert(
+    "Form submitted successfully!",
+    color="green",
+    icon=DashIconify(icon="tabler:check"),
+)
+```
+
+### Empty States
+
+```python
+dmc.Center([
+    dmc.Stack([
+        dmc.Image(src="/illustrations/empty.svg", h=200),
+        dmc.Title("No items yet", order=3, ta="center"),
+        dmc.Text(
+            "Create your first item to get started",
+            c="dimmed",
+            ta="center"
+        ),
+        dmc.Button("Create Item", variant="light"),
+    ], align="center")
+], h=400)
+```
+
+### Modal Patterns
+
+```python
+dmc.Modal(
+    id="confirm-modal",
+    title="Confirm Action",
+    children=[
+        dmc.Stack([
+            dmc.Text("Are you sure you want to proceed?"),
+            dmc.Group([
+                dmc.Button("Cancel", variant="outline"),
+                dmc.Button("Confirm", color="blue"),
+            ], justify="flex-end")
+        ])
+    ]
+)
+```
+
+================================================================================
+
+## Resources and Tools
+
+Tools and resources for implementing excellent UI/UX design.
+
+Category: Reference
+
+### Design Tools
+
+**UI Design**
+- Figma - Industry-standard design tool
+- Adobe XD - Adobe's UI design tool
+- Sketch - macOS UI design tool
+
+**Prototyping**
+- Figma - Built-in prototyping
+- ProtoPie - Advanced interactions
+- Principle - Animation tool
+
+**Color Tools**
+- Coolors.co - Color palette generator
+- Adobe Color - Color wheel and schemes
+- Mantine Colors Generator - Generate color scales
+- Contrast Checker - WCAG compliance testing
+
+**Typography**
+- Google Fonts - Free font library
+- Font Pair - Font pairing suggestions
+- Typewolf - Typography inspiration
+
+**Icons**
+- Iconify - Unified icon framework
+- Tabler Icons - Beautiful icon set
+- Font Awesome - Popular icon library
+- Heroicons - Clean UI icons
+
+### Accessibility Tools
+
+**Testing**
+- WAVE - Web accessibility evaluation
+- axe DevTools - Accessibility testing
+- Lighthouse - Chrome audit tool
+- Color Contrast Analyzer
+
+**Guidelines**
+- WCAG 2.1 - Web Content Accessibility Guidelines
+- A11Y Project - Accessibility best practices
+
+### Component Libraries
+
+**For Dash**
+- Dash Mantine Components - Modern component library
+- Dash Bootstrap Components - Bootstrap for Dash
+- Dash AG Grid - Advanced data grid
+
+### Learning Resources
+
+**Books**
+- "Don't Make Me Think" - Steve Krug
+- "The Design of Everyday Things" - Don Norman
+- "Refactoring UI" - Adam Wathan & Steve Schoger
+
+**Websites**
+- Nielsen Norman Group - UX research and articles
+- Smashing Magazine - Web design articles
+- CSS-Tricks - Frontend development tips
+- Laws of UX - Design principles
+
+**Communities**
+- Designer Hangout - Slack community
+- r/userexperience - Reddit community  
+- UX Stack Exchange - Q&A platform
+
+### Inspiration
+
+**Design Galleries**
+- Dribbble - Design showcase
+- Behance - Creative portfolios
+- Awwwards - Award-winning sites
+- Mobbin - Mobile design patterns
+
+**Component Examples**
+- Component Gallery - UI component examples
+- Collect UI - Daily design inspiration
+
+### Development Tools
+
+**CSS Frameworks**
+- Tailwind CSS - Utility-first CSS
+- Mantine - React component library (DMC is based on this)
+
+**Testing**
+- Jest - JavaScript testing
+- Dash Testing - Dash app testing
+- Percy - Visual testing
+
+**Performance**
+- Lighthouse - Performance auditing
+- WebPageTest - Performance testing
+- Chrome DevTools - Built-in profiling
+
+### Documentation
+
+**DMC Resources**
+- DMC Documentation - Official docs
+- DMC GitHub - Source code and examples
+- DMC Discord - Community support
+- Mantine Documentation - Upstream library docs
+
+================================================================================
+
+## Conclusion
+
+Creating exceptional user experiences requires attention to detail and consistent application of design principles. By following the guidelines in this document, you can create web applications that are:
+
+- **Beautiful**: Aesthetically pleasing with proper use of color, typography, and spacing
+- **Usable**: Easy to navigate with clear hierarchy and intuitive interactions
+- **Accessible**: Usable by everyone regardless of abilities
+- **Efficient**: Minimizing interaction cost and respecting user time
+- **Consistent**: Predictable patterns throughout the application
+- **Professional**: Polished and trustworthy appearance
+
+### Key Takeaways
+
+1. **Visual Hierarchy**: Guide users' attention with size, color, and positioning
+2. **Proximity**: Group related elements and separate unrelated ones
+3. **Clarity**: Balance simplicity with completeness
+4. **Alignment**: Create order through consistent alignment
+5. **Contrast**: Ensure readability and accessibility
+6. **Simplicity**: Remove unnecessary complexity
+7. **Whitespace**: Give content room to breathe
+8. **Layout**: Create logical flow and structure
+9. **Balance**: Harmonize all elements
+10. **Consistency**: Maintain predictable patterns
+11. **Visual Cues**: Use icons and images to enhance understanding
+12. **Depth**: Use shadows and layers appropriately
+13. **Color**: Use color strategically and accessibly
+14. **Typography**: Ensure readability and hierarchy
+15. **Interaction Cost**: Minimize effort required from users
+
+### Remember
+
+- Start with user needs, not visual preferences
+- Test with real users whenever possible
+- Iterate based on feedback
+- Stay consistent throughout your application
+- Prioritize accessibility from the start
+- Keep learning and improving
+
+Good design is invisible - users shouldn't notice your design decisions, they should simply enjoy using your application. When done well, UI/UX design creates experiences that feel effortless, intuitive, and delightful.
+
+================================================================================

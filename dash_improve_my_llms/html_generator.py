@@ -1,12 +1,96 @@
 """
-HTML generation for bot-friendly static content.
+Static HTML generation for crawlers that don't run JavaScript.
 
-This module generates static HTML pages that AI agents and crawlers can read,
-even when they cannot execute JavaScript.
+In 2.0 this module is intentionally small: meta tags, OpenGraph,
+Schema.org JSON-LD, navigation, and the LLMS_DOC prose rendered as
+plain HTML so search engines see the same content a human would.
+
+No component-tree rendering — that surface moved to Dash 4.3 MCP.
 """
 
+from __future__ import annotations
+
+import html as _stdlib_html
 import json
+import re
 from typing import Dict, List, Optional
+
+
+def _render_markdown_minimal(text: str) -> str:
+    """
+    Render a small subset of Markdown to HTML — enough for LLMS_DOC.
+
+    Handles: # H1, ## H2, ### H3, paragraphs (blank-line separated),
+    `- bullet` lists, `> blockquote`, and inline `code`. Anything else
+    is left as escaped text inside paragraph tags.
+
+    This is NOT a full Markdown parser; it's a deliberate just-enough
+    converter so we don't pull in a dependency for the crawler path.
+    """
+    if not text:
+        return ""
+
+    lines = text.strip().splitlines()
+    out: List[str] = []
+    paragraph: List[str] = []
+    in_list = False
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            joined = " ".join(p.strip() for p in paragraph if p.strip())
+            if joined:
+                out.append(f"<p>{_inline(joined)}</p>")
+            paragraph.clear()
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            out.append("</ul>")
+            in_list = False
+
+    def _inline(s: str) -> str:
+        s = _stdlib_html.escape(s)
+        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+        s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+        return s
+
+    for raw in lines:
+        line = raw.rstrip()
+        if not line:
+            flush_paragraph()
+            close_list()
+            continue
+
+        h = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if h:
+            flush_paragraph()
+            close_list()
+            level = len(h.group(1))
+            out.append(f"<h{level}>{_inline(h.group(2).strip())}</h{level}>")
+            continue
+
+        if line.startswith("> "):
+            flush_paragraph()
+            close_list()
+            out.append(f"<blockquote>{_inline(line[2:].strip())}</blockquote>")
+            continue
+
+        if re.match(r"^[-*]\s+", line):
+            flush_paragraph()
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            item = re.sub(r"^[-*]\s+", "", line)
+            out.append(f"<li>{_inline(item)}</li>")
+            continue
+
+        if in_list:
+            close_list()
+        paragraph.append(line)
+
+    flush_paragraph()
+    close_list()
+    return "\n".join(out)
 
 
 def generate_static_page_html(
@@ -14,59 +98,52 @@ def generate_static_page_html(
     page_metadata: Dict,
     all_pages: List[Dict],
     app_config: Dict,
-    marked_important: List[Dict],
 ) -> str:
     """
-    Generate static HTML for a specific page that AI agents can read.
+    Render the static HTML response that crawlers see.
 
     Args:
-        page_path: Current page path (e.g., "/dashboard")
-        page_metadata: Metadata for current page
-        all_pages: List of all registered pages
-        app_config: Application configuration
-        marked_important: Important content sections
+        page_path: The path being requested (e.g. "/equipment").
+        page_metadata: Dict with at least "name" and "description"; may
+            include "llms_doc" (markdown prose for the page body).
+        all_pages: All non-hidden pages — used to build navigation.
+        app_config: {"name": str, "base_url": str}.
 
     Returns:
-        Complete HTML string
+        Complete HTML document as a string.
     """
+    title = _stdlib_html.escape(str(page_metadata.get("name") or "Page"))
+    description = _stdlib_html.escape(str(page_metadata.get("description") or ""))
+    llms_doc = page_metadata.get("llms_doc")
+    base_url = app_config.get("base_url", "")
+    app_name = _stdlib_html.escape(str(app_config.get("name") or "Dash Application"))
 
-    title = page_metadata.get("name", "Dashboard")
-    description = page_metadata.get("description", "")
-
-    # Build navigation from all pages
     nav_items = []
     for page in all_pages:
-        is_current = page.get("path") == page_path
-        class_attr = ' class="current"' if is_current else ""
-        nav_items.append(
-            f'<li{class_attr}><a href="{page.get("path", "/")}">{page.get("name", "Page")}</a></li>'
-        )
+        p_path = page.get("path", "/")
+        p_name = _stdlib_html.escape(str(page.get("name", "Page")))
+        cls = ' class="current"' if p_path == page_path else ""
+        nav_items.append(f'<li{cls}><a href="{p_path}">{p_name}</a></li>')
 
-    # Build important content sections
-    content_sections = []
-    for item in marked_important:
-        if item.get("page_path") == page_path:
-            section_id = item.get("id", "")
-            id_attr = f' id="{section_id}"' if section_id else ""
-            content_sections.append(
-                f"""
-                <section{id_attr}>
-                    {item.get('html_content', '')}
-                </section>
-            """
-            )
-
-    # Generate structured data (JSON-LD)
     structured_data = {
         "@context": "https://schema.org",
         "@type": "WebApplication",
         "name": app_config.get("name", "Dashboard"),
-        "url": f"{app_config.get('base_url', '')}{page_path}",
-        "description": description,
+        "url": f"{base_url}{page_path}",
+        "description": page_metadata.get("description") or "",
         "applicationCategory": "BusinessApplication",
     }
 
-    html = f"""<!DOCTYPE html>
+    if llms_doc:
+        body_html = _render_markdown_minimal(llms_doc)
+    else:
+        body_html = (
+            "<p>This page contains interactive content that requires JavaScript.</p>"
+        )
+
+    llms_link = f"{page_path.rstrip('/')}/llms.txt" if page_path != "/" else "/llms.txt"
+
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -74,64 +151,32 @@ def generate_static_page_html(
     <meta name="description" content="{description}">
     <meta name="robots" content="index, follow">
 
-    <!-- AI Discovery Hints -->
-    <link rel="alternate" type="text/markdown" href="{page_path}/llms.txt">
-    <link rel="alternate" type="text/plain" href="{page_path}/llms.toon" title="Token-optimized LLM documentation">
-    <link rel="alternate" type="application/json" href="{page_path}/page.json">
+    <link rel="alternate" type="text/markdown" href="{llms_link}" title="LLM-friendly documentation">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{title}">
+    <meta property="og:description" content="{description}">
+    <meta property="og:url" content="{base_url}{page_path}">
 
     <title>{title}</title>
 
-    <!-- Structured Data for AI Understanding -->
     <script type="application/ld+json">
-    {json.dumps(structured_data, indent=2)}
+{json.dumps(structured_data, indent=2)}
     </script>
 
     <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-        }}
-        header {{
-            border-bottom: 2px solid #e0e0e0;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }}
-        nav ul {{
-            list-style: none;
-            padding: 0;
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }}
-        nav a {{
-            text-decoration: none;
-            color: #0066cc;
-        }}
-        nav a:hover {{
-            text-decoration: underline;
-        }}
-        nav .current a {{
-            font-weight: bold;
-            color: #000;
-        }}
-        section {{
-            margin-bottom: 30px;
-        }}
-        .ai-note {{
-            background: #f5f5f5;
-            padding: 20px;
-            border-left: 4px solid #0066cc;
-            margin-top: 40px;
-        }}
-        footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
-            color: #666;
-        }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               max-width: 800px; margin: 0 auto; padding: 24px; line-height: 1.6; }}
+        header {{ border-bottom: 1px solid #e0e0e0; padding-bottom: 16px; margin-bottom: 24px; }}
+        nav ul {{ list-style: none; padding: 0; display: flex; gap: 16px; flex-wrap: wrap; }}
+        nav a {{ text-decoration: none; color: #0066cc; }}
+        nav .current a {{ font-weight: bold; color: #000; }}
+        blockquote {{ border-left: 3px solid #0066cc; padding-left: 12px; color: #555; }}
+        code {{ background: #f5f5f5; padding: 2px 4px; border-radius: 3px; }}
+        .ai-note {{ background: #f8f8f8; padding: 16px; border-left: 3px solid #0066cc;
+                    margin-top: 32px; font-size: 0.95em; }}
+        footer {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid #e0e0e0;
+                  color: #666; font-size: 0.9em; }}
     </style>
 </head>
 <body>
@@ -141,56 +186,45 @@ def generate_static_page_html(
     </header>
 
     <nav aria-label="Main navigation">
-        <ul>
-            {"".join(nav_items)}
-        </ul>
+        <ul>{"".join(nav_items)}</ul>
     </nav>
 
     <main>
-        {"".join(content_sections) if content_sections else '<p>This page contains interactive content that requires JavaScript.</p>'}
+        {body_html}
 
         <section class="ai-note">
-            <p><strong>Note for AI Agents:</strong> This is a Dash interactive application.
-            For complete documentation and API access, visit:</p>
+            <p><strong>Note for AI agents:</strong> This is the static, prerendered view of an interactive Dash application served because we detected a non-JS user agent. Full prose docs:</p>
             <ul>
-                <li><a href="{page_path}/llms.txt">LLM-friendly documentation (llms.txt)</a></li>
-                <li><a href="{page_path}/llms.toon">Token-optimized LLM documentation (llms.toon)</a></li>
-                <li><a href="/architecture.txt">Application architecture (architecture.txt)</a></li>
-                <li><a href="/architecture.toon">Token-optimized architecture (architecture.toon)</a></li>
-                <li><a href="{page_path}/page.json">Page structure data (page.json)</a></li>
+                <li><a href="{llms_link}">{llms_link}</a> — LLM-friendly documentation</li>
+                <li><a href="/sitemap.xml">/sitemap.xml</a></li>
+                <li><a href="/robots.txt">/robots.txt</a></li>
             </ul>
         </section>
     </main>
 
     <footer>
-        <p>Interactive version requires JavaScript. For programmatic access, see our API documentation.</p>
-        <p>Generated by <a href="https://pip-install-python.com">dash-improve-my-llms</a></p>
+        <p>Interactive version requires JavaScript.</p>
+        <p>Crawler-facing HTML generated by <a href="https://pip-install-python.com">dash-improve-my-llms</a>.</p>
     </footer>
 </body>
 </html>"""
 
-    return html
-
 
 def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
     """
-    Generate the main index.html template with AI-friendly metadata.
+    Optional helper: produce a Dash `app.index_string` template that
+    includes AI-discovery meta tags and a noscript fallback for crawlers
+    that DO execute the index page but not Dash's JS.
 
-    This template is used for the Dash app.index_string.
-
-    Args:
-        app_config: Application configuration
-        pages: List of registered pages
-
-    Returns:
-        Complete index.html template string
+    The package does not call this itself — users who want it can assign
+    the return value to `app.index_string`.
     """
-
-    app_name = app_config.get("name", "Dash Application")
-    app_description = app_config.get("description", "Interactive dashboard application")
+    app_name = _stdlib_html.escape(str(app_config.get("name", "Dash Application")))
+    app_description = _stdlib_html.escape(
+        str(app_config.get("description", "Interactive dashboard application"))
+    )
     base_url = app_config.get("base_url", "https://example.com")
 
-    # Build navigation structure for AI
     nav_structure = {
         "@context": "https://schema.org",
         "@type": "SiteNavigationElement",
@@ -198,22 +232,21 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
         "hasPart": [
             {
                 "@type": "WebPage",
-                "name": page.get("name", "Page"),
-                "url": f"{base_url}{page.get('path', '/')}",
-                "description": page.get("description", ""),
+                "name": p.get("name", "Page"),
+                "url": f"{base_url}{p.get('path', '/')}",
+                "description": p.get("description", ""),
             }
-            for page in pages
+            for p in pages
         ],
     }
 
-    # Build page list for noscript fallback
-    page_list_items = []
-    for p in pages:
-        page_list_items.append(
-            f'<li><a href="{p.get("path", "/")}">{p.get("name", "Page")}</a> - {p.get("description", "")}</li>'
-        )
+    page_list_items = "".join(
+        f'<li><a href="{p.get("path", "/")}">{_stdlib_html.escape(str(p.get("name", "Page")))}</a> '
+        f'- {_stdlib_html.escape(str(p.get("description", "")))}</li>'
+        for p in pages
+    )
 
-    template = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -223,59 +256,46 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
 
     <title>{{%title%}}</title>
 
-    <!-- AI Discovery -->
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="LLM-friendly documentation">
-    <link rel="alternate" type="text/plain" href="/llms.toon" title="Token-optimized LLM documentation">
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
-    <!-- Open Graph / Social -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="{app_name}">
     <meta property="og:description" content="{app_description}">
 
-    <!-- Structured Data for AI -->
     <script type="application/ld+json">
-    {{
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "{app_name}",
-        "description": "{app_description}",
-        "url": "{base_url}",
-        "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Any"
-    }}
+{{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "{app_name}",
+    "description": "{app_description}",
+    "url": "{base_url}",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Any"
+}}
     </script>
 
-    <!-- Navigation Structure for AI -->
     <script type="application/ld+json">
-    {json.dumps(nav_structure, indent=2)}
+{json.dumps(nav_structure, indent=2)}
     </script>
 
     {{%favicon%}}
     {{%css%}}
 </head>
 <body>
-    <!-- Graceful degradation for non-JS agents -->
     <noscript>
         <div style="padding: 20px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
             <h1>{app_name}</h1>
             <p>{app_description}</p>
-            <p><strong>This application requires JavaScript for interactive features.</strong></p>
-
-            <h2>Available Resources:</h2>
+            <p><strong>This application requires JavaScript.</strong></p>
+            <h2>Resources:</h2>
             <ul>
                 <li><a href="/llms.txt">LLM-friendly documentation</a></li>
-                <li><a href="/llms.toon">Token-optimized LLM documentation (TOON format)</a></li>
-                <li><a href="/architecture.txt">Application architecture</a></li>
-                <li><a href="/architecture.toon">Token-optimized architecture (TOON format)</a></li>
                 <li><a href="/sitemap.xml">Sitemap</a></li>
                 <li><a href="/robots.txt">Robots.txt</a></li>
             </ul>
-
             <h2>Pages:</h2>
-            <ul>
-                {"".join(page_list_items)}
-            </ul>
+            <ul>{page_list_items}</ul>
         </div>
     </noscript>
 
@@ -288,5 +308,3 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
     </footer>
 </body>
 </html>"""
-
-    return template

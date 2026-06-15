@@ -5,6 +5,111 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-26
+
+### Breaking Changes — scope rescoped for the Dash 4.x / MCP era
+
+2.0 narrows the package to the surfaces that Dash 4.3's MCP server and
+native Dash do NOT cover. Component-tree introspection — which Dash MCP
+exposes live and structurally — has been removed. The package now
+focuses on three audiences:
+
+| Audience              | How they reach the app          | What 2.0 serves them                         |
+|-----------------------|---------------------------------|----------------------------------------------|
+| MCP clients           | JSON-RPC over Streamable HTTP   | `LLMS_DOC` registered as `dash.mcp` resource |
+| Web crawlers          | Plain HTTPS, often no JS        | `/robots.txt`, `/sitemap.xml`, static HTML   |
+| Paste-into-chat users | One-shot HTTP fetch             | `/llms.txt`, `/<page>/llms.txt` as markdown  |
+
+### Removed
+
+- `/page.json` and `/<page>/page.json` — Dash 4.3 MCP exposes layouts as
+  resources natively.
+- `/architecture.txt` and `/architecture.toon` — MCP describes
+  component hierarchy more accurately and live per request.
+- `/llms.toon` and `/<page>/llms.toon` — the entire `toon_generator.py`
+  module (~1,900 lines).
+- Component-tree extraction portion of `/llms.txt` — replaced by
+  the explicit `LLMS_DOC` pattern.
+- `mark_important()` and `mark_component_hidden()` — these up-ranked
+  and excluded sections during layout extraction; with no extraction,
+  they have no job. Kept as deprecation-warning no-ops for one release.
+- `TOONConfig`, `PageType`, `generate_llms_toon`,
+  `generate_architecture_toon`, `generate_documentation_toon`,
+  `toon_encode`, `detect_page_type`, `extract_prose_content`,
+  `extract_markdown_content` — all removed from the public API.
+
+### Added
+
+- **Multi-backend support** via a backend-detecting dispatcher in
+  `add_llms_routes(app)`. The package now works under Flask, FastAPI,
+  and Quart (Dash 4.1+) without any caller changes.
+  - `dash_improve_my_llms/_flask_adapter.py`
+  - `dash_improve_my_llms/_fastapi_adapter.py` (new)
+  - `dash_improve_my_llms/_quart_adapter.py` (new)
+- **MCP bridge** (`dash_improve_my_llms/_mcp_bridge.py`) — registers
+  each non-hidden page's `LLMS_DOC` as a `dash.mcp` resource when
+  Dash 4.3+ is available. Silent no-op on older Dash.
+- **`LLMS_DOC` pattern** — every page module exports a module-level
+  `LLMS_DOC = "..."` string. That string is served verbatim at
+  `/<page>/llms.txt` and registered as the MCP resource body. No layout
+  walking, no extraction, no surprises.
+- **`register_page_metadata(path, llms_doc="...")`** — an alternative
+  way to provide prose for pages whose docs are auto-generated or
+  imported.
+- **Missing-LLMS_DOC warning** — `add_llms_routes()` now emits a single
+  `UserWarning` naming every non-hidden page without prose. Silence with
+  `LLMSConfig(warn_missing_llms_doc=False)`.
+- **Stub fallback** — pages without `LLMS_DOC` get a small placeholder
+  body at their `/llms.txt` endpoint so bots receive a 200 instead of
+  a 404. The stub names the page and explains how to add real prose.
+- **Pure framework-agnostic handlers** in
+  `dash_improve_my_llms/handlers.py`. Bot decisions, page lookup, and
+  body generation are now testable without spinning up a server.
+- **`LLMSConfig.register_mcp_resources`** flag (default `True`) — opt
+  out of MCP bridge registration without touching the HTTP surfaces.
+
+### Changed
+
+- `add_llms_routes(app, config)` now detects the backend via
+  `dash.backends.get_server_type` (Dash 4.2+) with a fallback to
+  `type(app.server).__name__` for older Dash and unusual servers.
+- `register_page_metadata()` now accepts a `llms_doc=` kwarg.
+- Static-HTML prerender for crawlers now renders the page's
+  `LLMS_DOC` as HTML (minimal markdown parser, no extra deps) instead
+  of dumping the component tree.
+- `pyproject.toml` no longer hard-depends on Flask. Install one of:
+  - `pip install dash-improve-my-llms[flask]` (default for Dash 3.x)
+  - `pip install dash-improve-my-llms[fastapi]` (Dash 4.1+)
+  - `pip install dash-improve-my-llms[quart]` (Dash 4.1+ async)
+  - `pip install dash-improve-my-llms[all]`
+
+### Migration from 1.x
+
+For most apps, 2.0 migration is:
+
+1. Add a `LLMS_DOC = """..."""` string at module scope on each page.
+   You'll see a `UserWarning` at startup naming pages that need one.
+2. Remove `mark_important(...)` and `mark_component_hidden(...)` calls.
+   They're no-op shims in 2.0 and will be deleted in 2.1.
+3. Update any links / references pointing at `/page.json`,
+   `/architecture.txt`, or `/llms.toon` — those endpoints are gone.
+4. Install the matching backend extra (`[flask]`, `[fastapi]`, or
+   `[quart]`).
+
+The HTTP surfaces that survived (`/llms.txt`, `/robots.txt`,
+`/sitemap.xml`) and the `RobotsConfig`, `mark_hidden`,
+`register_page_metadata` APIs are unchanged.
+
+### Internal
+
+- Public package surface: 4,373 → ~1,930 lines.
+- `__init__.py`: 1,682 → ~290 lines (now mostly the dispatcher).
+- Three new framework adapters total ~250 lines.
+- Pure-function `handlers.py` (~380 lines) is testable without any
+  server.
+
+---
+
 ## [1.2.0] - 2025-12-13
 
 ### 🎯 Documentation-Aware TOON Generation
