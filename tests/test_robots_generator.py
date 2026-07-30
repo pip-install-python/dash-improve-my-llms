@@ -66,9 +66,7 @@ def test_generate_robots_txt_default():
 
 def test_generate_robots_txt_allow_all():
     """Test robots.txt when allowing all bots."""
-    config = RobotsConfig(
-        block_ai_training=False, allow_ai_search=True, allow_traditional=True
-    )
+    config = RobotsConfig(block_ai_training=False, allow_ai_search=True, allow_traditional=True)
     robots_content = generate_robots_txt(
         config=config,
         sitemap_url="https://example.com/sitemap.xml",
@@ -130,8 +128,31 @@ def test_generate_robots_txt_with_custom_rules():
     assert "Disallow: /no-mybot" in robots_content
 
 
-def test_robots_txt_has_ai_search_bots():
-    """Test that AI search bots are explicitly allowed."""
+def _policy_by_agent(robots_content):
+    """Parse robots.txt into {user-agent: [directives]}."""
+    policies = {}
+    agent = None
+    for line in robots_content.splitlines():
+        line = line.strip()
+        if line.startswith("User-agent:"):
+            agent = line.split(":", 1)[1].strip()
+            policies.setdefault(agent, [])
+        elif agent and (line.startswith("Allow:") or line.startswith("Disallow:")):
+            policies[agent].append(line)
+        elif not line:
+            agent = None
+    return policies
+
+
+def test_robots_txt_ai_search_bots_are_allowed():
+    """Every bot in the allow_ai_search branch must get Allow, not Disallow.
+
+    Regression test: through 2.3.0, OAI-SearchBot was given `Disallow: /`
+    inside the allow branch — every site configured to allow AI search was
+    asking ChatGPT's search index to exclude it. The old version of this
+    test only checked the agents were *mentioned*, so it never caught the
+    directive being wrong.
+    """
     config = RobotsConfig(allow_ai_search=True)
     robots_content = generate_robots_txt(
         config=config,
@@ -139,10 +160,27 @@ def test_robots_txt_has_ai_search_bots():
         base_url="https://example.com",
     )
 
-    # Check AI search bots are mentioned
-    assert "User-agent: ChatGPT-User" in robots_content or "AI Search" in robots_content
-    assert "User-agent: ClaudeBot" in robots_content or "AI Search" in robots_content
-    assert "User-agent: PerplexityBot" in robots_content or "AI Search" in robots_content
+    policies = _policy_by_agent(robots_content)
+    for bot in ("ChatGPT-User", "ClaudeBot", "PerplexityBot", "OAI-SearchBot"):
+        assert policies.get(bot) == ["Allow: /"], (
+            f"{bot} should be allowed, got {policies.get(bot)}"
+        )
+
+
+def test_robots_txt_training_bots_are_disallowed():
+    """The block_ai_training branch must actually disallow each agent."""
+    config = RobotsConfig(block_ai_training=True)
+    robots_content = generate_robots_txt(
+        config=config,
+        sitemap_url="https://example.com/sitemap.xml",
+        base_url="https://example.com",
+    )
+
+    policies = _policy_by_agent(robots_content)
+    for bot in ("GPTBot", "CCBot", "Google-Extended", "ByteSpider"):
+        assert policies.get(bot) == ["Disallow: /"], (
+            f"{bot} should be blocked, got {policies.get(bot)}"
+        )
 
 
 def test_robots_txt_has_documentation_links():

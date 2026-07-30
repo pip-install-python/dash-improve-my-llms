@@ -25,6 +25,23 @@ If the user is on **1.x**, see [Migration](#migration-from-1x). Several
 1.x APIs (`mark_important`, `mark_component_hidden`, `TOONConfig`,
 `PageType`) are gone or no-op'd.
 
+If the user asks about **accounts, gating, or "who can read this llms.txt"**,
+that is `configure_access` / `configure_viewer_identity` (2.3.0) — the contract
+is in [`handoff/ACCESS.md`](../handoff/ACCESS.md). Two things to get right
+before writing any code:
+
+- **`mark_hidden()` is not a gate for an app with accounts.** It is a
+  process-wide set, so it cannot express "hidden from *this* requester".
+- **Never gate these documents on a session cookie.** They exist to be pasted
+  into an agent, which fetches with no cookie — a cookie gate returns the gate
+  page to the one consumer the URL exists for. Authority has to be able to
+  travel in the URL; `link_suffix` is how the package carries it onward.
+
+One more ordering trap, unrelated but commonly hit: `warn_missing_llms_doc` is
+evaluated when `add_llms_routes` is called. An app that registers prose in
+`run.py` rather than per page module must call it **after** those
+registrations, or the warning names nearly every page and means nothing.
+
 ---
 
 ## Mental model: three audiences
@@ -420,8 +437,8 @@ unit tests.
 
 ## 10. Where to read more
 
-- [README.md](README.md) — public-facing overview and install.
-- [CHANGELOG.md](CHANGELOG.md) — full release history including the
+- [README.md](../README.md) — public-facing overview and install.
+- [CHANGELOG.md](../CHANGELOG.md) — full release history including the
   2.0 breaking changes.
 - [`/audiences/mcp-clients`](https://github.com/pip-install-python/dash-improve-my-llms),
   [`/audiences/web-crawlers`](https://github.com/pip-install-python/dash-improve-my-llms),

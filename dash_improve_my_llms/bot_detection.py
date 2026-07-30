@@ -5,8 +5,6 @@ This module provides functionality to detect and classify different types
 of bots (AI training, AI search, traditional search engines) from user agents.
 """
 
-from typing import List
-
 # Comprehensive list of known AI bot user agents
 AI_TRAINING_BOTS = [
     "gptbot",  # OpenAI training
@@ -29,9 +27,17 @@ AI_SEARCH_BOTS = [
 
 # Add more generic bot patterns
 TRADITIONAL_BOTS = [
-    "googlebot", "bingbot", "slurp", "duckduckbot",
-    "bot", "crawler", "spider", "scraper",  # Generic patterns
-    "curl", "wget", "python-requests",  # CLI tools
+    "googlebot",
+    "bingbot",
+    "slurp",
+    "duckduckbot",
+    "bot",
+    "crawler",
+    "spider",
+    "scraper",  # Generic patterns
+    "curl",
+    "wget",
+    "python-requests",  # CLI tools
 ]
 
 

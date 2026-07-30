@@ -28,9 +28,7 @@ def test_sitemap_entry_creation():
 
 def test_sitemap_entry_to_xml():
     """Test converting sitemap entry to XML."""
-    entry = SitemapEntry(
-        loc="https://example.com/test", changefreq="weekly", priority=0.7
-    )
+    entry = SitemapEntry(loc="https://example.com/test", changefreq="weekly", priority=0.7)
     xml = entry.to_xml()
 
     assert "<url>" in xml
@@ -208,9 +206,7 @@ def test_generate_sitemap_xml_custom_entries():
     """Test adding custom sitemap entries."""
     pages = [{"path": "/", "name": "Home"}]
     custom_entries = [
-        SitemapEntry(
-            loc="https://example.com/special", changefreq="monthly", priority=0.6
-        )
+        SitemapEntry(loc="https://example.com/special", changefreq="monthly", priority=0.6)
     ]
     sitemap = generate_sitemap_xml(
         pages=pages, base_url="https://example.com", custom_entries=custom_entries
@@ -302,9 +298,7 @@ def test_generate_sitemap_xml_no_duplicate_urls():
 
 def test_sitemap_entry_none_values():
     """Test sitemap entry with None for optional fields."""
-    entry = SitemapEntry(
-        loc="https://example.com/test", changefreq=None, priority=None
-    )
+    entry = SitemapEntry(loc="https://example.com/test", changefreq=None, priority=None)
     xml = entry.to_xml()
 
     # Should still have loc and lastmod

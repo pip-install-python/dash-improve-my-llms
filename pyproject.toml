@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "2.0.0"
+version = "2.3.2"
 description = "Crawler/SEO companion for Dash apps: /llms.txt, /robots.txt, /sitemap.xml, bot detection, static-HTML prerender, and an MCP bridge. Works with Flask, FastAPI, and Quart backends (Dash 4.1+)."
 readme = "README.md"
 license = "MIT"
@@ -40,19 +40,23 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Documentation",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
+# Tested against dash 4.1.0, 4.2.0, 4.3.0, 4.4.0 and 4.4.1 across the Flask,
+# FastAPI and Quart backends — see scripts/matrix.py and the CI job matrix.
+# 4.1.0 is the floor: it is the first release this package's Dash 4 support
+# targets, and it is Flask-only (pluggable backends arrived in 4.2).
 dependencies = [
-    "dash>=3.0.0",
+    "dash>=4.1,<5",
 ]
 
 [project.optional-dependencies]
@@ -92,7 +96,7 @@ dash_improve_my_llms = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -111,15 +115,14 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = [
-    "--cov=dash_improve_my_llms",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--verbose",
-]
+# Coverage is deliberately NOT in addopts. Forcing --cov here makes the suite
+# unrunnable in any environment without pytest-cov — including the per-Dash
+# version environments in scripts/matrix.py. Opt in instead:
+#     pytest --cov=dash_improve_my_llms --cov-report=term-missing
+addopts = ["--verbose"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

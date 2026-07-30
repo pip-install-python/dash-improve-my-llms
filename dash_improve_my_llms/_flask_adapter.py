@@ -7,14 +7,32 @@ in handlers.py. All Flask-specific code lives here.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 
+from . import access
 from .handlers import (
+    apply_prerender,
     build_llms_txt_for_page,
+    build_llms_viewer_html,
     build_robots_txt,
     build_sitemap_xml,
     handle_bot_request,
+    should_prerender,
+    wants_html_viewer,
 )
+
+
+def _doc_headers() -> Dict[str, str]:
+    """Headers for an llms.txt response.
+
+    ``Vary: Accept`` always, because the same URL serves Markdown or HTML by
+    negotiation and a CDN must not hand a cached browser page to the next
+    agent. When the response is per-requester — it names the reader, or its
+    links carry authority — nothing shared may cache it at all.
+    """
+    if access.is_restricted():
+        return access.private_headers()
+    return {"Vary": "Accept"}
 
 
 def register_flask(app: Any, config: Any, state: Any) -> None:
@@ -48,6 +66,33 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
             headers=result.get("headers", {}),
         )
 
+    if getattr(config, "prerender", True):
+
+        @server.after_request
+        def _prerender(response):  # type: ignore[unused-ignore]
+            if not should_prerender(
+                path=request.path,
+                status=response.status_code,
+                content_type=response.content_type or "",
+            ):
+                return response
+            # Streamed/passthrough responses have no materialised body.
+            if response.direct_passthrough or not response.is_sequence:
+                return response
+
+            document = response.get_data(as_text=True)
+            injected = apply_prerender(
+                document=document,
+                app=app,
+                path=request.path,
+                page_metadata=state.page_metadata,
+                hidden_paths=state.hidden_pages,
+                state=state,
+            )
+            if injected is not document:
+                response.set_data(injected)
+            return response
+
     @server.route("/<path:page_path>/llms.txt")
     @server.route("/llms.txt", defaults={"page_path": ""})
     def _llms_txt(page_path: str):
@@ -56,8 +101,37 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
             page_path=page_path,
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
+            state=state,
+            include_nav=getattr(config, "llms_nav", True),
         )
-        return Response(body, status=status, mimetype="text/plain")
+
+        if status == 200 and getattr(config, "llms_viewer", True):
+            if wants_html_viewer(
+                accept=request.headers.get("Accept", ""),
+                user_agent=request.headers.get("User-Agent", ""),
+                query=request.args.to_dict(),
+            ):
+                html = build_llms_viewer_html(
+                    app=app,
+                    page_path=page_path,
+                    markdown_body=body,
+                    page_metadata=state.page_metadata,
+                    state=state,
+                )
+                if html is not None:
+                    return Response(
+                        html,
+                        status=status,
+                        mimetype="text/html",
+                        headers=_doc_headers(),
+                    )
+
+        return Response(
+            body,
+            status=status,
+            mimetype="text/markdown",
+            headers=_doc_headers(),
+        )
 
     @server.route("/robots.txt")
     def _robots():

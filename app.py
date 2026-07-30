@@ -26,13 +26,20 @@ dispatches to Flask / FastAPI / Quart adapters at add_llms_routes().
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
 import dash_mantine_components as dmc
 from dash import Dash, dcc, html, page_container
 
-from dash_improve_my_llms import RobotsConfig, add_llms_routes, mark_hidden
+from dash_improve_my_llms import (
+    RobotsConfig,
+    add_llms_routes,
+    configure_bulletin,
+    mark_hidden,
+    register_network,
+)
 from dash_improve_my_llms.bot_detection import get_bot_type, is_any_bot
 
 
@@ -86,26 +93,137 @@ app.index_string = """<!DOCTYPE html>
 </html>"""
 
 
-# Set this to your real production URL — used in /sitemap.xml and /robots.txt.
-app._base_url = "https://example.com"
+# Public origin. Drives sitemap.xml, robots.txt, absolute URLs in llms.txt,
+# and — most consequentially — the <link rel="canonical"> on every page. A
+# stale value here points every canonical at the wrong host and asks search
+# engines to deindex this deployment, so it is read from the environment with
+# the real production host as the default rather than left as a placeholder.
+app._base_url = os.environ.get("APP_BASE_URL", "https://llms.2plot.dev").rstrip("/")
 
 # Configure bot-class access policies. RobotsConfig is the package's only
 # imperative API for crawler control; everything else flows from this and
 # from mark_hidden() calls below.
 app._robots_config = RobotsConfig(
-    block_ai_training=True,    # GPTBot, CCBot, anthropic-ai, etc.
-    allow_ai_search=True,      # ChatGPT-User, ClaudeBot, PerplexityBot
-    allow_traditional=True,    # Googlebot, Bingbot, DuckDuckBot
+    block_ai_training=True,  # GPTBot, CCBot, anthropic-ai, etc.
+    allow_ai_search=True,  # ChatGPT-User, ClaudeBot, PerplexityBot
+    allow_traditional=True,  # Googlebot, Bingbot, DuckDuckBot
     crawl_delay=10,
     disallowed_paths=["/admin"],
 )
 
-# Wire up /llms.txt, /robots.txt, /sitemap.xml, bot middleware, and the MCP
-# bridge. add_llms_routes detects the backend (Flask here) and dispatches.
+# Exclude /admin from sitemap and robots, and 404 it for crawlers. This runs
+# BEFORE add_llms_routes so the missing-prose startup warning doesn't name a
+# page that is deliberately hidden.
+mark_hidden("/admin")
+
+# Declare the cross-host directory. Sitemaps are scoped to one origin, so a
+# network spread across hosts has no crawl graph between them; this is what
+# supplies one. The three tiers stay separate on purpose — see
+# docs/NETWORKS.md and the /networks page.
+register_network(
+    name="The 2plot network",
+    description=(
+        "Open-source Dash component libraries and the applications built on "
+        "them. Every site serves its own /llms.txt in this format."
+    ),
+    # The hub chain is deliberately one hop, not a jump to the root.
+    #
+    #   llms.2plot.dev  ->  2plot.dev  ->  2plot.ai
+    #
+    # This app is a *.2plot.dev subdomain, so its network index is 2plot.dev
+    # (the package/subdomain index). 2plot.dev in turn names 2plot.ai as its
+    # own hub_url, which is the network root. Each llms.txt therefore has
+    # exactly one unambiguous "up" link, and an agent walks the chain instead
+    # of having to guess which of two indexes is authoritative.
+    hub_url="https://2plot.dev",
+    # Drawn in the llms.txt viewer banner: "2" + morse("plot") + ".ai", which
+    # renders 2.--. .-.. --- -.ai as a graphic. Supplied as data because the
+    # package itself ships no branding.
+    wordmark={
+        "morse": "plot",
+        "prefix": "2",
+        # No period glyph: the morse block already separates the two halves,
+        # and a floating dot between them reads as a fifth morse symbol. The
+        # accessible label below keeps the real domain for screen readers and
+        # for the SVG <title>.
+        "suffix": "ai",
+        "label": "2plot.ai",
+    },
+    peers=[
+        {
+            "name": "2plot.ai",
+            "url": "https://2plot.ai",
+            "description": "Network root: account origin and the heartbeat.",
+        },
+        {
+            "name": "2plot.dev",
+            "url": "https://2plot.dev",
+            "description": "Index of every open-source component in the network.",
+        },
+        {
+            "name": "Documentation boilerplate",
+            "url": "https://boilerplate.2plot.dev",
+            "description": "The markdown-driven docs template these sites use.",
+        },
+    ],
+    affiliated=[
+        {
+            "name": "Pip Install Python",
+            "url": "https://pip-install-python.com",
+            "description": "Open-source Dash components, on its own domain.",
+        },
+    ],
+    external=[
+        {
+            "name": "Dash Mantine Components",
+            "url": "https://www.dash-mantine-components.com",
+            "description": "The UI component layer this demo app is built with.",
+        },
+        {
+            "name": "Plotly Dash documentation",
+            "url": "https://dash.plotly.com",
+            "description": "Upstream framework documentation.",
+        },
+    ],
+)
+
+# Opt in to the network bulletin: the tips and announcements panel in the
+# llms.txt viewer header, published once by the hub and rendered by every
+# satellite. Unset the env var and the banner simply renders without it.
+if os.environ.get("NETWORK_BULLETIN_URL"):
+    configure_bulletin(
+        url=os.environ["NETWORK_BULLETIN_URL"],
+        # Sent as ?app=llms. This is what lets the hub target an announcement at
+        # this site specifically and — more usefully — see that this site is
+        # actually rendering the bulletin rather than merely being deployed.
+        # Without it every fetch is attributed to "unknown" in the hub's
+        # satellite table. The id is registered in 2plot.dev's
+        # lib/network_directory.py as a verified id; keep the two in step.
+        app_id="llms",
+    )
+
+# Wire up /llms.txt, /robots.txt, /sitemap.xml, the prerender hook, the bot
+# middleware, and the MCP bridge. add_llms_routes detects the backend
+# (Flask here) and dispatches.
 add_llms_routes(app)
 
-# Exclude /admin from sitemap and robots, and 404 it for crawlers.
-mark_hidden("/admin")
+
+# /healthz is the 2plot network convention: the hub's hourly sweep probes it,
+# and Render uses it as the service health check. Registered after
+# add_llms_routes so it sits behind the bot middleware like every other route,
+# but it is excluded from the crawler path because it is not a Dash page.
+@server.route("/healthz")
+def healthz():
+    from flask import jsonify
+
+    import dash
+
+    return jsonify(
+        ok=True,
+        backend="flask",
+        dash_version=dash.__version__,
+        base_url=app._base_url,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -118,14 +236,16 @@ _ASSET_MARKERS = (".css", ".js", ".png", ".jpg", ".ico", "_dash", "_reload-hash"
 
 def load_analytics():
     if not ANALYTICS_FILE.exists():
-        return {"visits": [], "stats": {k: 0 for k in ("desktop", "mobile", "tablet", "bot", "total")}}
+        return {
+            "visits": [],
+            "stats": {k: 0 for k in ("desktop", "mobile", "tablet", "bot", "total")},
+        }
 
     with open(ANALYTICS_FILE, "r") as f:
         data = json.load(f)
 
     clean_visits = [
-        v for v in data.get("visits", [])
-        if not any(m in v.get("path", "") for m in _ASSET_MARKERS)
+        v for v in data.get("visits", []) if not any(m in v.get("path", "") for m in _ASSET_MARKERS)
     ]
     stats = {k: 0 for k in ("desktop", "mobile", "tablet", "bot", "total")}
     for v in clean_visits:
@@ -165,13 +285,15 @@ def track_visit():
         device_type = detect_device_type(user_agent)
 
         analytics = load_analytics()
-        analytics["visits"].append({
-            "timestamp": datetime.now().isoformat(),
-            "path": path,
-            "device_type": device_type,
-            "bot_type": get_bot_type(user_agent) if device_type == "bot" else None,
-            "user_agent": user_agent[:200],
-        })
+        analytics["visits"].append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "path": path,
+                "device_type": device_type,
+                "bot_type": get_bot_type(user_agent) if device_type == "bot" else None,
+                "user_agent": user_agent[:200],
+            }
+        )
         analytics["stats"][device_type] += 1
         analytics["stats"]["total"] += 1
 
@@ -284,11 +406,12 @@ _NAV = html.Nav(
             ],
             style={"display": "flex", "gap": "4px", "alignItems": "center", "flexWrap": "wrap"},
         ),
-
         # Right cluster — the three doc surfaces 2.0 actually serves
         html.Div(
             [
-                html.Span("Docs:", style={"color": "#999", "fontSize": "12px", "marginRight": "4px"}),
+                html.Span(
+                    "Docs:", style={"color": "#999", "fontSize": "12px", "marginRight": "4px"}
+                ),
                 _doc_link("/llms.txt", "/llms.txt", "Site-wide prose (LLMS_DOC of home)"),
                 _doc_link("/robots.txt", "/robots.txt", "Bot-class access policies"),
                 _doc_link("/sitemap.xml", "/sitemap.xml", "Generated from page_registry"),
@@ -315,7 +438,12 @@ _FOOTER = html.Footer(
             html.Span(
                 [
                     "Built with ",
-                    html.A("Dash", href="https://dash.plotly.com", target="_blank", style={"color": _BRAND}),
+                    html.A(
+                        "Dash",
+                        href="https://dash.plotly.com",
+                        target="_blank",
+                        style={"color": _BRAND},
+                    ),
                     " · ",
                     html.A(
                         "dash-improve-my-llms",
@@ -381,4 +509,7 @@ if __name__ == "__main__":
     print("  http://localhost:8959/sitemap.xml")
     print()
 
-    app.run(debug=True, port=8959)
+    port = int(os.environ.get("PORT", 8959))
+    # debug=False when a PORT is injected: that means a real host is running
+    # this, and the reloader would fork a second process on the same port.
+    app.run(debug="PORT" not in os.environ, host="0.0.0.0", port=port)

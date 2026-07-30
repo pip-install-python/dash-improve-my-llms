@@ -183,7 +183,11 @@ def _resource_row(uri: str, name: str, description: str, byte_count: int, path: 
             ),
             html.Td(
                 name,
-                style={"padding": "10px 12px", "fontSize": "14px", "borderBottom": "1px solid #f0f0f0"},
+                style={
+                    "padding": "10px 12px",
+                    "fontSize": "14px",
+                    "borderBottom": "1px solid #f0f0f0",
+                },
             ),
             html.Td(
                 f"{byte_count:,} B",
@@ -203,7 +207,11 @@ def _resource_row(uri: str, name: str, description: str, byte_count: int, path: 
                     target="_blank",
                     style={"fontSize": "13px", "color": _BRAND, "textDecoration": "none"},
                 ),
-                style={"padding": "10px 12px", "borderBottom": "1px solid #f0f0f0", "textAlign": "right"},
+                style={
+                    "padding": "10px 12px",
+                    "borderBottom": "1px solid #f0f0f0",
+                    "textAlign": "right",
+                },
             ),
         ]
     )
@@ -239,7 +247,15 @@ def layout():
             # Hero
             html.Header(
                 [
-                    html.Div("Audience", style={"fontSize": "12px", "color": _BRAND, "letterSpacing": "1px", "fontWeight": "600"}),
+                    html.Div(
+                        "Audience",
+                        style={
+                            "fontSize": "12px",
+                            "color": _BRAND,
+                            "letterSpacing": "1px",
+                            "fontWeight": "600",
+                        },
+                    ),
                     html.H1("MCP Clients", style={"margin": "4px 0 8px", "fontSize": "32px"}),
                     html.P(
                         "JSON-RPC over Streamable HTTP. Each page's LLMS_DOC registers as a dash.mcp resource on Dash 4.3+.",
@@ -248,7 +264,6 @@ def layout():
                 ],
                 style={"marginBottom": "28px"},
             ),
-
             # Status card
             html.Section(
                 [
@@ -257,22 +272,50 @@ def layout():
                         [
                             html.Div(
                                 [
-                                    html.Div("dash.mcp available", style={"fontSize": "13px", "color": "#666", "marginBottom": "6px"}),
-                                    _status_pill("YES" if status["installed"] else "NOT INSTALLED", status["installed"]),
                                     html.Div(
-                                        f"module: {status['module']} · version: {status['version']}" if status["installed"] else
-                                        "Falls back to HTTP-only mode. Install Dash 4.3+ to enable.",
-                                        style={"fontSize": "12px", "color": "#888", "marginTop": "8px"},
+                                        "dash.mcp available",
+                                        style={
+                                            "fontSize": "13px",
+                                            "color": "#666",
+                                            "marginBottom": "6px",
+                                        },
+                                    ),
+                                    _status_pill(
+                                        "YES" if status["installed"] else "NOT INSTALLED",
+                                        status["installed"],
+                                    ),
+                                    html.Div(
+                                        (
+                                            f"module: {status['module']} · version: {status['version']}"
+                                            if status["installed"]
+                                            else "Falls back to HTTP-only mode. Install Dash 4.3+ to enable."
+                                        ),
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#888",
+                                            "marginTop": "8px",
+                                        },
                                     ),
                                 ],
                                 style={**_CARD, "flex": "1"},
                             ),
                             html.Div(
                                 [
-                                    html.Div("Pages that would register", style={"fontSize": "13px", "color": "#666", "marginBottom": "6px"}),
+                                    html.Div(
+                                        "Pages that would register",
+                                        style={
+                                            "fontSize": "13px",
+                                            "color": "#666",
+                                            "marginBottom": "6px",
+                                        },
+                                    ),
                                     html.Div(
                                         str(len(visible_pages)),
-                                        style={"fontSize": "32px", "fontWeight": "600", "color": _BRAND},
+                                        style={
+                                            "fontSize": "32px",
+                                            "fontWeight": "600",
+                                            "color": _BRAND,
+                                        },
                                     ),
                                     html.Div(
                                         f"non-hidden pages with LLMS_DOC (skipping {len(missing_pages)} without one)",
@@ -287,11 +330,12 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Resource directory
             html.Section(
                 [
-                    html.H2("Resource directory", style={"fontSize": "18px", "marginBottom": "8px"}),
+                    html.H2(
+                        "Resource directory", style={"fontSize": "18px", "marginBottom": "8px"}
+                    ),
                     html.P(
                         "What an MCP client would see when it calls resources/list against this app:",
                         style={"color": "#666", "marginBottom": "16px"},
@@ -302,10 +346,54 @@ def layout():
                                 html.Thead(
                                     html.Tr(
                                         [
-                                            html.Th("URI", style={"textAlign": "left", "padding": "8px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
-                                            html.Th("Name", style={"textAlign": "left", "padding": "8px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
-                                            html.Th("Size", style={"textAlign": "right", "padding": "8px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
-                                            html.Th("HTTP", style={"textAlign": "right", "padding": "8px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                                            html.Th(
+                                                "URI",
+                                                style={
+                                                    "textAlign": "left",
+                                                    "padding": "8px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            ),
+                                            html.Th(
+                                                "Name",
+                                                style={
+                                                    "textAlign": "left",
+                                                    "padding": "8px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            ),
+                                            html.Th(
+                                                "Size",
+                                                style={
+                                                    "textAlign": "right",
+                                                    "padding": "8px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            ),
+                                            html.Th(
+                                                "HTTP",
+                                                style={
+                                                    "textAlign": "right",
+                                                    "padding": "8px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            ),
                                         ]
                                     )
                                 ),
@@ -322,35 +410,52 @@ def layout():
                                     ]
                                 ),
                             ],
-                            style={"width": "100%", "borderCollapse": "collapse", "background": "white", "border": "1px solid #eee", "borderRadius": "8px", "overflow": "hidden"},
+                            style={
+                                "width": "100%",
+                                "borderCollapse": "collapse",
+                                "background": "white",
+                                "border": "1px solid #eee",
+                                "borderRadius": "8px",
+                                "overflow": "hidden",
+                            },
                         ),
                     ),
                     html.P(
-                        [
-                            "Pages without an LLMS_DOC are skipped — they don't get registered. Hidden pages "
-                            "(via ",
-                            html.Code("mark_hidden()"),
-                            ") are also excluded.",
-                        ]
-                        if not missing_pages
-                        else [
-                            f"{len(missing_pages)} page(s) skipped because they lack an LLMS_DOC: ",
-                            html.Code(", ".join(p["path"] for p in missing_pages)),
-                        ],
+                        (
+                            [
+                                "Pages without an LLMS_DOC are skipped — they don't get registered. Hidden pages "
+                                "(via ",
+                                html.Code("mark_hidden()"),
+                                ") are also excluded.",
+                            ]
+                            if not missing_pages
+                            else [
+                                f"{len(missing_pages)} page(s) skipped because they lack an LLMS_DOC: ",
+                                html.Code(", ".join(p["path"] for p in missing_pages)),
+                            ]
+                        ),
                         style={"fontSize": "13px", "color": "#888", "marginTop": "12px"},
                     ),
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # JSON-RPC sample
             html.Section(
                 [
-                    html.H2("What a client request looks like", style={"fontSize": "18px", "marginBottom": "8px"}),
-                    html.P("Minimal JSON-RPC payloads an MCP client would send:", style={"color": "#666", "marginBottom": "16px"}),
+                    html.H2(
+                        "What a client request looks like",
+                        style={"fontSize": "18px", "marginBottom": "8px"},
+                    ),
+                    html.P(
+                        "Minimal JSON-RPC payloads an MCP client would send:",
+                        style={"color": "#666", "marginBottom": "16px"},
+                    ),
                     html.Div(
                         [
-                            html.H3("resources/list — discover what's available", style={"fontSize": "14px", "color": "#444", "marginBottom": "8px"}),
+                            html.H3(
+                                "resources/list — discover what's available",
+                                style={"fontSize": "14px", "color": "#444", "marginBottom": "8px"},
+                            ),
                             html.Pre(
                                 '{\n  "jsonrpc": "2.0",\n  "id": 1,\n  "method": "resources/list"\n}',
                                 style=_CODE_BLOCK,
@@ -360,7 +465,10 @@ def layout():
                     ),
                     html.Div(
                         [
-                            html.H3("resources/read — fetch one by URI", style={"fontSize": "14px", "color": "#444", "marginBottom": "8px"}),
+                            html.H3(
+                                "resources/read — fetch one by URI",
+                                style={"fontSize": "14px", "color": "#444", "marginBottom": "8px"},
+                            ),
                             html.Pre(
                                 '{\n  "jsonrpc": "2.0",\n  "id": 2,\n  "method": "resources/read",\n  "params": {\n    "uri": "llms:///audiences/mcp-clients"\n  }\n}',
                                 style=_CODE_BLOCK,
@@ -370,12 +478,14 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Disable opt-out
             html.Section(
                 [
                     html.H2("Opt out", style={"fontSize": "18px", "marginBottom": "8px"}),
-                    html.P("If you want HTTP-only and no MCP registration:", style={"color": "#666", "marginBottom": "12px"}),
+                    html.P(
+                        "If you want HTTP-only and no MCP registration:",
+                        style={"color": "#666", "marginBottom": "12px"},
+                    ),
                     html.Pre(
                         "from dash_improve_my_llms import LLMSConfig, add_llms_routes\n\n"
                         "add_llms_routes(app, LLMSConfig(register_mcp_resources=False))",
@@ -383,18 +493,35 @@ def layout():
                     ),
                 ]
             ),
-
             # Footer nav
             html.Footer(
                 [
-                    html.Hr(style={"border": "none", "borderTop": "1px solid #eee", "margin": "32px 0 16px"}),
+                    html.Hr(
+                        style={
+                            "border": "none",
+                            "borderTop": "1px solid #eee",
+                            "margin": "32px 0 16px",
+                        }
+                    ),
                     html.Div(
                         [
-                            dcc.Link("← Home", href="/", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "← Home",
+                                href="/",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("Web Crawlers →", href="/audiences/web-crawlers", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "Web Crawlers →",
+                                href="/audiences/web-crawlers",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("Paste-to-chat →", href="/audiences/llm-context", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "Paste-to-chat →",
+                                href="/audiences/llm-context",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                         ]
                     ),
                 ]

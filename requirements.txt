@@ -1,6 +1,15 @@
-# Runtime dependencies for dash-improve-my-llms
-dash>=3.0.0
+# Runtime dependencies for the llms.2plot.dev documentation site (app.py).
+#
+# dash-improve-my-llms is deliberately NOT listed here. The Dockerfile installs
+# it from this working tree with `pip install --no-deps .`, because this host
+# exists to demonstrate the current code — pinning the published release would
+# make the reference deployment lag the thing it documents. For the package's
+# own dependency set see pyproject.toml.
+
+dash>=4.1,<5
 flask>=2.0.0
+gunicorn>=21.2.0
+
+# Demo app UI and the /analytics page.
 dash-mantine-components>=2.3.0
-dash-improve-my-llms>=0.3.0
-numpy
+numpy>=1.24

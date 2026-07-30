@@ -80,7 +80,7 @@ def test_static_html_generation(url=BASE_URL, path="/"):
                     "Schema.org JSON-LD": '"@context": "https://schema.org"' in content,
                     "Navigation": "<nav" in content,
                     "Meta description": 'meta name="description"' in content,
-                    "AI Discovery links": '/llms.txt' in content,
+                    "AI Discovery links": "/llms.txt" in content,
                     "Sitemap link": "/sitemap.xml" in content or "/architecture.txt" in content,
                 }
 

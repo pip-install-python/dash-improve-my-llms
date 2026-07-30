@@ -120,7 +120,6 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             html.Section(
                 [
                     html.H2("This page IS the demo"),
@@ -142,7 +141,6 @@ def layout():
                 ],
                 style={"marginBottom": "24px"},
             ),
-
             html.Section(
                 dcc.Markdown(LLMS_DOC, link_target="_blank"),
                 style={
@@ -152,7 +150,6 @@ def layout():
                     "borderRadius": "4px",
                 },
             ),
-
             html.Section(
                 [
                     html.H2("Try the surfaces", style={"marginTop": "32px"}),
@@ -190,7 +187,6 @@ def layout():
                     ),
                 ]
             ),
-
             html.Footer(
                 dcc.Link("← Home", href="/"),
                 style={"marginTop": "40px", "paddingTop": "16px", "borderTop": "1px solid #e0e0e0"},

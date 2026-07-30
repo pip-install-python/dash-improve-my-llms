@@ -43,7 +43,9 @@ class TestRenderMarkdownMinimal:
 
     def test_blockquote(self):
         out = _render_markdown_minimal("> a quote")
-        assert "<blockquote>a quote</blockquote>" in out
+        assert "<blockquote>" in out
+        assert "<p>a quote</p>" in out
+        assert "</blockquote>" in out
 
     def test_inline_code(self):
         out = _render_markdown_minimal("call `foo()` here")
@@ -135,7 +137,56 @@ class TestGenerateStaticPageHtml:
         )
         assert '<script type="application/ld+json">' in html
         assert '"@context": "https://schema.org"' in html
-        assert '"@type": "WebApplication"' in html
+        # Each URL is a WebPage that belongs to the site. Typing every page as
+        # WebApplication described the app, not the page, and gave 28 URLs the
+        # same entity type with no relationship between them.
+        assert '"@type": "WebPage"' in html
+        assert '"isPartOf"' in html
+        assert '"@type": "WebSite"' in html
+
+    def test_schema_type_can_be_overridden_per_page(self, app_config, all_pages):
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={"name": "About", "schema_type": "TechArticle"},
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert '"@type": "TechArticle"' in html
+
+    def test_jsonld_cannot_break_out_of_its_script_block(self, app_config, all_pages):
+        """Page names come from author frontmatter — treat them as hostile."""
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={
+                "name": "</script><script>alert(1)</script>",
+                "description": "x",
+            },
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert "</script><script>" not in html
+        assert "\\u003c/script\\u003e" in html
+
+    def test_description_falls_back_to_page_prose(self, app_config, all_pages):
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={
+                "name": "About",
+                "llms_doc": "# About\n\nWe build tools for Dash developers.",
+            },
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert 'content="We build tools for Dash developers."' in html
+
+    def test_includes_canonical_url(self, app_config, all_pages):
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={"name": "About", "description": "d"},
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert '<link rel="canonical" href="https://example.com/about">' in html
 
     def test_includes_opengraph_tags(self, app_config, all_pages):
         html = generate_static_page_html(
@@ -177,7 +228,8 @@ class TestGenerateStaticPageHtml:
         )
         # The H1 from the LLMS_DOC becomes a real <h1>
         assert "<h1>About</h1>" in html
-        assert "<blockquote>A page.</blockquote>" in html
+        assert "<blockquote>" in html
+        assert "<p>A page.</p>" in html
         assert "<li>one</li>" in html
 
     def test_falls_back_when_no_llms_doc(self, app_config, all_pages):

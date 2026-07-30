@@ -27,7 +27,9 @@ from dash_improve_my_llms.robots_generator import RobotsConfig
 
 
 class TestBuildLlmsTxt:
-    def test_returns_prose_from_page_metadata(self, fake_app, fake_page_registry, page_metadata_sample):
+    def test_returns_prose_from_page_metadata(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         body, status = build_llms_txt_for_page(
             app=fake_app,
             page_path="/",
@@ -38,7 +40,9 @@ class TestBuildLlmsTxt:
         assert body.startswith("# Home")
         assert "This is the landing page" in body
 
-    def test_returns_stub_when_no_llms_doc(self, fake_app, fake_page_registry, page_metadata_sample):
+    def test_returns_stub_when_no_llms_doc(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         body, status = build_llms_txt_for_page(
             app=fake_app,
             page_path="/about",
@@ -69,21 +73,29 @@ class TestBuildLlmsTxt:
         )
         assert status == 404
 
-    def test_normalizes_path_without_leading_slash(self, fake_app, fake_page_registry, page_metadata_sample):
+    def test_normalizes_path_without_leading_slash(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         body_with, _ = build_llms_txt_for_page(
-            app=fake_app, page_path="/about",
-            page_metadata=page_metadata_sample, hidden_paths=set(),
+            app=fake_app,
+            page_path="/about",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
         )
         body_without, _ = build_llms_txt_for_page(
-            app=fake_app, page_path="about",
-            page_metadata=page_metadata_sample, hidden_paths=set(),
+            app=fake_app,
+            page_path="about",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
         )
         assert body_with == body_without
 
     def test_empty_path_treated_as_root(self, fake_app, fake_page_registry, page_metadata_sample):
         body, status = build_llms_txt_for_page(
-            app=fake_app, page_path="",
-            page_metadata=page_metadata_sample, hidden_paths=set(),
+            app=fake_app,
+            page_path="",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
         )
         assert status == 200
         assert body.startswith("# Home")
@@ -219,7 +231,9 @@ class TestHandleBotRequest:
         if result is not None:
             assert result["status"] != 403
 
-    def test_returns_404_to_crawler_on_hidden_path(self, fake_app, fake_page_registry, page_metadata_sample):
+    def test_returns_404_to_crawler_on_hidden_path(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         result = handle_bot_request(
             path="/admin",
             user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)",

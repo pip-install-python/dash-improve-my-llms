@@ -15,11 +15,35 @@ match. Revisit once Dash 4.3 GA lands.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
+from . import access
 from .handlers import _resolve_llms_doc
 
 logger = logging.getLogger(__name__)
+
+
+def _guarded(path: str, prose: str, state: Any):
+    """Resolve the access verdict when the CLIENT READS, not at registration.
+
+    Registration happens at startup, where an application's access check cannot
+    run — there is no request to decide about. `dash.mcp` resources are handed
+    a callable, so the verdict is applied inside it instead.
+
+    Outside a request context an app's check will typically raise, which the
+    resolver turns into "gated". An MCP read with no request therefore yields
+    the gate document, never the prose — the safe direction.
+    """
+
+    def read() -> str:
+        verdict = access.resolve(path, getattr(state, "hidden_pages", set()))
+        if verdict == access.DENY:
+            return "This document is not available."
+        if verdict == access.GATED:
+            return access.gate_document(path, getattr(state, "page_metadata", {}), state)
+        return prose
+
+    return read
 
 
 def register_mcp_resources(app: Any, state: Any) -> bool:
@@ -57,15 +81,10 @@ def register_mcp_resources(app: Any, state: Any) -> bool:
         if not prose:
             continue
 
-        page_name = (
-            (state.page_metadata.get(path) or {}).get("name")
-            or entry.get("name")
-            or path
-        )
-        description = (
-            (state.page_metadata.get(path) or {}).get("description")
-            or f"LLM documentation for {page_name}"
-        )
+        page_name = (state.page_metadata.get(path) or {}).get("name") or entry.get("name") or path
+        description = (state.page_metadata.get(path) or {}).get(
+            "description"
+        ) or f"LLM documentation for {page_name}"
 
         ok = _try_register(
             mcp_api=mcp_api,
@@ -75,6 +94,7 @@ def register_mcp_resources(app: Any, state: Any) -> bool:
             description=description,
             content=prose,
             mime_type="text/markdown",
+            reader=_guarded(path, prose, state),
         )
         if ok:
             registered_any = True
@@ -126,6 +146,7 @@ def _try_register(
     description: str,
     content: str,
     mime_type: str,
+    reader: Any = None,
 ) -> bool:
     """
     Attempt to register a resource via whichever `dash.mcp` API shape exists.
@@ -138,7 +159,7 @@ def _try_register(
       3. mcp_api.add_resource(...)
       4. app.mcp.register_resource(...)
     """
-    handler = lambda: content  # noqa: E731
+    handler = reader if reader is not None else (lambda: content)  # noqa: E731
 
     candidates = []
 
@@ -161,11 +182,26 @@ def _try_register(
     kwargs_variants = [
         # Modern shape: app-first, handler callable
         dict(uri=uri, name=name, description=description, handler=handler, mime_type=mime_type),
-        # Content-as-string shape
-        dict(uri=uri, name=name, description=description, content=content, mime_type=mime_type),
-        # Minimal shape
-        dict(uri=uri, name=name, content=content),
     ]
+
+    # The content-as-string shapes bake the prose in at startup, so a
+    # per-request access check can never apply to them. When an application has
+    # configured one, registering through those shapes would publish gated
+    # prose to every MCP client — so we decline to register at all rather than
+    # register something the application asked us to protect.
+    if access.is_configured():
+        logger.debug(
+            "dash-improve-my-llms: access control is configured, so MCP "
+            "registration for %s will only use handler-based shapes.",
+            uri,
+        )
+    else:
+        kwargs_variants += [
+            # Content-as-string shape
+            dict(uri=uri, name=name, description=description, content=content, mime_type=mime_type),
+            # Minimal shape
+            dict(uri=uri, name=name, content=content),
+        ]
 
     for binding, fn in candidates:
         for kwargs in kwargs_variants:

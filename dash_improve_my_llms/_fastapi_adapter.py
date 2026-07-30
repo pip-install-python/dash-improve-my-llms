@@ -5,16 +5,42 @@ Translates between FastAPI/Starlette's request/response cycle and the
 pure handlers in handlers.py. Only this file knows about FastAPI types.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
+# NOTE: deliberately NO `from __future__ import annotations` in this module.
+#
+# FastAPI reads route-handler annotations to decide what to inject. That
+# import turns every annotation into a string, which FastAPI then resolves
+# against *module* globals — and `Request` is imported inside
+# register_fastapi(), so it isn't there. The result is not an error at
+# startup: FastAPI silently treats `request: Request` as an undeclared query
+# parameter and every /llms.txt request 422s. Keep annotations eager so they
+# resolve in the enclosing scope where the import actually lives.
+
+from . import access
 from .handlers import (
+    apply_prerender,
     build_llms_txt_for_page,
+    build_llms_viewer_html,
     build_robots_txt,
     build_sitemap_xml,
     handle_bot_request,
+    should_prerender,
+    wants_html_viewer,
 )
+
+
+def _doc_headers():
+    """Headers for an llms.txt response.
+
+    ``Vary: Accept`` always, because the same URL serves Markdown or HTML by
+    negotiation and a CDN must not hand a cached browser page to the next
+    agent. When the response is per-requester — it names the reader, or its
+    links carry authority — nothing shared may cache it at all.
+    """
+    if access.is_restricted():
+        return access.private_headers()
+    return {"Vary": "Accept"}
 
 
 def register_fastapi(app: Any, config: Any, state: Any) -> None:
@@ -37,6 +63,8 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
 
     server = app.server
 
+    prerender_enabled = getattr(config, "prerender", True)
+
     @server.middleware("http")
     async def _bot_middleware(request: Request, call_next):
         result = handle_bot_request(
@@ -46,36 +74,107 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
         )
-        if result is None:
-            return await call_next(request)
+        if result is not None:
+            return Response(
+                content=result["body"],
+                status_code=result["status"],
+                media_type=result["content_type"],
+                headers=result.get("headers", {}),
+            )
+
+        response = await call_next(request)
+
+        if not prerender_enabled or not should_prerender(
+            path=request.url.path,
+            status=response.status_code,
+            content_type=response.headers.get("content-type", ""),
+        ):
+            return response
+
+        # call_next hands back a streaming response, so the body has to be
+        # drained before it can be rewritten.
+        chunks = [chunk async for chunk in response.body_iterator]
+        body = b"".join(chunks)
+
+        try:
+            document = body.decode("utf-8")
+        except UnicodeDecodeError:
+            return Response(
+                content=body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+
+        injected = apply_prerender(
+            document=document,
+            app=app,
+            path=request.url.path,
+            page_metadata=state.page_metadata,
+            hidden_paths=state.hidden_pages,
+            state=state,
+        )
+        encoded = injected.encode("utf-8")
+
+        headers = dict(response.headers)
+        # The body just changed length; a stale Content-Length truncates it.
+        headers.pop("content-length", None)
+
         return Response(
-            content=result["body"],
-            status_code=result["status"],
-            media_type=result["content_type"],
-            headers=result.get("headers", {}),
+            content=encoded,
+            status_code=response.status_code,
+            headers=headers,
+            media_type=response.media_type,
         )
 
     router = APIRouter()
 
-    @router.get("/llms.txt", response_class=PlainTextResponse)
-    def _llms_txt_root():
-        body, status = build_llms_txt_for_page(
-            app=app,
-            page_path="",
-            page_metadata=state.page_metadata,
-            hidden_paths=state.hidden_pages,
-        )
-        return PlainTextResponse(body, status_code=status)
-
-    @router.get("/{page_path:path}/llms.txt", response_class=PlainTextResponse)
-    def _llms_txt(page_path: str):
+    def _serve_llms(page_path: str, request: Request) -> Response:
+        """Shared body for both llms.txt routes — negotiated by Accept."""
         body, status = build_llms_txt_for_page(
             app=app,
             page_path=page_path,
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
+            state=state,
+            include_nav=getattr(config, "llms_nav", True),
         )
-        return PlainTextResponse(body, status_code=status)
+
+        if status == 200 and getattr(config, "llms_viewer", True):
+            if wants_html_viewer(
+                accept=request.headers.get("accept", ""),
+                user_agent=request.headers.get("user-agent", ""),
+                query=dict(request.query_params),
+            ):
+                html = build_llms_viewer_html(
+                    app=app,
+                    page_path=page_path,
+                    markdown_body=body,
+                    page_metadata=state.page_metadata,
+                    state=state,
+                )
+                if html is not None:
+                    return Response(
+                        content=html,
+                        status_code=status,
+                        media_type="text/html",
+                        headers=_doc_headers(),
+                    )
+
+        return Response(
+            content=body,
+            status_code=status,
+            media_type="text/markdown",
+            headers=_doc_headers(),
+        )
+
+    @router.get("/llms.txt")
+    def _llms_txt_root(request: Request):
+        return _serve_llms("", request)
+
+    @router.get("/{page_path:path}/llms.txt")
+    def _llms_txt(page_path: str, request: Request):
+        return _serve_llms(page_path, request)
 
     @router.get("/robots.txt", response_class=PlainTextResponse)
     def _robots():

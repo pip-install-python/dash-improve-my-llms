@@ -57,38 +57,23 @@ def load_analytics():
             for visit in data.get("visits", []):
                 path = visit.get("path", "")
                 # Filter out internal Dash paths
-                if not any(ext in path for ext in ['.css', '.js', '.png', '.jpg', '.ico', '_dash', '_reload-hash']):
+                if not any(
+                    ext in path
+                    for ext in [".css", ".js", ".png", ".jpg", ".ico", "_dash", "_reload-hash"]
+                ):
                     clean_visits.append(visit)
 
             # Recalculate stats from clean visits
-            stats = {
-                "desktop": 0,
-                "mobile": 0,
-                "tablet": 0,
-                "bot": 0,
-                "total": 0
-            }
+            stats = {"desktop": 0, "mobile": 0, "tablet": 0, "bot": 0, "total": 0}
 
             for visit in clean_visits:
                 device_type = visit.get("device_type", "desktop")
                 stats[device_type] = stats.get(device_type, 0) + 1
                 stats["total"] += 1
 
-            return {
-                "visits": clean_visits,
-                "stats": stats
-            }
+            return {"visits": clean_visits, "stats": stats}
 
-    return {
-        "visits": [],
-        "stats": {
-            "desktop": 0,
-            "mobile": 0,
-            "tablet": 0,
-            "bot": 0,
-            "total": 0
-        }
-    }
+    return {"visits": [], "stats": {"desktop": 0, "mobile": 0, "tablet": 0, "bot": 0, "total": 0}}
 
 
 def get_bot_visits_by_type(visits):
@@ -116,7 +101,7 @@ def get_visits_by_hour(visits):
     # Group by hour
     hourly_counts = {}
     for i in range(24):
-        hour = (now - timedelta(hours=23-i)).strftime("%H:00")
+        hour = (now - timedelta(hours=23 - i)).strftime("%H:00")
         hourly_counts[hour] = {"desktop": 0, "mobile": 0, "tablet": 0, "bot": 0}
 
     for visit in recent_visits:
@@ -134,7 +119,9 @@ def get_visits_by_hour(visits):
 
 def get_top_pages(visits, limit=10):
     """Get most visited pages."""
-    page_counts = Counter([v["path"] for v in visits if v["path"] not in ["/_dash-update-component", "/_dash-layout"]])
+    page_counts = Counter(
+        [v["path"] for v in visits if v["path"] not in ["/_dash-update-component", "/_dash-layout"]]
+    )
     return page_counts.most_common(limit)
 
 
@@ -150,266 +137,347 @@ def layout():
     recent_bot_visits = [v for v in visits if v["device_type"] == "bot"][-20:]
     recent_bot_visits.reverse()
 
-    return dmc.Container([
-        # Header Section - Improved visual hierarchy
-        dmc.Stack([
-            dmc.Group([
-                dmc.Stack([
-                    dmc.Title("Admin Dashboard", order=1, c="gray.9"),
-                    dmc.Text(
-                        "Visitor Analytics & Bot Tracking",
-                        size="lg",
-                        c="dimmed"
+    return dmc.Container(
+        [
+            # Header Section - Improved visual hierarchy
+            dmc.Stack(
+                [
+                    dmc.Group(
+                        [
+                            dmc.Stack(
+                                [
+                                    dmc.Title("Admin Dashboard", order=1, c="gray.9"),
+                                    dmc.Text(
+                                        "Visitor Analytics & Bot Tracking", size="lg", c="dimmed"
+                                    ),
+                                ],
+                                gap=4,
+                            ),
+                            dmc.Stack(
+                                [
+                                    dmc.Badge(
+                                        "Hidden Page", color="red", size="lg", variant="filled"
+                                    ),
+                                    dmc.Text("Not in sitemap.xml", size="xs", c="dimmed"),
+                                ],
+                                gap=4,
+                                align="flex-end",
+                            ),
+                        ],
+                        justify="space-between",
+                        align="flex-start",
                     ),
-                ], gap=4),
-                dmc.Stack([
-                    dmc.Badge("Hidden Page", color="red", size="lg", variant="filled"),
-                    dmc.Text("Not in sitemap.xml", size="xs", c="dimmed"),
-                ], gap=4, align="flex-end"),
-            ], justify="space-between", align="flex-start"),
-
-            # Info Alert - Better clarity
-            dmc.Alert(
-                children=[
-                    dmc.Text([
-                        "This page demonstrates ",
-                        dmc.Code("mark_hidden()"),
-                        " functionality. It's excluded from sitemaps, blocked in robots.txt, and returns 404 for AI bot documentation requests."
-                    ], size="sm"),
+                    # Info Alert - Better clarity
+                    dmc.Alert(
+                        children=[
+                            dmc.Text(
+                                [
+                                    "This page demonstrates ",
+                                    dmc.Code("mark_hidden()"),
+                                    " functionality. It's excluded from sitemaps, blocked in robots.txt, and returns 404 for AI bot documentation requests.",
+                                ],
+                                size="sm",
+                            ),
+                        ],
+                        title="🔒 Privacy Control Demo",
+                        color="blue",
+                        variant="light",
+                        radius="md",
+                    ),
                 ],
-                title="🔒 Privacy Control Demo",
-                color="blue",
-                variant="light",
-                radius="md",
+                gap="xl",
+                mb="xl",
             ),
-        ], gap="xl", mb="xl"),
-
-        # Stats Cards Section - Improved spacing and visual hierarchy
-        dmc.SimpleGrid(
-            cols={"base": 1, "xs": 2, "sm": 3, "md": 5},
-            spacing="lg",
-            mb="xl",
-            children=[
-                create_stat_card(
-                    value=stats['total'],
-                    label="Total Visits",
-                    icon="📊",
-                    color="violet"
-                ),
-                create_stat_card(
-                    value=stats['desktop'],
-                    label="Desktop",
-                    icon="🖥️",
-                    color="gray"
-                ),
-                create_stat_card(
-                    value=stats['mobile'],
-                    label="Mobile",
-                    icon="📱",
-                    color="gray"
-                ),
-                create_stat_card(
-                    value=stats['tablet'],
-                    label="Tablet",
-                    icon="📲",
-                    color="gray"
-                ),
-                create_stat_card(
-                    value=stats['bot'],
-                    label="Bots",
-                    icon="🤖",
-                    color="gray"
-                ),
-            ]
-        ),
-
-        # Main Content - Tabs for progressive disclosure
-        dmc.Tabs(
-            value="overview",
-            children=[
-                dmc.TabsList([
-                    dmc.TabsTab("Overview", value="overview"),
-                    dmc.TabsTab("Bot Activity", value="bots"),
-                    dmc.TabsTab("Configuration", value="config"),
-                ]),
-
-                # Overview Tab
-                dmc.TabsPanel(value="overview", pt="xl", children=[
-                    dmc.Stack([
-                        # Charts Grid - Better layout with consistent spacing
-                        dmc.SimpleGrid(
-                            cols={"base": 1, "md": 2},
-                            spacing="lg",
-                            mb="lg",
-                            children=[
-                                create_chart_card(
-                                    title="Device Distribution",
-                                    description="Breakdown by device type",
-                                    chart=create_device_pie_chart(stats)
-                                ),
-                                create_chart_card(
-                                    title="Bot Types",
-                                    description="AI Training, Search, and Traditional bots",
-                                    chart=create_bot_types_chart(bot_types)
-                                ),
-                            ]
-                        ),
-
-                        # Full-width hourly chart
-                        create_chart_card(
-                            title="Visits by Hour",
-                            description="Activity over the last 24 hours",
-                            chart=create_hourly_chart(hourly_data)
-                        ),
-
-                        # Top pages chart
-                        create_chart_card(
-                            title="Most Visited Pages",
-                            description="Top 10 pages by visit count",
-                            chart=create_top_pages_chart(top_pages)
-                        ),
-                    ], gap="lg"),
-                ]),
-
-                # Bot Activity Tab
-                dmc.TabsPanel(value="bots", pt="xl", children=[
-                    dmc.Stack([
-                        dmc.Alert(
-                            children="Track AI training bots, AI search bots, and traditional search engines visiting your application.",
-                            title="Bot Monitoring",
-                            color="blue",
-                            variant="light",
-                        ),
-
-                        dmc.Paper([
-                            dmc.Title("Recent Bot Visits", order=3, mb="md"),
-                            create_bot_visits_table(recent_bot_visits) if recent_bot_visits else dmc.Text(
-                                "No bot visits yet. Bots will be tracked automatically.",
-                                c="dimmed",
-                                fs="italic"
+            # Stats Cards Section - Improved spacing and visual hierarchy
+            dmc.SimpleGrid(
+                cols={"base": 1, "xs": 2, "sm": 3, "md": 5},
+                spacing="lg",
+                mb="xl",
+                children=[
+                    create_stat_card(
+                        value=stats["total"], label="Total Visits", icon="📊", color="violet"
+                    ),
+                    create_stat_card(
+                        value=stats["desktop"], label="Desktop", icon="🖥️", color="gray"
+                    ),
+                    create_stat_card(
+                        value=stats["mobile"], label="Mobile", icon="📱", color="gray"
+                    ),
+                    create_stat_card(
+                        value=stats["tablet"], label="Tablet", icon="📲", color="gray"
+                    ),
+                    create_stat_card(value=stats["bot"], label="Bots", icon="🤖", color="gray"),
+                ],
+            ),
+            # Main Content - Tabs for progressive disclosure
+            dmc.Tabs(
+                value="overview",
+                children=[
+                    dmc.TabsList(
+                        [
+                            dmc.TabsTab("Overview", value="overview"),
+                            dmc.TabsTab("Bot Activity", value="bots"),
+                            dmc.TabsTab("Configuration", value="config"),
+                        ]
+                    ),
+                    # Overview Tab
+                    dmc.TabsPanel(
+                        value="overview",
+                        pt="xl",
+                        children=[
+                            dmc.Stack(
+                                [
+                                    # Charts Grid - Better layout with consistent spacing
+                                    dmc.SimpleGrid(
+                                        cols={"base": 1, "md": 2},
+                                        spacing="lg",
+                                        mb="lg",
+                                        children=[
+                                            create_chart_card(
+                                                title="Device Distribution",
+                                                description="Breakdown by device type",
+                                                chart=create_device_pie_chart(stats),
+                                            ),
+                                            create_chart_card(
+                                                title="Bot Types",
+                                                description="AI Training, Search, and Traditional bots",
+                                                chart=create_bot_types_chart(bot_types),
+                                            ),
+                                        ],
+                                    ),
+                                    # Full-width hourly chart
+                                    create_chart_card(
+                                        title="Visits by Hour",
+                                        description="Activity over the last 24 hours",
+                                        chart=create_hourly_chart(hourly_data),
+                                    ),
+                                    # Top pages chart
+                                    create_chart_card(
+                                        title="Most Visited Pages",
+                                        description="Top 10 pages by visit count",
+                                        chart=create_top_pages_chart(top_pages),
+                                    ),
+                                ],
+                                gap="lg",
                             ),
-                        ], p="lg", radius="md", withBorder=True),
-                    ], gap="lg"),
-                ]),
-
-                # Configuration Tab
-                dmc.TabsPanel(value="config", pt="xl", children=[
-                    dmc.Stack([
-                        # Bot Type Reference
-                        dmc.Paper([
-                            dmc.Title("Bot Type Reference", order=3, mb="lg"),
-                            dmc.SimpleGrid(
-                                cols={"base": 1, "sm": 3},
-                                spacing="lg",
-                                children=[
-                                    create_bot_type_info(
-                                        "AI Training",
-                                        "GPTBot, anthropic-ai, Claude-Web, CCBot, Google-Extended",
-                                        "🚫 Blocked by default",
-                                        "red"
+                        ],
+                    ),
+                    # Bot Activity Tab
+                    dmc.TabsPanel(
+                        value="bots",
+                        pt="xl",
+                        children=[
+                            dmc.Stack(
+                                [
+                                    dmc.Alert(
+                                        children="Track AI training bots, AI search bots, and traditional search engines visiting your application.",
+                                        title="Bot Monitoring",
+                                        color="blue",
+                                        variant="light",
                                     ),
-                                    create_bot_type_info(
-                                        "AI Search",
-                                        "ChatGPT-User, ClaudeBot, PerplexityBot",
-                                        "✅ Allowed by default",
-                                        "blue"
+                                    dmc.Paper(
+                                        [
+                                            dmc.Title("Recent Bot Visits", order=3, mb="md"),
+                                            (
+                                                create_bot_visits_table(recent_bot_visits)
+                                                if recent_bot_visits
+                                                else dmc.Text(
+                                                    "No bot visits yet. Bots will be tracked automatically.",
+                                                    c="dimmed",
+                                                    fs="italic",
+                                                )
+                                            ),
+                                        ],
+                                        p="lg",
+                                        radius="md",
+                                        withBorder=True,
                                     ),
-                                    create_bot_type_info(
-                                        "Traditional",
-                                        "Googlebot, Bingbot, Yahoo, DuckDuckBot",
-                                        "✅ Allowed by default",
-                                        "green"
-                                    ),
-                                ]
+                                ],
+                                gap="lg",
                             ),
-                        ], p="lg", radius="md", withBorder=True, mb="lg"),
-
-                        # Current Configuration
-                        dmc.Paper([
-                            dmc.Title("Current Configuration", order=3, mb="md"),
-                            dmc.Code(
-                                """RobotsConfig(
+                        ],
+                    ),
+                    # Configuration Tab
+                    dmc.TabsPanel(
+                        value="config",
+                        pt="xl",
+                        children=[
+                            dmc.Stack(
+                                [
+                                    # Bot Type Reference
+                                    dmc.Paper(
+                                        [
+                                            dmc.Title("Bot Type Reference", order=3, mb="lg"),
+                                            dmc.SimpleGrid(
+                                                cols={"base": 1, "sm": 3},
+                                                spacing="lg",
+                                                children=[
+                                                    create_bot_type_info(
+                                                        "AI Training",
+                                                        "GPTBot, anthropic-ai, Claude-Web, CCBot, Google-Extended",
+                                                        "🚫 Blocked by default",
+                                                        "red",
+                                                    ),
+                                                    create_bot_type_info(
+                                                        "AI Search",
+                                                        "ChatGPT-User, ClaudeBot, PerplexityBot",
+                                                        "✅ Allowed by default",
+                                                        "blue",
+                                                    ),
+                                                    create_bot_type_info(
+                                                        "Traditional",
+                                                        "Googlebot, Bingbot, Yahoo, DuckDuckBot",
+                                                        "✅ Allowed by default",
+                                                        "green",
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                        p="lg",
+                                        radius="md",
+                                        withBorder=True,
+                                        mb="lg",
+                                    ),
+                                    # Current Configuration
+                                    dmc.Paper(
+                                        [
+                                            dmc.Title("Current Configuration", order=3, mb="md"),
+                                            dmc.Code(
+                                                """RobotsConfig(
     block_ai_training=True,
     allow_ai_search=True,
     allow_traditional=True,
     crawl_delay=10,
     disallowed_paths=["/admin", "/api/*"]
 )""",
-                                block=True,
+                                                block=True,
+                                            ),
+                                        ],
+                                        p="lg",
+                                        radius="md",
+                                        withBorder=True,
+                                    ),
+                                ],
+                                gap="lg",
                             ),
-                        ], p="lg", radius="md", withBorder=True),
-                    ], gap="lg"),
-                ]),
-            ]
-        ),
-
-        # Footer Navigation
-        dmc.Divider(mt="xl", mb="lg"),
-        dmc.Group([
-            dcc.Link("← Home", href="/", style={"textDecoration": "none"}),
-            dcc.Link("MCP Audience", href="/audiences/mcp-clients", style={"textDecoration": "none"}),
-            dcc.Link("Analytics", href="/analytics", style={"textDecoration": "none"}),
-        ], gap="lg"),
-
-    ], size="xl", py="xl")
+                        ],
+                    ),
+                ],
+            ),
+            # Footer Navigation
+            dmc.Divider(mt="xl", mb="lg"),
+            dmc.Group(
+                [
+                    dcc.Link("← Home", href="/", style={"textDecoration": "none"}),
+                    dcc.Link(
+                        "MCP Audience",
+                        href="/audiences/mcp-clients",
+                        style={"textDecoration": "none"},
+                    ),
+                    dcc.Link("Analytics", href="/analytics", style={"textDecoration": "none"}),
+                ],
+                gap="lg",
+            ),
+        ],
+        size="xl",
+        py="xl",
+    )
 
 
 def create_stat_card(value, label, icon, color="violet"):
     """Create a stat card with improved visual hierarchy."""
-    return dmc.Paper([
-        dmc.Stack([
-            dmc.Group([
-                dmc.Text(icon, size="xl"),
-                dmc.Title(
-                    f"{value:,}",
-                    order=2,
-                    c=f"{color}.6" if color != "gray" else "gray.9"
-                ),
-            ], gap="xs", justify="center"),
-            dmc.Text(label, size="sm", c="dimmed", ta="center"),
-        ], gap="xs", align="center"),
-    ], p="lg", radius="md", withBorder=True, shadow="sm")
+    return dmc.Paper(
+        [
+            dmc.Stack(
+                [
+                    dmc.Group(
+                        [
+                            dmc.Text(icon, size="xl"),
+                            dmc.Title(
+                                f"{value:,}",
+                                order=2,
+                                c=f"{color}.6" if color != "gray" else "gray.9",
+                            ),
+                        ],
+                        gap="xs",
+                        justify="center",
+                    ),
+                    dmc.Text(label, size="sm", c="dimmed", ta="center"),
+                ],
+                gap="xs",
+                align="center",
+            ),
+        ],
+        p="lg",
+        radius="md",
+        withBorder=True,
+        shadow="sm",
+    )
 
 
 def create_chart_card(title, description, chart):
     """Create a chart card with consistent styling."""
-    return dmc.Paper([
-        dmc.Stack([
-            dmc.Stack([
-                dmc.Title(title, order=3),
-                dmc.Text(description, size="sm", c="dimmed"),
-            ], gap=4),
-            dcc.Graph(
-                figure=chart,
-                config={'displayModeBar': False},
-                style={"height": "350px"}
+    return dmc.Paper(
+        [
+            dmc.Stack(
+                [
+                    dmc.Stack(
+                        [
+                            dmc.Title(title, order=3),
+                            dmc.Text(description, size="sm", c="dimmed"),
+                        ],
+                        gap=4,
+                    ),
+                    dcc.Graph(
+                        figure=chart, config={"displayModeBar": False}, style={"height": "350px"}
+                    ),
+                ],
+                gap="md",
             ),
-        ], gap="md"),
-    ], p="lg", radius="md", withBorder=True, shadow="sm")
+        ],
+        p="lg",
+        radius="md",
+        withBorder=True,
+        shadow="sm",
+    )
 
 
 def create_bot_type_info(title, bots, status, color):
     """Create bot type information card."""
-    return dmc.Paper([
-        dmc.Stack([
-            dmc.Badge(title, color=color, size="lg", variant="filled"),
-            dmc.Text(bots, size="sm", c="dimmed"),
-            dmc.Text(status, size="xs", fw=600, c=color),
-        ], gap="xs"),
-    ], p="md", radius="md", withBorder=True)
+    return dmc.Paper(
+        [
+            dmc.Stack(
+                [
+                    dmc.Badge(title, color=color, size="lg", variant="filled"),
+                    dmc.Text(bots, size="sm", c="dimmed"),
+                    dmc.Text(status, size="xs", fw=600, c=color),
+                ],
+                gap="xs",
+            ),
+        ],
+        p="md",
+        radius="md",
+        withBorder=True,
+    )
 
 
 def create_device_pie_chart(stats):
     """Create pie chart for device distribution."""
     labels = []
     values = []
-    colors = ['#7950f2', '#495057', '#495057', '#495057', '#495057']  # Violet primary, gray for others
+    colors = [
+        "#7950f2",
+        "#495057",
+        "#495057",
+        "#495057",
+        "#495057",
+    ]  # Violet primary, gray for others
 
     device_data = [
-        ('Desktop', stats['desktop']),
-        ('Mobile', stats['mobile']),
-        ('Tablet', stats['tablet']),
-        ('Bots', stats['bot']),
+        ("Desktop", stats["desktop"]),
+        ("Mobile", stats["mobile"]),
+        ("Tablet", stats["tablet"]),
+        ("Bots", stats["bot"]),
     ]
 
     for label, value in device_data:
@@ -418,30 +486,28 @@ def create_device_pie_chart(stats):
             values.append(value)
 
     if not values:
-        labels = ['No visits yet']
+        labels = ["No visits yet"]
         values = [1]
-        colors = ['#e9ecef']
+        colors = ["#e9ecef"]
 
-    fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        marker=dict(colors=colors[:len(values)]),
-        hole=0.5,
-        textinfo='label+percent',
-        textposition='auto',
-    )])
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                marker=dict(colors=colors[: len(values)]),
+                hole=0.5,
+                textinfo="label+percent",
+                textposition="auto",
+            )
+        ]
+    )
 
     fig.update_layout(
         showlegend=True,
         margin=dict(t=10, b=10, l=10, r=10),
         height=350,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
-        ),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
         font=dict(size=12),
     )
 
@@ -459,7 +525,7 @@ def create_bot_types_chart(bot_types):
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=14, color="#868e96")
+            font=dict(size=14, color="#868e96"),
         )
         fig.update_layout(
             xaxis=dict(visible=False),
@@ -471,26 +537,30 @@ def create_bot_types_chart(bot_types):
 
     # Map bot types to colors - using restrained palette
     color_map = {
-        'training': '#fa5252',
-        'search': '#228be6',
-        'traditional': '#40c057',
-        'unknown': '#868e96'
+        "training": "#fa5252",
+        "search": "#228be6",
+        "traditional": "#40c057",
+        "unknown": "#868e96",
     }
 
     labels = list(bot_types.keys())
     values = list(bot_types.values())
-    colors = [color_map.get(label, '#868e96') for label in labels]
+    colors = [color_map.get(label, "#868e96") for label in labels]
 
     # Capitalize labels for display
-    display_labels = [label.capitalize() if label != 'unknown' else 'Unknown' for label in labels]
+    display_labels = [label.capitalize() if label != "unknown" else "Unknown" for label in labels]
 
-    fig = go.Figure(data=[go.Bar(
-        x=display_labels,
-        y=values,
-        marker=dict(color=colors),
-        text=values,
-        textposition='auto',
-    )])
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=display_labels,
+                y=values,
+                marker=dict(color=colors),
+                text=values,
+                textposition="auto",
+            )
+        ]
+    )
 
     fig.update_layout(
         xaxis_title="Bot Type",
@@ -515,7 +585,7 @@ def create_hourly_chart(hourly_data):
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=14, color="#868e96")
+            font=dict(size=14, color="#868e96"),
         )
         fig.update_layout(
             xaxis=dict(visible=False),
@@ -526,63 +596,69 @@ def create_hourly_chart(hourly_data):
         return fig
 
     hours = list(hourly_data.keys())
-    desktop_counts = [hourly_data[h]['desktop'] for h in hours]
-    mobile_counts = [hourly_data[h]['mobile'] for h in hours]
-    tablet_counts = [hourly_data[h]['tablet'] for h in hours]
-    bot_counts = [hourly_data[h]['bot'] for h in hours]
+    desktop_counts = [hourly_data[h]["desktop"] for h in hours]
+    mobile_counts = [hourly_data[h]["mobile"] for h in hours]
+    tablet_counts = [hourly_data[h]["tablet"] for h in hours]
+    bot_counts = [hourly_data[h]["bot"] for h in hours]
 
     fig = go.Figure()
 
     # Using restrained color palette
-    fig.add_trace(go.Scatter(
-        x=hours, y=desktop_counts,
-        name='Desktop',
-        mode='lines',
-        line=dict(width=2, color='#7950f2'),
-        fill='tonexty',
-        stackgroup='one',
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=hours,
+            y=desktop_counts,
+            name="Desktop",
+            mode="lines",
+            line=dict(width=2, color="#7950f2"),
+            fill="tonexty",
+            stackgroup="one",
+        )
+    )
 
-    fig.add_trace(go.Scatter(
-        x=hours, y=mobile_counts,
-        name='Mobile',
-        mode='lines',
-        line=dict(width=2, color='#228be6'),
-        fill='tonexty',
-        stackgroup='one',
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=hours,
+            y=mobile_counts,
+            name="Mobile",
+            mode="lines",
+            line=dict(width=2, color="#228be6"),
+            fill="tonexty",
+            stackgroup="one",
+        )
+    )
 
-    fig.add_trace(go.Scatter(
-        x=hours, y=tablet_counts,
-        name='Tablet',
-        mode='lines',
-        line=dict(width=2, color='#40c057'),
-        fill='tonexty',
-        stackgroup='one',
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=hours,
+            y=tablet_counts,
+            name="Tablet",
+            mode="lines",
+            line=dict(width=2, color="#40c057"),
+            fill="tonexty",
+            stackgroup="one",
+        )
+    )
 
-    fig.add_trace(go.Scatter(
-        x=hours, y=bot_counts,
-        name='Bots',
-        mode='lines',
-        line=dict(width=2, color='#fab005'),
-        fill='tonexty',
-        stackgroup='one',
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=hours,
+            y=bot_counts,
+            name="Bots",
+            mode="lines",
+            line=dict(width=2, color="#fab005"),
+            fill="tonexty",
+            stackgroup="one",
+        )
+    )
 
     fig.update_layout(
         xaxis_title="Hour",
         yaxis_title="Visits",
         margin=dict(t=10, b=40, l=40, r=10),
         height=350,
-        hovermode='x unified',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         font=dict(size=12),
     )
 
@@ -600,7 +676,7 @@ def create_top_pages_chart(top_pages):
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=14, color="#868e96")
+            font=dict(size=14, color="#868e96"),
         )
         fig.update_layout(
             xaxis=dict(visible=False),
@@ -613,14 +689,18 @@ def create_top_pages_chart(top_pages):
     pages = [page[0] for page in top_pages]
     counts = [page[1] for page in top_pages]
 
-    fig = go.Figure(data=[go.Bar(
-        x=counts,
-        y=pages,
-        orientation='h',
-        marker=dict(color='#7950f2'),
-        text=counts,
-        textposition='auto',
-    )])
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=counts,
+                y=pages,
+                orientation="h",
+                marker=dict(color="#7950f2"),
+                text=counts,
+                textposition="auto",
+            )
+        ]
+    )
 
     fig.update_layout(
         xaxis_title="Visits",
@@ -641,45 +721,57 @@ def create_bot_visits_table(bot_visits):
 
     rows = []
     for visit in bot_visits:
-        timestamp = visit.get('timestamp', 'Unknown')
+        timestamp = visit.get("timestamp", "Unknown")
         try:
             dt = datetime.fromisoformat(timestamp)
             time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         except:
             time_str = timestamp
 
-        bot_type = visit.get('bot_type', 'unknown')
+        bot_type = visit.get("bot_type", "unknown")
 
         # Color code by bot type
-        if bot_type == 'training':
+        if bot_type == "training":
             badge = dmc.Badge("Training", color="red", size="sm", variant="filled")
-        elif bot_type == 'search':
+        elif bot_type == "search":
             badge = dmc.Badge("Search", color="blue", size="sm", variant="filled")
-        elif bot_type == 'traditional':
+        elif bot_type == "traditional":
             badge = dmc.Badge("Traditional", color="green", size="sm", variant="filled")
         else:
             badge = dmc.Badge("Unknown", color="gray", size="sm", variant="outline")
 
-        user_agent = visit.get('user_agent', 'Unknown')
+        user_agent = visit.get("user_agent", "Unknown")
         truncated_ua = user_agent[:80] + "..." if len(user_agent) > 80 else user_agent
 
         rows.append(
-            dmc.TableTr([
-                dmc.TableTd(dmc.Text(time_str, size="sm", ff="monospace")),
-                dmc.TableTd(badge),
-                dmc.TableTd(dmc.Code(visit.get('path', '/'), style={"fontSize": "12px"})),
-                dmc.TableTd(dmc.Text(truncated_ua, size="xs", c="dimmed", style={"maxWidth": "400px"})),
-            ])
+            dmc.TableTr(
+                [
+                    dmc.TableTd(dmc.Text(time_str, size="sm", ff="monospace")),
+                    dmc.TableTd(badge),
+                    dmc.TableTd(dmc.Code(visit.get("path", "/"), style={"fontSize": "12px"})),
+                    dmc.TableTd(
+                        dmc.Text(truncated_ua, size="xs", c="dimmed", style={"maxWidth": "400px"})
+                    ),
+                ]
+            )
         )
 
-    return dmc.Table([
-        dmc.TableThead(
-            dmc.TableTr([
-                dmc.TableTh("Timestamp"),
-                dmc.TableTh("Bot Type"),
-                dmc.TableTh("Page"),
-                dmc.TableTh("User Agent"),
-            ])
-        ),
-        dmc.TableTbody(rows),
-    ], striped=True, highlightOnHover=True, withTableBorder=True, withColumnBorders=True)
+    return dmc.Table(
+        [
+            dmc.TableThead(
+                dmc.TableTr(
+                    [
+                        dmc.TableTh("Timestamp"),
+                        dmc.TableTh("Bot Type"),
+                        dmc.TableTh("Page"),
+                        dmc.TableTh("User Agent"),
+                    ]
+                )
+            ),
+            dmc.TableTbody(rows),
+        ],
+        striped=True,
+        highlightOnHover=True,
+        withTableBorder=True,
+        withColumnBorders=True,
+    )

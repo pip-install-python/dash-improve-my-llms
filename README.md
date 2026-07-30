@@ -1,256 +1,407 @@
+<div align="center">
+
 # dash-improve-my-llms
 
-**Crawler / SEO companion for Dash apps, with a thin MCP bridge for Dash 4.3+.**
+**Make a [Plotly Dash](https://dash.plotly.com) app readable to search engines, crawlers and AI agents — without giving up the interactive app.**
 
-[![PyPI version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Dash 3.x · 4.1+](https://img.shields.io/badge/dash-3.x%20·%204.1+-blue.svg)](https://dash.plotly.com/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+Universal prerender · crawler-ready static HTML · `/llms.txt` on every page · rendered `llms.txt` viewer · `robots.txt` + `sitemap.xml` · multi-host network directory · per-request access control · Dash 4.3+ MCP bridge
+
+[![PyPI version](https://img.shields.io/badge/version-2.3.2-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://pypi.org/project/dash-improve-my-llms/)
+[![Dash 4.1+](https://img.shields.io/badge/Dash-4.1%2B-1a1a2e?logo=plotly&logoColor=white)](https://dash.plotly.com/)
+[![Backends](https://img.shields.io/badge/backends-flask%20·%20fastapi%20·%20quart-4b8bbe)](#dash-compatibility)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/WEnZR35mrK)
+[![YouTube](https://img.shields.io/badge/YouTube-%402plotai-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ)
+
+**[Documentation](https://llms.2plot.dev)** · [Discord](https://discord.gg/WEnZR35mrK) · [YouTube](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ) · [GitHub](https://github.com/pip-install-python/dash-improve-my-ai)
+
+<br/>
+
+_Maintained by **[Pip Install Python LLC](https://pip-install-python.com)**._
+
+</div>
 
 ---
 
-## What 2.0 is
+## Overview
 
-A small package that handles the parts of "making your Dash app
-AI-friendly" that Dash itself doesn't:
+A Dash app is a JavaScript application. Ask for any page without running
+JavaScript — which is what most crawlers, link previewers and LLM fetchers
+do — and you get this:
 
-- **`/robots.txt`** — bot-class access policies (block AI training,
-  allow AI search, etc.)
-- **`/sitemap.xml`** — generated from `dash.page_registry` minus hidden
-  pages
-- **`/<page>/llms.txt`** — each page's hand-written prose at a
-  predictable URL
-- **Static-HTML prerender** — bot middleware serves crawlers the prose
-  view instead of an empty Dash JS shell
-- **MCP bridge** — registers each page's prose as a `dash.mcp` resource
-  on Dash 4.3+
-
-It does **not** try to introspect your layouts or callbacks. Dash 4.3's
-MCP server does that natively and better.
-
-## The three audiences
-
-| Audience              | How they reach the app          | What 2.0 serves them                         |
-|-----------------------|---------------------------------|----------------------------------------------|
-| MCP clients           | JSON-RPC over Streamable HTTP   | `LLMS_DOC` registered as `dash.mcp` resource |
-| Web crawlers          | Plain HTTPS, often no JS        | `/robots.txt`, `/sitemap.xml`, static HTML   |
-| Paste-into-chat users | One-shot HTTP fetch             | `/llms.txt`, `/<page>/llms.txt` as markdown  |
-
-FastAPI's `/docs` describes HTTP routes, not callbacks or layouts. MCP
-fills that gap for audience #1. Audiences #2 and #3 are unchanged by
-either — and they have no native Dash story. That's the gap this
-package fills.
-
-## Install
-
-Pick the extra that matches your Dash backend:
-
-```bash
-pip install "dash-improve-my-llms[flask]"     # Dash 3.x (default)
-pip install "dash-improve-my-llms[fastapi]"   # Dash 4.1+
-pip install "dash-improve-my-llms[quart]"     # Dash 4.1+ async
-pip install "dash-improve-my-llms[all]"       # all three
+```html
+<div id="react-entry-point">
+    <div class="_dash-loading">Loading...</div>
+</div>
 ```
 
-The package detects which backend `app.server` is using and dispatches
-to the right adapter. Your code looks the same regardless.
+Every URL returns the same empty shell. To a search engine, a 30-page
+documentation site looks like 30 identical thin pages. To an agent, it looks
+like nothing at all.
+
+`dash-improve-my-llms` fixes that at the framework level. You write each
+page's content once, as Markdown, and the package serves it everywhere a
+non-JavaScript consumer will look:
+
+| Surface | What lands there |
+|---|---|
+| The page's own HTML | The prose, rendered into the initial response, before React mounts |
+| `/<page>/llms.txt` | The same prose as Markdown, with links back to the site and network indexes |
+| `/llms.txt` | An index of every page, plus the cross-host directory |
+| `/sitemap.xml` | Every non-hidden page |
+| `/robots.txt` | Per-bot-class access policy |
+| `dash.mcp` | The same prose as an MCP resource (Dash 4.3+) |
+
+One source of truth, six surfaces, and the interactive app is untouched.
+
+## Installation
+
+```bash
+pip install "dash-improve-my-llms[flask]"     # Dash's default backend
+pip install "dash-improve-my-llms[fastapi]"   # Dash 4.2+
+pip install "dash-improve-my-llms[quart]"     # Dash 4.2+ async
+pip install "dash-improve-my-llms[all]"
+```
+
+The backend is detected from `app.server`; your code is the same either way.
+Requires `dash>=4.1`. See [Dash compatibility](#dash-compatibility) for the
+tested matrix.
 
 ## Quick start
 
 ```python
-from dash import Dash, register_page
-from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden
+import dash
+from dash import Dash, html
+from dash_improve_my_llms import add_llms_routes, RobotsConfig
 
 app = Dash(__name__, use_pages=True)
+
+# Absolute URLs in sitemap.xml, llms.txt and canonical tags come from this.
 app._base_url = "https://myapp.com"
-app._robots_config = RobotsConfig(
-    block_ai_training=True,    # GPTBot, CCBot, anthropic-ai → 403
-    allow_ai_search=True,      # ClaudeBot, ChatGPT-User → allowed
-    allow_traditional=True,    # Googlebot, Bingbot → allowed
-)
+app._robots_config = RobotsConfig(block_ai_training=True)
 
-mark_hidden("/admin")
-add_llms_routes(app)
+app.layout = html.Div([dash.page_container])
 
-if __name__ == "__main__":
-    app.run(debug=True)
+add_llms_routes(app)   # ← the whole integration
 ```
 
-Every page module then exports the prose for its own `/llms.txt`:
+Then give each page prose, either at module scope:
 
 ```python
 # pages/equipment.py
-from dash import html, register_page
-
-register_page(__name__, path="/equipment", name="Equipment Catalog")
-
-LLMS_DOC = """\\
+LLMS_DOC = """
 # Equipment Catalog
 
-Browse the equipment library with text search and a category dropdown.
+> Browse, search and filter the equipment inventory.
 
-## What this page does
-...
+Filter by category, availability, or location. Selecting a row opens the
+detail view with maintenance history. See [the API guide](/api) for
+programmatic access.
 """
-
-def layout():
-    return html.Div([...])
 ```
 
-That's the whole pattern. The `LLMS_DOC` string IS the body of
-`/equipment/llms.txt`, byte-for-byte.
-
-If a page has no `LLMS_DOC`, you'll see a single `UserWarning` at
-`add_llms_routes()` naming the missing pages, and the endpoint returns
-a small placeholder stub so bots still get a 200.
-
-## What gets served
-
-| Route | What it returns | For |
-|---|---|---|
-| `/llms.txt` | Home page's `LLMS_DOC` | Paste-into-chat |
-| `/<page>/llms.txt` | That page's `LLMS_DOC` | Paste-into-chat, AI-aware crawlers |
-| `/robots.txt` | Bot policy generated from `RobotsConfig` | Crawlers |
-| `/sitemap.xml` | Non-hidden pages from `page_registry` | Crawlers, search engines |
-| (any URL with crawler UA) | Static HTML with the page's `LLMS_DOC` rendered | Crawlers that can't run JS |
-
-Plus, on Dash 4.3+:
-
-| Surface | What | For |
-|---|---|---|
-| `llms:///<page-path>` | MCP resource carrying that page's `LLMS_DOC` | Claude Desktop, agentic IDEs, MCP clients |
-
-## Public API
+…or explicitly, which is what you want when pages are generated in a loop:
 
 ```python
-from dash_improve_my_llms import (
-    add_llms_routes,           # main entry point
-    LLMSConfig,                # opt-out flags
-    RobotsConfig,              # bot-class policies
-    register_page_metadata,    # name, description, llms_doc, schema.org fields
-    mark_hidden,               # exclude path from sitemap/robots/MCP
-    is_hidden,                 # query
+from dash_improve_my_llms import register_page_metadata
+
+register_page_metadata(
+    "/equipment",
+    name="Equipment Catalog",
+    description="Browse and filter equipment.",
+    llms_doc=markdown_text,
 )
 ```
 
-### `LLMSConfig`
+`register_page_metadata` **merges**. Calling it again with only a name will
+not erase the prose you registered earlier.
 
-```python
-LLMSConfig(
-    enabled=True,                       # set False to no-op the package
-    warn_missing_llms_doc=True,         # the startup UserWarning
-    register_mcp_resources=True,        # set False to skip MCP bridge
-)
+At startup the package names every page that has no prose:
+
+```
+UserWarning: dash-improve-my-llms: 4 pages have no LLMS_DOC source
+(/changelog, /docs, /privacy, /terms).
 ```
 
-### `RobotsConfig`
-
-```python
-RobotsConfig(
-    block_ai_training=True,
-    allow_ai_search=True,
-    allow_traditional=True,
-    crawl_delay=10,                     # seconds between requests
-    custom_rules=[],                    # extra robots.txt lines
-    disallowed_paths=["/admin"],
-)
-```
-
-## Bot classes
-
-The middleware classifies User-Agents into three buckets:
-
-- **AI Training** (default: blocked) — GPTBot, anthropic-ai,
-  Claude-Web, CCBot, Google-Extended, FacebookBot, Omgili, ByteSpider
-- **AI Search** (default: allowed) — ChatGPT-User, ClaudeBot,
-  PerplexityBot, OAI-SearchBot
-- **Traditional** (default: allowed) — Googlebot, Bingbot, DuckDuckBot,
-  Yandex, plus generic patterns
-
-Verify with curl:
-
-```bash
-# Training bot — 403 when block_ai_training=True
-curl -A "Mozilla/5.0 (compatible; GPTBot/1.0)" https://myapp.com/
-
-# Search bot — prerendered static HTML
-curl -A "Mozilla/5.0 (compatible; Googlebot/2.1)" https://myapp.com/
-```
-
-## The MCP bridge
-
-When `dash.mcp` is available (Dash 4.3+ RC and later), 2.0 registers
-each non-hidden page's `LLMS_DOC` as an MCP resource:
-
-- **URI**: `llms:///<page-path>` (e.g. `llms:///audiences/mcp-clients`)
-- **mimeType**: `text/markdown`
-- **content**: the page's `LLMS_DOC`, byte-for-byte identical to
-  `/<page>/llms.txt`
-
-MCP-aware clients (Claude Desktop, agentic IDEs) can `resources/list`
-to discover what's available and `resources/read` by URI to fetch.
-
-On Dash 3.x or 4.1/4.2 stable, the bridge is a silent no-op — only
-the HTTP surfaces serve docs.
-
-## Migrating from 1.x
-
-Most of the change is removal. Run the package against your app and
-the startup `UserWarning` will tell you which pages need attention.
-
-1. **Add `LLMS_DOC`** at module scope on each page module:
-
-   ```python
-   LLMS_DOC = """\\
-   # Page Title
-
-   Short description.
-
-   ## What this page does
-   ...
-   """
-   ```
-
-   Or pass it via `register_page_metadata(path, llms_doc="...")`.
-
-2. **Remove `mark_important()` and `mark_component_hidden()` calls.**
-   They're deprecation no-ops in 2.0 and will be deleted in 2.1.
-
-3. **Remove links to dropped routes**: `/page.json`,
-   `/architecture.txt`, `/architecture.toon`, `/llms.toon` (and their
-   per-page variants) all return 404 now.
-
-4. **Install the matching backend extra**: `[flask]`, `[fastapi]`, or
-   `[quart]`. The bare `dash-improve-my-llms` install no longer pulls
-   Flask automatically.
-
-The HTTP surfaces that survived (`/llms.txt`, `/robots.txt`,
-`/sitemap.xml`) and the `RobotsConfig`, `mark_hidden`,
-`register_page_metadata` APIs are byte-compatible with 1.x.
-
-## Example app
-
-This repository's `app.py` is a working demo. From a clone:
-
-```bash
-pip install -e ".[all,dev]"
-python app.py
-# Browse http://localhost:8959/
-```
-
-The `/audiences/*` pages walk through each of the three audiences in
-the running app, including a copy-to-clipboard demo for grabbing any
-page's prose.
+Treat that warning as a to-do list. Those pages are the ones serving a stub.
 
 ## Documentation
 
-- [docs/SKILLS.md](docs/SKILLS.md) — practical guide for using and
-  configuring the package (also written as a reference for AI coding
-  assistants)
-- [CHANGELOG.md](CHANGELOG.md) — full release history including 1.x
+Full documentation, served by this package's own demo app — the reference
+deployment demonstrates every claim in this README on real URLs:
+
+### 📚 **[llms.2plot.dev](https://llms.2plot.dev)**
+
+Every page there also serves `/<page>/llms.txt` — the prose as Markdown,
+ready to paste into a chat window. You can run the same site locally:
+
+```bash
+pip install -r requirements.txt
+python app.py                 # open http://localhost:8959
+```
+
+## How the content gets served
+
+Two independent paths, both on by default:
+
+**1. Universal prerender.** Every visitor's initial HTML carries the page's
+prose inside `#react-entry-point`, plus a per-page `<title>`, meta
+description, canonical URL, and JSON-LD. Dash's `createRoot().render()`
+replaces that block when React mounts, so the live app is unaffected — but
+anything that reads the HTML without executing it sees real content.
+
+**2. Crawler short-circuit.** A recognised crawler gets a complete static
+HTML document before Dash runs at all. Cheaper, and it covers clients that
+would choke on the app shell entirely.
+
+The prerender is what makes this *not* cloaking: users and crawlers receive
+the same content. Google
+[deprecated dynamic rendering as a recommendation in 2022](https://developers.google.com/search/docs/crawling-indexing/javascript/dynamic-rendering),
+and a stub-for-users/prose-for-crawlers split is the pattern that gets
+flagged. Serving real HTML to everyone sidesteps the question and improves
+LCP at the same time.
+
+To fall back to crawler-only rendering:
+
+```python
+add_llms_routes(app, LLMSConfig(prerender=False))
+```
+
+## `llms.txt` is a document, not a dead end
+
+A page's `llms.txt` gets fetched in isolation — pasted into a chat, handed to
+an agent. On its own it says everything about that page and nothing about
+where it sits, so there is nothing to follow and exploration stops. Each one
+therefore opens with three lines of orientation:
+
+```markdown
+# FastAPI Showcase
+
+> What the FastAPI backend unlocks in this boilerplate.
+
+**Site index:** [https://docs.example.com/llms.txt](…) — every page on this site, as Markdown.
+**Network index:** [https://hub.example.com/llms.txt](…) — The Example Network; start here to discover sibling sites.
+**Sitemap:** https://docs.example.com/sitemap.xml
+```
+
+Disable with `LLMSConfig(llms_nav=False)`.
+
+### The same URL, rendered, for people
+
+Paste that URL into a browser and you get the document rendered behind a
+header carrying the network identity — and, if you point the app at a
+[bulletin endpoint](docs/BULLETIN.md), centrally-published tips and
+announcements that one host controls for the whole network.
+
+Agents, crawlers, curl and link unfurlers receive the Markdown byte for byte.
+The header exists **only** in the HTML variant, so it costs an agent nothing —
+which is why it isn't simply prepended to the Markdown for everyone.
+
+```
+Accept: */*                       → text/markdown
+Accept: text/html (real browser)  → text/html, rendered
+Accept: text/html (Googlebot UA)  → text/markdown
+?raw=1                            → text/markdown, always
+?format=html                      → text/html, always
+```
+
+Every variant sends `Vary: Accept`, and the rendered view is `noindex` so it
+never competes with the real page. Disable with
+`LLMSConfig(llms_viewer=False)`.
+
+## Multi-domain networks
+
+Sitemaps are scoped to one origin, so a network spread across hosts has no
+crawl graph between them. An agent that lands on `maps.example.com` has
+no path to `email.example.com`; a model reasoning about eighteen packages
+sees one.
+
+Declare the relationships explicitly and they appear in `/llms.txt`, in the
+prerendered HTML, and as `<link rel="related">`:
+
+```python
+from dash_improve_my_llms import register_network
+
+register_network(
+    name="The Example Network",
+    description="A family of open-source Dash component libraries.",
+    hub_url="https://hub.example.com",    # one host an agent can enumerate from
+
+    # Same network, same operator.
+    peers=[
+        {"name": "Hub", "url": "https://hub.example.com",
+         "description": "Network index and account origin."},
+        {"name": "Maps", "url": "https://maps.example.com",
+         "description": "Mapping components for Dash."},
+    ],
+
+    # Yours, on its own unrelated domain.
+    affiliated=[
+        {"name": "Side Project", "url": "https://sideproject.example",
+         "description": "A separate product built on the same stack."},
+    ],
+
+    # Third-party docs you depend on. Emitted with rel="nofollow".
+    external=[
+        {"name": "Dash Mantine Components",
+         "url": "https://www.dash-mantine-components.com",
+         "description": "UI layer these docs are built with."},
+    ],
+)
+```
+
+The three tiers stay distinct on purpose. Flattening them would either
+overclaim ownership of third-party sites or bury your own network in an
+undifferentiated link list — and both make the directory less useful to
+whatever is reading it.
+
+See [`docs/NETWORKS.md`](docs/NETWORKS.md) for the full multi-domain guide and
+[`docs/BULLETIN.md`](docs/BULLETIN.md) for the shared tips/announcements
+contract.
+
+## Access control
+
+Static hiding first — excluded from every surface, 404 to crawlers, never
+prerendered, absent from MCP:
+
+```python
+from dash_improve_my_llms import mark_hidden
+
+mark_hidden("/admin")
+```
+
+For applications with accounts, `configure_access` decides **per request**
+who may read a document, across every surface the package owns:
+
+```python
+from dash_improve_my_llms import configure_access
+
+configure_access(
+    check,                    # (path) -> "allow" | "gated" | "deny"
+    gate_doc=my_gate_doc,     # Markdown served instead of gated prose (200)
+    link_suffix=my_suffix,    # authority carried in generated links
+)
+```
+
+- **`allow`** serves the prose. **`gated`** serves the gate document at 200
+  and keeps the URL listed — the page's existence is public, its content is
+  not. **`deny`** is a 404 and delisted, indistinguishable from a page that
+  never existed.
+- A check that raises degrades to `gated` — a bug can neither publish gated
+  prose nor black-hole the site.
+- `link_suffix` lets a signed-in user's copied URL carry its own authority,
+  so the one consumer these documents exist for — an agent fetching with no
+  cookie — still gets in.
+- `configure_viewer_identity(provider)` renders the signed-in reader in the
+  HTML viewer's header; agents receive byte-identical Markdown without it.
+  Identity- or authority-bearing responses send
+  `Cache-Control: private, no-store` so no CDN can hand one visitor's
+  document to the next.
+
+The full contract is in [`docs/ACCESS.md`](docs/ACCESS.md).
+
+## Dash compatibility
+
+Verified against every supported Dash release on all three backends —
+`scripts/matrix.py` reproduces the CI matrix locally.
+
+| Dash | Flask | FastAPI | Quart |
+|---|---|---|---|
+| 4.1.0 | ✅ | — ¹ | — ¹ |
+| 4.2.0 | ✅ | ✅ | ✅ |
+| 4.3.0 | ✅ | ⚠️ ² | ✅ |
+| 4.4.0 | ✅ | ✅ | ✅ |
+| 4.4.1 | ✅ | ✅ | ✅ |
+
+¹ Dash 4.1.0 has no pluggable backends; `Dash(backend=...)` does not exist.
+
+² **Dash 4.3.0's FastAPI backend is broken upstream.** Its page catch-all
+does not call `set_current_request()`, so every non-root URL raises
+`RuntimeError: No active request in context` and returns a 500. This
+reproduces on a stock Dash app with this package uninstalled, and is fixed
+in Dash 4.4.0. The package warns at startup if it detects the combination.
+Use `dash>=4.4.0`, or run Flask/Quart on 4.3.0.
+
+## Markdown support
+
+`LLMS_DOC` is rendered by a dependency-free subset renderer covering
+headings, paragraphs, **links**, fenced code, images, blockquotes, ordered
+and unordered lists, pipe tables, horizontal rules, and inline
+`code`/bold/italic/strikethrough.
+
+Links matter most: they are what gives your prose an internal crawl graph.
+`[the API guide](/api)` becomes a real `<a href="/api">` in the served HTML.
+
+All content is escaped before any tag is emitted, link targets are checked
+against a scheme allowlist, and JSON-LD is `\u`-escaped so author-supplied
+page names cannot break out of their `<script>` block.
+
+rST-style directives (`.. toc::`, `.. llms_copy::`) are stripped from prose
+but preserved inside code fences, so a page documenting them still renders
+its examples.
+
+## API reference
+
+| Function | Purpose |
+|---|---|
+| `add_llms_routes(app, config=None)` | Wire up everything |
+| `LLMSConfig(...)` | `enabled`, `warn_missing_llms_doc`, `register_mcp_resources`, `prerender`, `llms_nav`, `llms_viewer` |
+| `RobotsConfig(...)` | Bot-class policy for `/robots.txt` |
+| `register_page_metadata(path, ...)` | Per-page name/description/prose (merges) |
+| `mark_hidden(path)` / `is_hidden(path)` | Exclude a page from every surface |
+| `register_network(...)` | Declare the whole cross-host directory |
+| `register_network_site(name, url, tier=...)` | Add one site |
+| `describe_network(...)` | Name the network and its hub |
+| `configure_bulletin(url=...)` | Opt in to hub-published tips / announcements |
+| `configure_access(check, ...)` | Per-request allow / gated / deny on every surface |
+| `configure_viewer_identity(provider)` | Show the signed-in reader in the HTML viewer |
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+
+pytest tests --ignore=tests/legacy          # unit + adapter tests
+python scripts/smoke_test.py                # boot a real app, all backends
+python scripts/matrix.py                    # every Dash version
+python scripts/matrix.py --pytest           # ...and the full suite in each
+```
+
+CI runs the same matrix on every push. Releases publish to PyPI from a
+version tag via trusted publishing; see `.github/workflows/cd.yml`.
+
+## What this package deliberately does not do
+
+It does not introspect layouts or callbacks. Dash 4.3's MCP server exposes
+that live and structured, and duplicating it means maintaining a worse copy.
+`mark_important()` and `mark_component_hidden()` are deprecated no-ops —
+put emphasis in your `LLMS_DOC` instead.
+
+## Community & support
+
+Come build with us:
+
+- 💬 **Discord** — [discord.gg/WEnZR35mrK](https://discord.gg/WEnZR35mrK)
+- ▶️ **YouTube** — [@2plotai](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ)
+- 🐛 **Issues** — [github.com/pip-install-python/dash-improve-my-ai/issues](https://github.com/pip-install-python/dash-improve-my-ai/issues)
+
+## More from Pip Install Python LLC
+
+dash-improve-my-llms is one of several tools built and maintained by
+**Pip Install Python LLC**:
+
+| Project | What it is |
+|---|---|
+| 📚 **[Pip Install Python](https://pip-install-python.com)** | Open-source documentation index for the Python & Dash ecosystem |
+| 🗺️ **[dash-leaflet2](https://pypi.org/project/dash-leaflet2/)** | Leaflet 2-native mapping components for Dash 4 |
+| 🎞️ **[dash-nle-timeline](https://pypi.org/project/dash-nle-timeline/)** | Frame-accurate NLE timeline & scene compositor for Dash |
+| 🔀 **[PiratesBargain.com](https://piratesbargain.com)** | E-commerce / digital commerce |
+| 🧠 **[ai-agent.buzz](https://ai-agent.buzz)** | Infinite AI canvas |
+| 🎬 **[2plot.media](https://2plot.media)** | Videography application |
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
-
-Built by [Pip Install Python LLC](https://pip-install-python.com).
+MIT — see [LICENSE](LICENSE). Built by
+**[Pip Install Python LLC](https://pip-install-python.com)** to make Dash
+apps first-class citizens of the agentic web.

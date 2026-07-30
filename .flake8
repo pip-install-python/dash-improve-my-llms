@@ -1,0 +1,25 @@
+[flake8]
+max-line-length = 100
+
+# E203 / W503 disagree with black's formatting of slices and line breaks
+# before binary operators.
+extend-ignore = E203, W503
+
+exclude =
+    .git,
+    .venv,
+    .matrix-envs,
+    __pycache__,
+    build,
+    dist,
+    tests/legacy
+
+per-file-ignores =
+    # The crawler HTML is one large f-string template. Wrapping <meta> and
+    # <link> tags to fit a column limit makes the emitted markup harder to
+    # read than the source, which is the wrong trade for a file whose whole
+    # job is producing that markup.
+    dash_improve_my_llms/html_generator.py: E501
+    dash_improve_my_llms/prerender.py: E501
+    dash_improve_my_llms/llms_viewer.py: E501
+    dash_improve_my_llms/wordmark.py: E501

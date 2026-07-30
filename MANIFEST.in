@@ -2,12 +2,28 @@
 include README.md
 include CHANGELOG.md
 include LICENSE
-include requirements.txt
-include requirements-dev.txt
+# requirements.txt is the DOCUMENTATION SITE's dependency list — gunicorn,
+# dash-mantine-components, numpy — for the Render/Docker deployment in this
+# repo. It is not the package's; those live in pyproject.toml [dependencies].
+# Shipping it put a deployment's requirements inside a library artifact and
+# named the host in a comment. Neither file is shipped.
 include pyproject.toml
 
-# Documentation
-recursive-include docs *.md
+# Documentation is deliberately NOT shipped.
+#
+# `recursive-include docs *.md` used to be here. It put this network's
+# operational docs on PyPI: a Render deployment guide for one specific host,
+# and a directory naming a dozen private domains. None of that means anything
+# to someone who pip-installs the package.
+#
+# The feature docs (NETWORKS.md, BULLETIN.md) are worth reading but are
+# currently written around one network as their running example, so they would
+# ship that network too. They stay in the repo and are linked from the README,
+# which is the file PyPI actually renders.
+#
+# If they are ever rewritten with neutral examples, allowlist them here BY
+# NAME. Never re-add a recursive include: the next doc someone writes about
+# our own deployment would ship silently.
 
 # Include all Python files
 recursive-include dash_improve_my_llms *.py

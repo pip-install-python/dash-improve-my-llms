@@ -5,6 +5,341 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-07-30
+
+One bug fix on top of 2.3.0, released under its own number because 2.3.0
+tarballs were already vendored across the network's repos before the fix
+landed — two artifacts with the same version and different code is the
+failure this changelog keeps warning about. There is no 2.3.1; the number
+was skipped, so no entry for it exists here.
+
+### Fixed — OAI-SearchBot was disallowed inside the allow branch
+
+`generate_robots_txt` emitted `User-agent: OAI-SearchBot` / `Disallow: /`
+inside the `allow_ai_search=True` block — every site configured to allow AI
+search was asking ChatGPT's search index to exclude it, while the package's
+own docs said the default was "allowed". Present since the rule was added.
+The old test only checked the agents were *mentioned*; it now parses the
+file and asserts the directive on every agent in both the allow and the
+block branches.
+
+**Rollout:** every repo vendoring a 2.3.0 tarball should replace it with
+`dash_improve_my_llms-2.3.2.tar.gz` and update the pinned filename in its
+requirements. The live fingerprint per host is `robots.txt` showing
+`User-agent: OAI-SearchBot` followed by `Allow: /`.
+
+### Changed — reference deployment installs the built sdist
+
+This repo's Dockerfile now installs the package from the committed
+`dist/dash_improve_my_llms-*.tar.gz` instead of the working tree, so the
+reference deployment runs the same artifact every consuming app vendors —
+which is what the pre-PyPI verification gate is meant to verify. The sdist
+is committed alongside the release; wheels stay out of git.
+
+## [2.3.0] - 2026-07-30
+
+Never deployed beyond dev — superseded same-day by 2.3.2, which is this
+release plus the robots.txt fix below it.
+
+Additive and opt-in: an application that calls neither new function behaves
+exactly as it did on 2.2.0. Bumped rather than folded into the unpublished
+2.2.0 because `dash-documentation-boilerplate` already vendors a 2.2.0 tarball,
+and two artifacts with the same version and different code is the failure the
+staged rollout exists to prevent.
+
+### Added — per-request access control
+
+`configure_access(check, gate_doc=…, link_suffix=…)`. Until now the only gate
+was `mark_hidden()`, a process-wide set: it can answer "is this page hidden?"
+but not "is this page hidden **from this requester?**". An application with
+accounts could gate its own layout and nothing else — on the site that prompted
+this, a page marked "signed-in users only" was still serving 90 KB of prose
+through `/<page>/llms.txt`, the crawler HTML, the prerendered body and the
+sitemap, because those are the surfaces the package owns.
+
+Three verdicts. `allow` serves the prose. `gated` serves `gate_doc(path)` at 200
+and keeps the URL listed — a page's existence is public even when its content is
+not, which is what makes a sign-up funnel work. `deny` is 404 and delisted, for
+surfaces where advertising the URL is itself a disclosure.
+
+The verdict is consulted by every surface that can emit prose:
+`build_llms_txt_for_page`, `build_llms_index`, `handle_bot_request`,
+`apply_prerender`, `build_sitemap_xml`, and the MCP bridge. A gate covering five
+of six is not a gate, and the missing one is invisible until someone reads the
+wrong body.
+
+**A check that raises degrades to `gated`** — not `allow` (a bug would publish
+gated prose) and not `deny` (a bug would black-hole every document on the site),
+logged once per path so a crawler cannot fill the log.
+
+`link_suffix` exists because these documents get pasted into an agent, which
+fetches with no cookie. An application can therefore carry authority in the URL,
+and the package appends it to the same-origin document links it generates — and,
+via `decorate_body`, to those in the application's own prose. Peer and
+third-party hosts never receive it; page links never receive it, because
+authority opens documents, not pages.
+
+MCP note: the `content=`-style `dash.mcp` registration shapes bake prose in at
+startup, where a per-request check cannot apply. When access control is
+configured the bridge registers only through handler shapes rather than publish
+prose it was asked to protect.
+
+### Added — viewer identity
+
+`configure_viewer_identity(provider)` renders the signed-in reader in the
+llms.txt viewer's header. HTML variant only: agents and crawlers already receive
+the banner-free Markdown from the same URL, so it costs them nothing and cannot
+reach an index. Unconfigured renders nothing, which is what keeps a site without
+authentication unaffected.
+
+### Security — cache headers on per-requester documents
+
+The adapters sent `Vary: Accept` and **no `Cache-Control` at all**, which was
+fine while every response was identical for every requester. A response that
+names its reader, or whose links carry authority, now sends
+`Cache-Control: private, no-store`, `Vary: Accept, Cookie` and
+`X-Robots-Tag: noindex` — otherwise a CDN could store one visitor's document, or
+one visitor's name, and hand it to the next. All three adapters.
+
+### Added — bulletin sign-in fields
+
+`network.sign_in_url` and `network.account_label`, so a satellite that gates
+documents but doesn't own the accounts can point at the hub. `docs/BULLETIN.md`
+now also states, in terms, that the visitor's identity must never travel in that
+payload — it is TTL-cached and shared across every satellite.
+
+### Added — tests
+
+`tests/test_access.py`: 27 cases over the resolver, the fail-safe, the gate
+document fallbacks, link decoration, identity normalisation, and real requests
+through the Flask adapter asserting both the surfaces and the headers. Includes
+a regression for a key leaking to a peer host — the relative-URL pattern used to
+match the `//host/llms.txt` tail of an absolute URL, because `//` after `https:`
+reads as the start of a path.
+
+Contract: [`docs/ACCESS.md`](docs/ACCESS.md).
+
+## [2.2.0] - 2026-07-29
+
+Everything below shipped as one release. 2.1.0 was assigned during
+development and never published, so there is no 2.1.0 on PyPI and no entry
+for it here — 2.0.0 upgrades straight to 2.2.0.
+
+### Fixed — pages were serving crawlers an empty body
+
+The headline bug. Sites were serving
+
+```html
+<main><p>This page contains interactive content that requires JavaScript.</p></main>
+```
+
+on most of their URLs, despite having prose registered and despite
+`/<page>/llms.txt` returning that prose correctly. On one production site,
+12 of 14 crawlable pages were affected. To a search engine the result is a
+set of thin near-duplicates differentiated only by their meta description.
+
+Two independent faults combined:
+
+- **`register_page_metadata()` assigned instead of merging.** Any later
+  call that refreshed a page's name or description silently deleted its
+  `llms_doc`. Apps that loop over `dash.page_registry` to backfill titles —
+  a common and reasonable pattern — erased every page's prose. It now
+  merges; passing `None` leaves an existing value alone, and passing `""`
+  clears a field deliberately.
+- **The module-level `LLMS_DOC` fallback required `page_registry["module"]`
+  to be an importable module name.** `dash.register_page` takes the module
+  positionally, so pages registered in a loop commonly hold a display name
+  there ("Activity · Cockpit"), which is not in `sys.modules`. Resolution
+  now falls back to the module that defines the page's layout, and also
+  accepts `llms_doc` passed straight through `dash.register_page(**kwargs)`.
+
+Both fixes apply without any change to consuming applications.
+
+### Added — universal prerender
+
+Each page's prose, per-page `<title>`, meta description, canonical URL and
+JSON-LD are now injected into the initial HTML for **every** visitor, not
+only recognised crawlers. Dash's `createRoot().render()` replaces the block
+when React mounts, so the interactive app is unaffected.
+
+This removes the stub-for-users/prose-for-crawlers split, which is the
+pattern search engines flag as cloaking even when the intent is benign
+(Google deprecated dynamic rendering as a recommendation in 2022), and it
+improves LCP. The user-agent path is kept as a cheaper fallback.
+
+Disable with `LLMSConfig(prerender=False)`.
+
+### Added — cross-host network directory
+
+`register_network()`, `register_network_site()` and `describe_network()`
+declare relationships between separately-hosted apps in three tiers:
+`peer` (same network), `affiliated` (yours, own domain) and `external`
+(third-party references, emitted `rel="nofollow"`).
+
+Sitemaps are scoped to one origin by design, so a network spread across
+hosts has no crawl graph between them — and an agent, which fetches one URL
+rather than crawling, sees one app instead of twenty. The directory is
+rendered into `/llms.txt`, into the prerendered HTML, and as
+`<link rel="related">`. See `docs/NETWORKS.md`.
+
+### Added — page `llms.txt` documents are no longer dead ends
+
+A page's `llms.txt` is usually fetched in isolation: pasted into a chat,
+handed to an agent. On its own it described that page and nothing else — no
+link to the site's other pages, no link to the network, nothing to follow. An
+agent's exploration simply stopped there.
+
+Each page document now opens with three lines pointing at the site index, the
+network index (when a network is configured) and the sitemap. Disable with
+`LLMSConfig(llms_nav=False)`.
+
+### Added — a rendered `llms.txt` view for people
+
+The same URL now content-negotiates. Agents, crawlers, curl and link
+unfurlers receive the Markdown byte for byte; a browser receives that
+Markdown rendered, behind a header carrying the network identity.
+
+The header exists only in the HTML variant, so it costs an agent nothing —
+which is why it isn't prepended to the Markdown for everyone. `?raw=1`
+forces Markdown, `?format=html` forces the view, both variants send
+`Vary: Accept` so a CDN can't hand cached HTML to the next agent, and the
+rendered view is `noindex` so it never competes with the real page. Disable
+with `LLMSConfig(llms_viewer=False)`.
+
+### Added — network bulletin
+
+`configure_bulletin(url=...)` points an app at a hub-published JSON document
+of tips and announcements, rendered in the `llms.txt` view header. It exists
+so a twenty-site network can say "here is what changed" once instead of in
+twenty repositories. Contract in `docs/BULLETIN.md`.
+
+Opt-in — with no call to `configure_bulletin` the package makes no outbound
+requests. Fetches happen on a daemon thread behind a TTL cache, so a request
+never blocks on it, a stale copy keeps serving while a refresh runs, and a
+dead endpoint degrades to "no bulletin" rather than a 500. The payload is
+treated as untrusted: every string capped, non-`http(s)` URLs dropped,
+everything HTML-escaped at render time.
+
+`configure_bulletin(app_id=...)` sends the satellite's identity as `?app=`,
+so a hub can target announcements at particular sites and see which of them
+are actually rendering the bulletin.
+
+### Added — wordmark rendering
+
+The `llms.txt` view header carries a network mark, supplied as data via
+`describe_network(wordmark=...)` or the bulletin payload. Two forms: a list
+of ASCII-art lines, or a **morse mark** — a prefix, a word encoded as morse
+and drawn as columns of dots and dashes, and a suffix:
+
+```python
+register_network(
+    wordmark={"morse": "docs", "prefix": "", "suffix": "dev", "label": "docs.dev"},
+)
+```
+
+Rendered as self-contained inline SVG — no external fonts, no image
+requests, no script — because it lands in a documentation page that has to
+render behind any CSP. Columns sit on the text's baseline, derived from the
+font metrics rather than hardcoded, and the viewBox measures its vertical
+bounds from what was drawn so a tall letter column cannot be cropped.
+
+The symbols key on in sequence, left to right, like a signal being
+transmitted. Animation is suppressed under `prefers-reduced-motion`.
+
+The package ships no branding of its own; the mark is configuration.
+
+### Added — deployment for the documentation site
+
+`render.yaml`, `Dockerfile` and `docs/DEPLOYMENT.md` deploy this repo's demo
+app as its own documentation site. The Dockerfile installs the package from
+the working tree rather than PyPI, so the reference deployment cannot lag
+the code it documents. `app._base_url` now reads `APP_BASE_URL` from the
+environment, and a `/healthz` route echoes the resolved value — which makes
+the most common misconfiguration a one-request check instead of a
+page-source inspection.
+
+### Fixed — FastAPI route annotations
+
+`_fastapi_adapter.py` no longer uses `from __future__ import annotations`.
+FastAPI resolves handler annotations against *module* globals, and `Request`
+is imported inside the registration function — so with postponed evaluation
+FastAPI silently treated `request: Request` as an undeclared query parameter
+and every `/llms.txt` request returned 422. Caught by the Dash version matrix.
+
+### Changed — root `/llms.txt` is now an index
+
+It previously echoed the home page's prose. It now leads with that prose,
+then lists every visible page with its own `llms.txt` URL, then the network
+directory — following the llmstxt.org format.
+
+### Changed — Markdown renderer rewritten
+
+The previous renderer handled headings, paragraphs, bullets, blockquotes,
+inline code and bold. Everything else fell through as literal text. Most
+consequentially **links** did: `[text](/page)` rendered as those exact
+characters, so every cross-reference written inside prose was invisible to
+crawlers and the internal link graph collapsed to whatever the generated
+nav contained.
+
+Now supports links, fenced code with language classes, images with alt
+text, horizontal rules, ordered lists, pipe tables, strikethrough and
+italics. rST-style directives (`.. toc::`, `.. llms_copy::`) are stripped
+from prose but preserved inside code fences.
+
+New module `markdown_renderer.py`; `html_generator._render_markdown_minimal`
+remains as an alias.
+
+### Security
+
+- **JSON-LD injection.** Page names and descriptions are author-supplied
+  and were embedded in `<script type="application/ld+json">` via
+  `json.dumps`, which escapes quotes but not angle brackets. A page named
+  `</script><script>…` broke out of the block. Output is now
+  `\u`-escaped.
+- Markdown link and image targets are checked against a scheme allowlist,
+  so `javascript:` and `data:` URLs in prose render as plain text.
+
+### Changed — schema.org types
+
+Each page is now a `WebPage` with an `isPartOf` `WebSite`, rather than
+every URL being typed `WebApplication`. Override per page with
+`register_page_metadata(path, schema_type="TechArticle")`.
+
+### Added — path normalization
+
+Registration and lookup now agree on one canonical path form, so
+`"docs"`, `"/docs"` and `"/docs/"` no longer produce silent misses in
+`register_page_metadata` and `mark_hidden`.
+
+### Added — testing and CI
+
+- Integration tests driving real requests through all three adapters.
+  These previously had **zero** coverage, which is how a regression that
+  emptied every page body passed a green suite.
+- `scripts/smoke_test.py` boots a real app and asserts the served bytes.
+- `scripts/matrix.py` runs it across every supported Dash version.
+- GitHub Actions CI (Dash 4.1.0–4.4.1 × Python 3.9–3.13 × three backends)
+  and CD publishing to PyPI from a version tag via trusted publishing.
+
+### Added — upstream compatibility warnings
+
+`_compat.py` records Dash/backend combinations that are broken in Dash
+itself, verified against stock Dash with this package uninstalled, and
+warns at startup:
+
+- **Dash 4.3.0 + FastAPI** — the page catch-all does not call
+  `set_current_request()`, so every non-root URL raises
+  `RuntimeError: No active request in context` and returns 500. Fixed in
+  Dash 4.4.0. Use `dash>=4.4.0`, or Flask/Quart on 4.3.0.
+- Dash 4.1.0 has no pluggable backends; Flask is the only option.
+
+### Changed — requirements
+
+- `dash>=4.1,<5` (was `dash>=3.0.0`).
+- Python `>=3.9` (was `>=3.8`).
+- Coverage flags removed from pytest `addopts`; they made the suite
+  unrunnable anywhere without `pytest-cov`. Opt in with `--cov`.
+
 ## [2.0.0] - 2026-05-26
 
 ### Breaking Changes — scope rescoped for the Dash 4.x / MCP era

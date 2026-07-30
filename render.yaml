@@ -1,0 +1,69 @@
+# render.yaml — Render Blueprint for https://llms.2plot.dev
+#
+# This deploys the package's own demo app (app.py) as the documentation site
+# for dash-improve-my-llms. It is also the reference deployment: whatever the
+# package claims to do, this host demonstrates on real URLs.
+#
+# Deploying:
+#   1. Push this repo to GitHub with render.yaml and Dockerfile at the root.
+#   2. Render dashboard → New → Blueprint → select this repo.
+#   3. Settings → Custom Domains → add llms.2plot.dev, then point that
+#      subdomain's CNAME at the service hostname Render gives you.
+#   4. Confirm APP_BASE_URL below matches the custom domain exactly. It drives
+#      every <link rel="canonical"> on the site, so a mismatch tells search
+#      engines the canonical home is somewhere else.
+#
+# Local equivalent:
+#   docker build -t llms-2plot-dev .
+#   docker run --rm -p 8959:8959 -e PORT=8959 llms-2plot-dev
+#   open http://localhost:8959
+#
+# Blueprint spec: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: llms-2plot-dev
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Free tier is fine for a docs site, with two caveats worth knowing:
+    #   - it sleeps after ~15 min idle and cold-starts on the next request,
+    #     which a crawler will occasionally see as a slow first byte;
+    #   - the filesystem is ephemeral, so visitor_analytics.json (the /admin
+    #     demo dashboard) resets on every deploy and eviction. That is
+    #     acceptable here because it is demo data, not a record of anything.
+    plan: free
+    region: oregon
+
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    envVars:
+      # The public origin. Everything canonical-shaped derives from this.
+      - key: APP_BASE_URL
+        value: https://llms.2plot.dev
+
+      # Flask (WSGI), served by gunicorn — matches the rest of the network's
+      # docs sites. Do not switch to fastapi/quart here without also switching
+      # the Dockerfile to uvicorn: those backends are ASGI and gunicorn's sync
+      # worker cannot serve them.
+      - key: DASH_BACKEND
+        value: flask
+
+      # 2 workers × 4 threads fits comfortably in the free tier's 512 MB for a
+      # docs site. Drop to 1 if memory gets tight.
+      - key: WEB_CONCURRENCY
+        value: "2"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+      # The network bulletin endpoint that supplies the "Tips for getting
+      # started" and "What's new" panels in the llms.txt viewer header.
+      # 2plot.dev serves this now, so it is set rather than left blank.
+      # app.py sends app_id="llms" alongside it, which is how the hub's
+      # /admin/network-board Satellites tab confirms this site is rendering
+      # the bulletin. A dead endpoint degrades to "no bulletin", never a 500.
+      # See docs/BULLETIN.md for the contract.
+      - key: NETWORK_BULLETIN_URL
+        value: https://2plot.dev/api/network/bulletin

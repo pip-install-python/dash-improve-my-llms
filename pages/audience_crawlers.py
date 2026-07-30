@@ -174,7 +174,11 @@ def _page_row(path: str, name: str) -> html.Tr:
             ),
             html.Td(
                 name,
-                style={"padding": "10px 12px", "fontSize": "14px", "borderBottom": "1px solid #f0f0f0"},
+                style={
+                    "padding": "10px 12px",
+                    "fontSize": "14px",
+                    "borderBottom": "1px solid #f0f0f0",
+                },
             ),
             html.Td(
                 _policy_pill("HIDDEN" if hidden else "VISIBLE", blocked=hidden),
@@ -221,7 +225,11 @@ def layout():
             ("allow_ai_search", str(cfg.allow_ai_search), False),
             ("allow_traditional", str(cfg.allow_traditional), False),
             ("crawl_delay", str(cfg.crawl_delay) if cfg.crawl_delay else "none", False),
-            ("disallowed_paths", ", ".join(cfg.disallowed_paths) if cfg.disallowed_paths else "none", False),
+            (
+                "disallowed_paths",
+                ", ".join(cfg.disallowed_paths) if cfg.disallowed_paths else "none",
+                False,
+            ),
         ]
 
     registry = dict(dash.page_registry)
@@ -239,7 +247,15 @@ def layout():
             # Hero
             html.Header(
                 [
-                    html.Div("Audience", style={"fontSize": "12px", "color": _BRAND, "letterSpacing": "1px", "fontWeight": "600"}),
+                    html.Div(
+                        "Audience",
+                        style={
+                            "fontSize": "12px",
+                            "color": _BRAND,
+                            "letterSpacing": "1px",
+                            "fontWeight": "600",
+                        },
+                    ),
                     html.H1("Web Crawlers", style={"margin": "4px 0 8px", "fontSize": "32px"}),
                     html.P(
                         "Plain HTTPS, often no JavaScript. /robots.txt, /sitemap.xml, plus a static-HTML prerender of every page.",
@@ -248,11 +264,12 @@ def layout():
                 ],
                 style={"marginBottom": "28px"},
             ),
-
             # Current config knobs
             html.Section(
                 [
-                    html.H2("Current configuration", style={"fontSize": "18px", "marginBottom": "12px"}),
+                    html.H2(
+                        "Current configuration", style={"fontSize": "18px", "marginBottom": "12px"}
+                    ),
                     html.P(
                         [
                             "These are the values ",
@@ -265,8 +282,23 @@ def layout():
                         [
                             html.Div(
                                 [
-                                    html.Div(label, style={"fontSize": "12px", "color": "#888", "textTransform": "uppercase", "letterSpacing": "0.5px", "marginBottom": "4px"}),
-                                    html.Code(value, style={"fontSize": "14px", "color": _BLOCK_RED if highlight_block else _OK_GREEN}),
+                                    html.Div(
+                                        label,
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#888",
+                                            "textTransform": "uppercase",
+                                            "letterSpacing": "0.5px",
+                                            "marginBottom": "4px",
+                                        },
+                                    ),
+                                    html.Code(
+                                        value,
+                                        style={
+                                            "fontSize": "14px",
+                                            "color": _BLOCK_RED if highlight_block else _OK_GREEN,
+                                        },
+                                    ),
                                 ],
                                 style={**_CARD, "flex": "1", "minWidth": "180px"},
                             )
@@ -284,14 +316,18 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Live robots.txt
             html.Section(
                 [
                     html.H2(
                         [
                             "Live ",
-                            html.A("/robots.txt", href="/robots.txt", target="_blank", style={"color": _BRAND, "textDecoration": "none"}),
+                            html.A(
+                                "/robots.txt",
+                                href="/robots.txt",
+                                target="_blank",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                         ],
                         style={"fontSize": "18px", "marginBottom": "8px"},
                     ),
@@ -299,15 +335,19 @@ def layout():
                         "Generated by the package from the config above. This is what crawlers actually fetch:",
                         style={"color": "#666", "marginBottom": "12px"},
                     ),
-                    html.Pre(_fetch_robots_txt(), style={**_CODE_BLOCK, "maxHeight": "420px", "overflowY": "auto"}),
+                    html.Pre(
+                        _fetch_robots_txt(),
+                        style={**_CODE_BLOCK, "maxHeight": "420px", "overflowY": "auto"},
+                    ),
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Page visibility table
             html.Section(
                 [
-                    html.H2("Per-page visibility", style={"fontSize": "18px", "marginBottom": "8px"}),
+                    html.H2(
+                        "Per-page visibility", style={"fontSize": "18px", "marginBottom": "8px"}
+                    ),
                     html.P(
                         [
                             "How each page in this app responds to a crawler request. Pages marked HIDDEN "
@@ -323,58 +363,159 @@ def layout():
                                 html.Thead(
                                     html.Tr(
                                         [
-                                            html.Th(h, style={"textAlign": "left", "padding": "8px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"})
-                                            for h in ("Path", "Name", "Crawler policy", "Bot HTTP", "Sitemap")
+                                            html.Th(
+                                                h,
+                                                style={
+                                                    "textAlign": "left",
+                                                    "padding": "8px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            )
+                                            for h in (
+                                                "Path",
+                                                "Name",
+                                                "Crawler policy",
+                                                "Bot HTTP",
+                                                "Sitemap",
+                                            )
                                         ]
                                     )
                                 ),
                                 html.Tbody(page_rows),
                             ],
-                            style={"width": "100%", "borderCollapse": "collapse", "background": "white", "border": "1px solid #eee", "borderRadius": "8px", "overflow": "hidden"},
+                            style={
+                                "width": "100%",
+                                "borderCollapse": "collapse",
+                                "background": "white",
+                                "border": "1px solid #eee",
+                                "borderRadius": "8px",
+                                "overflow": "hidden",
+                            },
                         ),
                     ),
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Bot classes
             html.Section(
                 [
-                    html.H2("Bot classes recognized by the middleware", style={"fontSize": "18px", "marginBottom": "16px"}),
+                    html.H2(
+                        "Bot classes recognized by the middleware",
+                        style={"fontSize": "18px", "marginBottom": "16px"},
+                    ),
                     html.Div(
                         [
                             html.Div(
                                 [
-                                    html.H3("AI Training", style={"color": _BLOCK_RED, "fontSize": "15px", "margin": "0 0 8px"}),
-                                    html.Div("Blocked by default", style={"fontSize": "12px", "color": _BLOCK_RED, "marginBottom": "10px"}),
+                                    html.H3(
+                                        "AI Training",
+                                        style={
+                                            "color": _BLOCK_RED,
+                                            "fontSize": "15px",
+                                            "margin": "0 0 8px",
+                                        },
+                                    ),
+                                    html.Div(
+                                        "Blocked by default",
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": _BLOCK_RED,
+                                            "marginBottom": "10px",
+                                        },
+                                    ),
                                     html.Div(
                                         ", ".join(AI_TRAINING_BOTS),
-                                        style={"fontSize": "12px", "color": "#666", "fontFamily": "monospace", "lineHeight": "1.7", "wordBreak": "break-word"},
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#666",
+                                            "fontFamily": "monospace",
+                                            "lineHeight": "1.7",
+                                            "wordBreak": "break-word",
+                                        },
                                     ),
                                 ],
-                                style={**_CARD, "flex": "1", "minWidth": "240px", "borderTop": f"3px solid {_BLOCK_RED}"},
+                                style={
+                                    **_CARD,
+                                    "flex": "1",
+                                    "minWidth": "240px",
+                                    "borderTop": f"3px solid {_BLOCK_RED}",
+                                },
                             ),
                             html.Div(
                                 [
-                                    html.H3("AI Search", style={"color": _BRAND, "fontSize": "15px", "margin": "0 0 8px"}),
-                                    html.Div("Allowed by default", style={"fontSize": "12px", "color": _OK_GREEN, "marginBottom": "10px"}),
+                                    html.H3(
+                                        "AI Search",
+                                        style={
+                                            "color": _BRAND,
+                                            "fontSize": "15px",
+                                            "margin": "0 0 8px",
+                                        },
+                                    ),
+                                    html.Div(
+                                        "Allowed by default",
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": _OK_GREEN,
+                                            "marginBottom": "10px",
+                                        },
+                                    ),
                                     html.Div(
                                         ", ".join(AI_SEARCH_BOTS),
-                                        style={"fontSize": "12px", "color": "#666", "fontFamily": "monospace", "lineHeight": "1.7", "wordBreak": "break-word"},
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#666",
+                                            "fontFamily": "monospace",
+                                            "lineHeight": "1.7",
+                                            "wordBreak": "break-word",
+                                        },
                                     ),
                                 ],
-                                style={**_CARD, "flex": "1", "minWidth": "240px", "borderTop": f"3px solid {_BRAND}"},
+                                style={
+                                    **_CARD,
+                                    "flex": "1",
+                                    "minWidth": "240px",
+                                    "borderTop": f"3px solid {_BRAND}",
+                                },
                             ),
                             html.Div(
                                 [
-                                    html.H3("Traditional", style={"color": _OK_GREEN, "fontSize": "15px", "margin": "0 0 8px"}),
-                                    html.Div("Allowed by default", style={"fontSize": "12px", "color": _OK_GREEN, "marginBottom": "10px"}),
+                                    html.H3(
+                                        "Traditional",
+                                        style={
+                                            "color": _OK_GREEN,
+                                            "fontSize": "15px",
+                                            "margin": "0 0 8px",
+                                        },
+                                    ),
+                                    html.Div(
+                                        "Allowed by default",
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": _OK_GREEN,
+                                            "marginBottom": "10px",
+                                        },
+                                    ),
                                     html.Div(
                                         ", ".join(TRADITIONAL_BOTS),
-                                        style={"fontSize": "12px", "color": "#666", "fontFamily": "monospace", "lineHeight": "1.7", "wordBreak": "break-word"},
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#666",
+                                            "fontFamily": "monospace",
+                                            "lineHeight": "1.7",
+                                            "wordBreak": "break-word",
+                                        },
                                     ),
                                 ],
-                                style={**_CARD, "flex": "1", "minWidth": "240px", "borderTop": f"3px solid {_OK_GREEN}"},
+                                style={
+                                    **_CARD,
+                                    "flex": "1",
+                                    "minWidth": "240px",
+                                    "borderTop": f"3px solid {_OK_GREEN}",
+                                },
                             ),
                         ],
                         style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
@@ -382,11 +523,12 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Recipes
             html.Section(
                 [
-                    html.H2("Configuration recipes", style={"fontSize": "18px", "marginBottom": "16px"}),
+                    html.H2(
+                        "Configuration recipes", style={"fontSize": "18px", "marginBottom": "16px"}
+                    ),
                     html.Div(
                         [
                             _config_snippet(
@@ -410,35 +552,52 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Verify-with-curl
             html.Section(
                 [
                     html.H2("Verify with curl", style={"fontSize": "18px", "marginBottom": "8px"}),
-                    html.P("Pretend to be each kind of crawler and see what the middleware returns:", style={"color": "#666", "marginBottom": "12px"}),
+                    html.P(
+                        "Pretend to be each kind of crawler and see what the middleware returns:",
+                        style={"color": "#666", "marginBottom": "12px"},
+                    ),
                     html.Pre(
-                        '# Training bot — should return 403 when block_ai_training=True\n'
+                        "# Training bot — should return 403 when block_ai_training=True\n"
                         'curl -A "Mozilla/5.0 (compatible; GPTBot/1.0)" http://localhost:8959/\n\n'
-                        '# Search bot — should return prerendered static HTML\n'
+                        "# Search bot — should return prerendered static HTML\n"
                         'curl -A "Mozilla/5.0 (compatible; Googlebot/2.1)" http://localhost:8959/\n\n'
-                        '# Regular browser — passes through to the Dash app\n'
+                        "# Regular browser — passes through to the Dash app\n"
                         'curl -A "Mozilla/5.0 (Macintosh)" http://localhost:8959/',
                         style=_CODE_BLOCK,
                     ),
                 ]
             ),
-
             # Footer nav
             html.Footer(
                 [
-                    html.Hr(style={"border": "none", "borderTop": "1px solid #eee", "margin": "32px 0 16px"}),
+                    html.Hr(
+                        style={
+                            "border": "none",
+                            "borderTop": "1px solid #eee",
+                            "margin": "32px 0 16px",
+                        }
+                    ),
                     html.Div(
                         [
-                            dcc.Link("← MCP Clients", href="/audiences/mcp-clients", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "← MCP Clients",
+                                href="/audiences/mcp-clients",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("Home", href="/", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "Home", href="/", style={"color": _BRAND, "textDecoration": "none"}
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("Paste-to-chat →", href="/audiences/llm-context", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "Paste-to-chat →",
+                                href="/audiences/llm-context",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                         ]
                     ),
                 ]

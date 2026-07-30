@@ -62,7 +62,6 @@ def layout():
     return html.Div(
         [
             html.H1("Analytics Dashboard"),
-
             html.Div(
                 [
                     html.H2("Key Metrics"),
@@ -94,7 +93,9 @@ def layout():
                             ),
                             html.Div(
                                 [
-                                    html.H3("$12.5K", style={"color": "orange", "fontSize": "36px"}),
+                                    html.H3(
+                                        "$12.5K", style={"color": "orange", "fontSize": "36px"}
+                                    ),
                                     html.P("Monthly Savings"),
                                 ],
                                 style={
@@ -110,7 +111,6 @@ def layout():
                 ],
                 id="key-metrics",
             ),
-
             html.Div(
                 [
                     html.H2("Usage Trends"),
@@ -135,7 +135,6 @@ def layout():
                     ),
                 ]
             ),
-
             html.Div(
                 [
                     html.H2("Recent Activity"),
@@ -150,7 +149,6 @@ def layout():
                 ],
                 style={"marginTop": "30px"},
             ),
-
             html.Div(
                 [
                     dcc.Link("← Back to Home", href="/"),

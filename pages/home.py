@@ -165,10 +165,17 @@ def _audience_card(title: str, channel: str, served: str, accent: str, href: str
                     ],
                     style={"marginBottom": "6px"},
                 ),
-                html.Div(channel, style={"fontSize": "13px", "color": _MUTED, "marginBottom": "10px"}),
+                html.Div(
+                    channel, style={"fontSize": "13px", "color": _MUTED, "marginBottom": "10px"}
+                ),
                 html.Div(served, style={"fontSize": "14px", "color": _INK, "lineHeight": "1.5"}),
             ],
-            style={**_CARD_STYLE, "borderTop": f"3px solid {accent}", "height": "100%", "boxSizing": "border-box"},
+            style={
+                **_CARD_STYLE,
+                "borderTop": f"3px solid {accent}",
+                "height": "100%",
+                "boxSizing": "border-box",
+            },
         ),
         href=href,
         style={"flex": "1", "textDecoration": "none", "color": "inherit", "minWidth": "240px"},
@@ -188,7 +195,9 @@ def _route_link(href: str, label: str) -> html.Li:
 def _page_card(emoji: str, name: str, blurb: str, href: str, accent: str = _BRAND) -> html.Div:
     return html.Div(
         [
-            html.H3(f"{emoji} {name}", style={"fontSize": "17px", "margin": "0 0 8px", "color": accent}),
+            html.H3(
+                f"{emoji} {name}", style={"fontSize": "17px", "margin": "0 0 8px", "color": accent}
+            ),
             html.P(blurb, style={"color": _MUTED, "fontSize": "14px", "minHeight": "42px"}),
             dcc.Link(
                 f"Open {name} →",
@@ -231,7 +240,6 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # ---------- Three audiences ----------
             html.Section(
                 [
@@ -264,11 +272,15 @@ def layout():
                                 href="/audiences/llm-context",
                             ),
                         ],
-                        style={"display": "flex", "gap": "16px", "flexWrap": "wrap", "alignItems": "stretch"},
+                        style={
+                            "display": "flex",
+                            "gap": "16px",
+                            "flexWrap": "wrap",
+                            "alignItems": "stretch",
+                        },
                     ),
                 ]
             ),
-
             # ---------- Live routes ----------
             html.Section(
                 [
@@ -298,9 +310,18 @@ def layout():
                                     html.H3("Per page", style={"fontSize": "15px", "color": _INK}),
                                     html.Ul(
                                         [
-                                            _route_link("/audiences/mcp-clients/llms.txt", "MCP audience prose"),
-                                            _route_link("/audiences/web-crawlers/llms.txt", "crawler audience prose"),
-                                            _route_link("/audiences/llm-context/llms.txt", "paste-to-chat prose"),
+                                            _route_link(
+                                                "/audiences/mcp-clients/llms.txt",
+                                                "MCP audience prose",
+                                            ),
+                                            _route_link(
+                                                "/audiences/web-crawlers/llms.txt",
+                                                "crawler audience prose",
+                                            ),
+                                            _route_link(
+                                                "/audiences/llm-context/llms.txt",
+                                                "paste-to-chat prose",
+                                            ),
                                             _route_link("/analytics/llms.txt", "regular Dash page"),
                                             _route_link("/admin/llms.txt", "404 — page is hidden"),
                                         ],
@@ -314,7 +335,6 @@ def layout():
                     ),
                 ]
             ),
-
             # ---------- Quick start ----------
             html.Section(
                 [
@@ -324,19 +344,18 @@ def layout():
                         "from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden\n"
                         "\n"
                         "app = Dash(__name__, use_pages=True)\n"
-                        "app._base_url = \"https://myapp.com\"\n"
+                        'app._base_url = "https://myapp.com"\n'
                         "app._robots_config = RobotsConfig(\n"
                         "    block_ai_training=True,\n"
                         "    allow_ai_search=True,\n"
                         ")\n"
                         "\n"
-                        "mark_hidden(\"/admin\")\n"
+                        'mark_hidden("/admin")\n'
                         "add_llms_routes(app)\n",
                         style=_CODE_BLOCK_STYLE,
                     ),
                 ]
             ),
-
             # ---------- LLMS_DOC pattern ----------
             html.Section(
                 [
@@ -376,7 +395,6 @@ def layout():
                     ),
                 ]
             ),
-
             # ---------- Multi-backend ----------
             html.Section(
                 [
@@ -399,7 +417,6 @@ def layout():
                     ),
                 ]
             ),
-
             # ---------- Other pages tour ----------
             html.Section(
                 [
@@ -434,7 +451,6 @@ def layout():
                     ),
                 ]
             ),
-
             # ---------- Migration note ----------
             html.Section(
                 [
@@ -458,14 +474,18 @@ def layout():
                             ),
                             html.Div(
                                 [
-                                    html.H3("Dropped", style={"color": "#ff6b6b", "fontSize": "15px"}),
+                                    html.H3(
+                                        "Dropped", style={"color": "#ff6b6b", "fontSize": "15px"}
+                                    ),
                                     html.Ul(
                                         [
                                             html.Li("/page.json"),
                                             html.Li("/architecture.txt"),
                                             html.Li("/architecture.toon and /<page>/llms.toon"),
                                             html.Li("Component-tree extraction in /llms.txt"),
-                                            html.Li("mark_important() and mark_component_hidden() (no-op shims)"),
+                                            html.Li(
+                                                "mark_important() and mark_component_hidden() (no-op shims)"
+                                            ),
                                         ]
                                     ),
                                 ],
@@ -491,11 +511,16 @@ def layout():
                     ),
                 ]
             ),
-
             # ---------- Footer ----------
             html.Footer(
                 [
-                    html.Hr(style={"border": "none", "borderTop": "1px solid #eee", "margin": "40px 0 16px"}),
+                    html.Hr(
+                        style={
+                            "border": "none",
+                            "borderTop": "1px solid #eee",
+                            "margin": "40px 0 16px",
+                        }
+                    ),
                     html.P(
                         [
                             "Built by ",

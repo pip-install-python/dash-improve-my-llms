@@ -165,7 +165,11 @@ def _page_row(path: str, name: str, doc: Optional[str]) -> html.Tr:
                     html.Code(path, style={"fontSize": "13px"}),
                     html.Div(name, style={"fontSize": "12px", "color": "#888", "marginTop": "2px"}),
                 ],
-                style={"padding": "12px", "borderBottom": "1px solid #f0f0f0", "verticalAlign": "top"},
+                style={
+                    "padding": "12px",
+                    "borderBottom": "1px solid #f0f0f0",
+                    "verticalAlign": "top",
+                },
             ),
             html.Td(
                 size_str,
@@ -180,10 +184,18 @@ def _page_row(path: str, name: str, doc: Optional[str]) -> html.Tr:
                 },
             ),
             html.Td(
-                _copy_button(content=doc, button_id=f"copy-{path.replace('/', '-').strip('-') or 'root'}")
-                if has_doc
-                else html.Span("no LLMS_DOC", style={"color": "#999", "fontSize": "12px"}),
-                style={"padding": "12px", "borderBottom": "1px solid #f0f0f0", "verticalAlign": "top"},
+                (
+                    _copy_button(
+                        content=doc, button_id=f"copy-{path.replace('/', '-').strip('-') or 'root'}"
+                    )
+                    if has_doc
+                    else html.Span("no LLMS_DOC", style={"color": "#999", "fontSize": "12px"})
+                ),
+                style={
+                    "padding": "12px",
+                    "borderBottom": "1px solid #f0f0f0",
+                    "verticalAlign": "top",
+                },
             ),
             html.Td(
                 html.A(
@@ -192,7 +204,11 @@ def _page_row(path: str, name: str, doc: Optional[str]) -> html.Tr:
                     target="_blank",
                     style={"color": _BRAND, "textDecoration": "none", "fontSize": "13px"},
                 ),
-                style={"padding": "12px", "borderBottom": "1px solid #f0f0f0", "verticalAlign": "top"},
+                style={
+                    "padding": "12px",
+                    "borderBottom": "1px solid #f0f0f0",
+                    "verticalAlign": "top",
+                },
             ),
         ]
     )
@@ -221,7 +237,15 @@ def layout():
             # Hero
             html.Header(
                 [
-                    html.Div("Audience", style={"fontSize": "12px", "color": _BRAND, "letterSpacing": "1px", "fontWeight": "600"}),
+                    html.Div(
+                        "Audience",
+                        style={
+                            "fontSize": "12px",
+                            "color": _BRAND,
+                            "letterSpacing": "1px",
+                            "fontWeight": "600",
+                        },
+                    ),
                     html.H1("Paste-into-Chat", style={"margin": "4px 0 8px", "fontSize": "32px"}),
                     html.P(
                         "One-shot HTTP fetch into an LLM context window. /llms.txt and /<page>/llms.txt return each page's LLMS_DOC verbatim.",
@@ -230,7 +254,6 @@ def layout():
                 ],
                 style={"marginBottom": "28px"},
             ),
-
             # Primary copy affordance — this page's LLMS_DOC
             html.Section(
                 [
@@ -238,7 +261,10 @@ def layout():
                         [
                             html.Div(
                                 [
-                                    html.H2("Copy this page's docs", style={"fontSize": "18px", "margin": "0 0 4px"}),
+                                    html.H2(
+                                        "Copy this page's docs",
+                                        style={"fontSize": "18px", "margin": "0 0 4px"},
+                                    ),
                                     html.P(
                                         [
                                             f"{len(LLMS_DOC.encode('utf-8')):,} bytes · ",
@@ -246,7 +272,11 @@ def layout():
                                                 "/audiences/llm-context/llms.txt",
                                                 href="/audiences/llm-context/llms.txt",
                                                 target="_blank",
-                                                style={"color": _BRAND, "textDecoration": "none", "fontFamily": "monospace"},
+                                                style={
+                                                    "color": _BRAND,
+                                                    "textDecoration": "none",
+                                                    "fontFamily": "monospace",
+                                                },
                                             ),
                                         ],
                                         style={"color": "#666", "fontSize": "13px", "margin": 0},
@@ -260,7 +290,13 @@ def layout():
                                 label="Copy LLMS_DOC",
                             ),
                         ],
-                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between", "gap": "16px", "marginBottom": "12px"},
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "space-between",
+                            "gap": "16px",
+                            "marginBottom": "12px",
+                        },
                     ),
                     dcc.Textarea(
                         value=LLMS_DOC,
@@ -283,7 +319,6 @@ def layout():
                 ],
                 style={**_CARD, "marginBottom": "28px"},
             ),
-
             # Per-page directory
             html.Section(
                 [
@@ -298,25 +333,45 @@ def layout():
                                 html.Thead(
                                     html.Tr(
                                         [
-                                            html.Th(h, style={"textAlign": "left", "padding": "10px 12px", "background": "#fafafa", "fontSize": "12px", "color": "#666", "textTransform": "uppercase", "letterSpacing": "0.5px"})
+                                            html.Th(
+                                                h,
+                                                style={
+                                                    "textAlign": "left",
+                                                    "padding": "10px 12px",
+                                                    "background": "#fafafa",
+                                                    "fontSize": "12px",
+                                                    "color": "#666",
+                                                    "textTransform": "uppercase",
+                                                    "letterSpacing": "0.5px",
+                                                },
+                                            )
                                             for h in ("Page", "Size", "Copy", "View")
                                         ]
                                     )
                                 ),
                                 html.Tbody(rows),
                             ],
-                            style={"width": "100%", "borderCollapse": "collapse", "background": "white", "border": "1px solid #eee", "borderRadius": "8px", "overflow": "hidden"},
+                            style={
+                                "width": "100%",
+                                "borderCollapse": "collapse",
+                                "background": "white",
+                                "border": "1px solid #eee",
+                                "borderRadius": "8px",
+                                "overflow": "hidden",
+                            },
                         ),
                     ),
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Curl snippets
             html.Section(
                 [
                     html.H2("Headless fetching", style={"fontSize": "18px", "marginBottom": "8px"}),
-                    html.P("For shells, scripts, or chat CLIs that accept stdin:", style={"color": "#666", "marginBottom": "12px"}),
+                    html.P(
+                        "For shells, scripts, or chat CLIs that accept stdin:",
+                        style={"color": "#666", "marginBottom": "12px"},
+                    ),
                     html.Pre(
                         "# macOS — pipe straight into the clipboard\n"
                         "curl http://localhost:8959/llms.txt | pbcopy\n\n"
@@ -330,7 +385,6 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Where to paste
             html.Section(
                 [
@@ -339,10 +393,13 @@ def layout():
                         [
                             html.Div(
                                 [
-                                    html.H3("Claude.ai / ChatGPT", style={"fontSize": "14px", "margin": "0 0 6px"}),
+                                    html.H3(
+                                        "Claude.ai / ChatGPT",
+                                        style={"fontSize": "14px", "margin": "0 0 6px"},
+                                    ),
                                     html.P(
                                         "Paste directly into the message box, prefixed with a brief context sentence like "
-                                        "\"Here are the docs for the app I'm asking about:\".",
+                                        '"Here are the docs for the app I\'m asking about:".',
                                         style={"color": "#666", "fontSize": "13px", "margin": 0},
                                     ),
                                 ],
@@ -350,7 +407,10 @@ def layout():
                             ),
                             html.Div(
                                 [
-                                    html.H3("System prompt / project knowledge", style={"fontSize": "14px", "margin": "0 0 6px"}),
+                                    html.H3(
+                                        "System prompt / project knowledge",
+                                        style={"fontSize": "14px", "margin": "0 0 6px"},
+                                    ),
                                     html.P(
                                         "Drop the prose into a Project / Custom GPT / persistent system prompt so every "
                                         "conversation starts with the context loaded.",
@@ -361,7 +421,10 @@ def layout():
                             ),
                             html.Div(
                                 [
-                                    html.H3("RAG / vector store", style={"fontSize": "14px", "margin": "0 0 6px"}),
+                                    html.H3(
+                                        "RAG / vector store",
+                                        style={"fontSize": "14px", "margin": "0 0 6px"},
+                                    ),
                                     html.P(
                                         "Each /llms.txt is one document worth indexing. Pages are small enough to skip "
                                         "chunking and embed whole.",
@@ -376,18 +439,33 @@ def layout():
                 ],
                 style={"marginBottom": "32px"},
             ),
-
             # Footer nav
             html.Footer(
                 [
-                    html.Hr(style={"border": "none", "borderTop": "1px solid #eee", "margin": "32px 0 16px"}),
+                    html.Hr(
+                        style={
+                            "border": "none",
+                            "borderTop": "1px solid #eee",
+                            "margin": "32px 0 16px",
+                        }
+                    ),
                     html.Div(
                         [
-                            dcc.Link("← Web Crawlers", href="/audiences/web-crawlers", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "← Web Crawlers",
+                                href="/audiences/web-crawlers",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("MCP Clients", href="/audiences/mcp-clients", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "MCP Clients",
+                                href="/audiences/mcp-clients",
+                                style={"color": _BRAND, "textDecoration": "none"},
+                            ),
                             html.Span(" · ", style={"color": "#ccc", "margin": "0 8px"}),
-                            dcc.Link("Home", href="/", style={"color": _BRAND, "textDecoration": "none"}),
+                            dcc.Link(
+                                "Home", href="/", style={"color": _BRAND, "textDecoration": "none"}
+                            ),
                         ]
                     ),
                 ]

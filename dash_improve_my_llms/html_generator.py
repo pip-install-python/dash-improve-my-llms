@@ -12,85 +12,33 @@ from __future__ import annotations
 
 import html as _stdlib_html
 import json
-import re
-from typing import Dict, List, Optional
+from typing import Dict, List
+
+from .markdown_renderer import markdown_to_text, render_markdown
+
+# Kept as the historical name for this module's renderer. The implementation
+# moved to markdown_renderer.py when it grew link, fence, image and table
+# support; this alias keeps existing imports working.
+_render_markdown_minimal = render_markdown
 
 
-def _render_markdown_minimal(text: str) -> str:
+def _json_ld(data: Dict) -> str:
     """
-    Render a small subset of Markdown to HTML — enough for LLMS_DOC.
+    Serialize a dict for embedding in a <script type="application/ld+json">.
 
-    Handles: # H1, ## H2, ### H3, paragraphs (blank-line separated),
-    `- bullet` lists, `> blockquote`, and inline `code`. Anything else
-    is left as escaped text inside paragraph tags.
-
-    This is NOT a full Markdown parser; it's a deliberate just-enough
-    converter so we don't pull in a dependency for the crawler path.
+    `json.dumps` escapes quotes but not angle brackets, so a page whose name
+    or description contained `</script><script>…` would break out of the
+    block and execute. Page names and descriptions are author-supplied, and
+    in a docs site they can come from Markdown frontmatter, so this is a real
+    injection path rather than a theoretical one. Escaping to \\u-sequences
+    keeps the JSON semantically identical while making the payload inert.
     """
-    if not text:
-        return ""
-
-    lines = text.strip().splitlines()
-    out: List[str] = []
-    paragraph: List[str] = []
-    in_list = False
-
-    def flush_paragraph() -> None:
-        if paragraph:
-            joined = " ".join(p.strip() for p in paragraph if p.strip())
-            if joined:
-                out.append(f"<p>{_inline(joined)}</p>")
-            paragraph.clear()
-
-    def close_list() -> None:
-        nonlocal in_list
-        if in_list:
-            out.append("</ul>")
-            in_list = False
-
-    def _inline(s: str) -> str:
-        s = _stdlib_html.escape(s)
-        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-        s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
-        return s
-
-    for raw in lines:
-        line = raw.rstrip()
-        if not line:
-            flush_paragraph()
-            close_list()
-            continue
-
-        h = re.match(r"^(#{1,6})\s+(.*)$", line)
-        if h:
-            flush_paragraph()
-            close_list()
-            level = len(h.group(1))
-            out.append(f"<h{level}>{_inline(h.group(2).strip())}</h{level}>")
-            continue
-
-        if line.startswith("> "):
-            flush_paragraph()
-            close_list()
-            out.append(f"<blockquote>{_inline(line[2:].strip())}</blockquote>")
-            continue
-
-        if re.match(r"^[-*]\s+", line):
-            flush_paragraph()
-            if not in_list:
-                out.append("<ul>")
-                in_list = True
-            item = re.sub(r"^[-*]\s+", "", line)
-            out.append(f"<li>{_inline(item)}</li>")
-            continue
-
-        if in_list:
-            close_list()
-        paragraph.append(line)
-
-    flush_paragraph()
-    close_list()
-    return "\n".join(out)
+    return (
+        json.dumps(data, indent=2)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
 
 def generate_static_page_html(
@@ -113,10 +61,14 @@ def generate_static_page_html(
         Complete HTML document as a string.
     """
     title = _stdlib_html.escape(str(page_metadata.get("name") or "Page"))
-    description = _stdlib_html.escape(str(page_metadata.get("description") or ""))
     llms_doc = page_metadata.get("llms_doc")
-    base_url = app_config.get("base_url", "")
-    app_name = _stdlib_html.escape(str(app_config.get("name") or "Dash Application"))
+    base_url = str(app_config.get("base_url", "")).rstrip("/")
+
+    # A page whose author never wrote a description still deserves a real one.
+    # Falling back to the first prose of its own body beats repeating a generic
+    # app-level string across every URL, which reads as duplicate content.
+    raw_description = page_metadata.get("description") or markdown_to_text(llms_doc, limit=155)
+    description = _stdlib_html.escape(str(raw_description or ""))
 
     nav_items = []
     for page in all_pages:
@@ -127,19 +79,21 @@ def generate_static_page_html(
 
     structured_data = {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": app_config.get("name", "Dashboard"),
+        "@type": page_metadata.get("schema_type") or "WebPage",
+        "name": page_metadata.get("name") or "Page",
         "url": f"{base_url}{page_path}",
-        "description": page_metadata.get("description") or "",
-        "applicationCategory": "BusinessApplication",
+        "description": raw_description or "",
+        "isPartOf": {
+            "@type": "WebSite",
+            "name": app_config.get("name", "Dashboard"),
+            "url": base_url or "/",
+        },
     }
 
     if llms_doc:
-        body_html = _render_markdown_minimal(llms_doc)
+        body_html = render_markdown(llms_doc)
     else:
-        body_html = (
-            "<p>This page contains interactive content that requires JavaScript.</p>"
-        )
+        body_html = "<p>This page contains interactive content that requires JavaScript.</p>"
 
     llms_link = f"{page_path.rstrip('/')}/llms.txt" if page_path != "/" else "/llms.txt"
 
@@ -151,7 +105,9 @@ def generate_static_page_html(
     <meta name="description" content="{description}">
     <meta name="robots" content="index, follow">
 
+    <link rel="canonical" href="{base_url}{page_path}">
     <link rel="alternate" type="text/markdown" href="{llms_link}" title="LLM-friendly documentation">
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="{title}">
@@ -161,7 +117,7 @@ def generate_static_page_html(
     <title>{title}</title>
 
     <script type="application/ld+json">
-{json.dumps(structured_data, indent=2)}
+{_json_ld(structured_data)}
     </script>
 
     <style>
@@ -204,7 +160,7 @@ def generate_static_page_html(
 
     <footer>
         <p>Interactive version requires JavaScript.</p>
-        <p>Crawler-facing HTML generated by <a href="https://pip-install-python.com">dash-improve-my-llms</a>.</p>
+        <p>Crawler-facing HTML generated by <a href="https://pypi.org/project/dash-improve-my-llms/" rel="nofollow noopener">dash-improve-my-llms</a>.</p>
     </footer>
 </body>
 </html>"""
@@ -276,7 +232,7 @@ def generate_index_template(app_config: Dict, pages: List[Dict]) -> str:
     </script>
 
     <script type="application/ld+json">
-{json.dumps(nav_structure, indent=2)}
+{_json_ld(nav_structure)}
     </script>
 
     {{%favicon%}}

@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install black flake8 mypy
+      - name: black
+        run: black --check dash_improve_my_llms tests scripts
+      - name: flake8
+        run: flake8 dash_improve_my_llms --max-line-length=100 --extend-ignore=E203,W503
+      - name: mypy
+        run: mypy dash_improve_my_llms --ignore-missing-imports
+        continue-on-error: true
+
+  test:
+    name: py${{ matrix.python }} · dash ${{ matrix.dash }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every supported Dash release gets a run on the current Python.
+        python: ["3.12"]
+        dash: ["4.1.0", "4.2.0", "4.3.0", "4.4.0", "4.4.1"]
+        include:
+          # ...and the Python support range gets a run on the newest Dash,
+          # so we cover both axes without a full cross product.
+          - python: "3.9"
+            dash: "4.4.1"
+          - python: "3.10"
+            dash: "4.4.1"
+          - python: "3.11"
+            dash: "4.4.1"
+          - python: "3.13"
+            dash: "4.4.1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install Dash ${{ matrix.dash }} with backend extras
+        run: |
+          # Dash's own extras are required: bare `fastapi` is not enough for
+          # dash.backends._fastapi to import. 4.1.0 predates them.
+          pip install "dash[fastapi,quart]==${{ matrix.dash }}" httpx \
+            || pip install "dash==${{ matrix.dash }}" flask httpx
+
+      - name: Install the package without touching the pinned Dash
+        run: pip install --no-deps -e .
+
+      - run: pip install pytest pytest-cov
+
+      - name: Unit + adapter tests
+        run: pytest tests --ignore=tests/legacy -q --cov=dash_improve_my_llms --cov-report=term-missing
+
+      - name: Smoke test (real app, every available backend)
+        run: python scripts/smoke_test.py
+
+      - name: Confirm the pinned Dash was not upgraded
+        run: |
+          python - <<'PY'
+          import dash, sys
+          expected = "${{ matrix.dash }}"
+          if dash.__version__ != expected:
+              sys.exit(f"expected dash {expected}, got {dash.__version__}")
+          print(f"dash {dash.__version__} confirmed")
+          PY
+
+  build:
+    name: build + verify wheel
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install build twine
+      - run: python -m build
+
+      - name: twine check
+        run: twine check dist/*
+
+      - name: Install the built wheel in a clean environment and import it
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install -q dist/*.whl
+          /tmp/verify/bin/python - <<'PY'
+          import dash_improve_my_llms as pkg
+          # The public surface must survive packaging — a missing module here
+          # means the wheel ships something the tests never exercised.
+          for name in pkg.__all__:
+              assert hasattr(pkg, name), f"{name} missing from the built wheel"
+          print(f"dash-improve-my-llms {pkg.__version__}: {len(pkg.__all__)} public names OK")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14

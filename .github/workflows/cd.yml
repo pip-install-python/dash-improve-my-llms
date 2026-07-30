@@ -1,0 +1,130 @@
+name: CD
+
+# Publishing is driven by a version tag:
+#
+#     git tag v2.1.0 && git push origin v2.1.0
+#
+# The tag must match the version in pyproject.toml; the job refuses to
+# publish otherwise, so a forgotten version bump fails loudly instead of
+# shipping a release whose metadata disagrees with its name.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Where to publish
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  verify:
+    name: verify tag and test matrix
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read the packaged version
+        id: version
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          print(f"version={data['project']['version']}")
+          PY
+
+      - name: Tag must match pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          packaged="${{ steps.version.outputs.version }}"
+          if [ "$tag" != "$packaged" ]; then
+            echo "::error::tag v$tag does not match pyproject version $packaged"
+            exit 1
+          fi
+          echo "tag v$tag matches pyproject version"
+
+      - name: CHANGELOG must mention this version
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if ! grep -q "$version" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for $version"
+            exit 1
+          fi
+
+  test:
+    name: full matrix
+    needs: [verify]
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: publish to ${{ github.event.inputs.target || 'pypi' }}
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.target || 'pypi' }}
+      url: https://pypi.org/p/dash-improve-my-llms
+    permissions:
+      # Trusted publishing — no long-lived API token stored in the repo.
+      # Configure the publisher at https://pypi.org/manage/account/publishing/
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+
+      - name: Publish to TestPyPI
+        if: github.event.inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: github.event.inputs.target != 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    name: github release
+    needs: [verify, publish]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract this version's changelog section
+        run: |
+          python - <<'PY' > release-notes.md
+          import pathlib, re
+          version = "${{ needs.verify.outputs.version }}"
+          text = pathlib.Path("CHANGELOG.md").read_text()
+          # Grab from this version's heading up to the next same-level one.
+          match = re.search(
+              rf"^##\s*\[?{re.escape(version)}\]?.*?$(.*?)(?=^##\s|\Z)",
+              text, re.M | re.S,
+          )
+          print((match.group(1).strip() if match else f"Release {version}"))
+          PY
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          generate_release_notes: true
