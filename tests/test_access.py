@@ -46,9 +46,7 @@ def test_mark_hidden_still_wins():
 
 
 def test_three_verdicts_are_passed_through():
-    access.configure_access(
-        lambda path: {"/a": "allow", "/g": "gated", "/d": "deny"}[path]
-    )
+    access.configure_access(lambda path: {"/a": "allow", "/g": "gated", "/d": "deny"}[path])
     assert access.resolve("/a") == access.ALLOW
     assert access.resolve("/g") == access.GATED
     assert access.resolve("/d") == access.DENY
@@ -181,9 +179,7 @@ def test_identity_is_none_until_configured():
 
 
 def test_identity_is_normalised_and_capped():
-    access.configure_viewer_identity(
-        lambda: {"name": "x" * 500, "since": "y" * 500, "plan": "pro"}
-    )
+    access.configure_viewer_identity(lambda: {"name": "x" * 500, "since": "y" * 500, "plan": "pro"})
     identity = access.viewer_identity()
     assert len(identity["name"]) == 120
     assert len(identity["since"]) == 60
@@ -236,10 +232,12 @@ def _app():
     app._base_url = "https://example.com"
     dash.register_page("home", path="/", name="Home", layout=html.Div("home"))
     dash.register_page("guide", path="/guide", name="Guide", layout=html.Div("guide"))
-    pkg.register_page_metadata("/", name="Home", description="Landing.",
-                               llms_doc="# Home\n\nWelcome.")
-    pkg.register_page_metadata("/guide", name="Guide", description="How to.",
-                               llms_doc="# Guide\n\nSECRETPROSE here.")
+    pkg.register_page_metadata(
+        "/", name="Home", description="Landing.", llms_doc="# Home\n\nWelcome."
+    )
+    pkg.register_page_metadata(
+        "/guide", name="Guide", description="How to.", llms_doc="# Guide\n\nSECRETPROSE here."
+    )
     app.layout = html.Div([dash.page_container])
     pkg.add_llms_routes(app, pkg.LLMSConfig(warn_missing_llms_doc=False))
     return app
@@ -308,8 +306,10 @@ def test_identity_renders_in_html_only():
 
     html = client.get(
         "/guide/llms.txt",
-        headers={"Accept": "text/html", "User-Agent":
-                 "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36"},
+        headers={
+            "Accept": "text/html",
+            "User-Agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        },
     ).get_data(as_text=True)
     assert "pip@example.com" in html
     assert "session since" in html

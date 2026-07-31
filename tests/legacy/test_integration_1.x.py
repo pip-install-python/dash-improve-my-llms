@@ -278,9 +278,7 @@ def test_hidden_components_tracking():
     from dash_improve_my_llms import mark_component_hidden, is_component_hidden
 
     # Mark components as hidden
-    component = html.Div(
-        [html.P("Secret API Key: sk-..."), html.P("Password: ...")], id="secrets"
-    )
+    component = html.Div([html.P("Secret API Key: sk-..."), html.P("Password: ...")], id="secrets")
 
     mark_component_hidden(component)
 
@@ -356,9 +354,7 @@ def test_integration_with_custom_base_url():
     )
 
     # Generate sitemap
-    sitemap_content = generate_sitemap_xml(
-        pages=[{"path": "/", "name": "Home"}], base_url=base_url
-    )
+    sitemap_content = generate_sitemap_xml(pages=[{"path": "/", "name": "Home"}], base_url=base_url)
 
     # Verify custom base URL is used
     assert f"Sitemap: {base_url}/sitemap.xml" in robots_content

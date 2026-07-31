@@ -20,7 +20,7 @@ def test_generate_static_page_html_basic():
     )
 
     assert "<!DOCTYPE html>" in html
-    assert "<html lang=\"en\">" in html
+    assert '<html lang="en">' in html
     assert "<title>Test Page</title>" in html
     assert "A test page" in html
 

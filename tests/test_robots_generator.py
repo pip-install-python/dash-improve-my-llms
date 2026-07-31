@@ -162,9 +162,9 @@ def test_robots_txt_ai_search_bots_are_allowed():
 
     policies = _policy_by_agent(robots_content)
     for bot in ("ChatGPT-User", "ClaudeBot", "PerplexityBot", "OAI-SearchBot"):
-        assert policies.get(bot) == ["Allow: /"], (
-            f"{bot} should be allowed, got {policies.get(bot)}"
-        )
+        assert policies.get(bot) == [
+            "Allow: /"
+        ], f"{bot} should be allowed, got {policies.get(bot)}"
 
 
 def test_robots_txt_training_bots_are_disallowed():
@@ -178,9 +178,9 @@ def test_robots_txt_training_bots_are_disallowed():
 
     policies = _policy_by_agent(robots_content)
     for bot in ("GPTBot", "CCBot", "Google-Extended", "ByteSpider"):
-        assert policies.get(bot) == ["Disallow: /"], (
-            f"{bot} should be blocked, got {policies.get(bot)}"
-        )
+        assert policies.get(bot) == [
+            "Disallow: /"
+        ], f"{bot} should be blocked, got {policies.get(bot)}"
 
 
 def test_robots_txt_has_documentation_links():
