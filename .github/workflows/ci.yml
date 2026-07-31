@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # cd.yml runs this whole matrix as its release gate (jobs.test.uses).
+  # Without workflow_call the CD run fails at parse time before any job.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
