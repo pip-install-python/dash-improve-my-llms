@@ -101,10 +101,19 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 
+      # skip-existing makes a rerun idempotent: twine uploads wheels before
+      # sdists, so a run that dies mid-upload leaves a partial release that
+      # would otherwise 400 every retry (v2.3.4 shipped its wheel on a run
+      # that then failed; the sdist needed this to ever get out). Deleting
+      # the partial file instead is not an option — PyPI bans filename reuse
+      # permanently after deletion.
       - name: Publish to PyPI
         if: github.event.inputs.target != 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
   release:
     name: github release
