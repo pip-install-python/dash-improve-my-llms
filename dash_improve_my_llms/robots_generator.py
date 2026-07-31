@@ -87,10 +87,12 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "User-agent: GPTBot",
                 "Disallow: /",
                 "",
-                "User-agent: anthropic-ai",
-                "Disallow: /",
-                "",
-                "User-agent: Claude-Web",
+                # ClaudeBot is Anthropic's training crawler. The legacy
+                # aliases (anthropic-ai, Claude-Web) are deliberately NOT
+                # listed: claude.ai's user-initiated fetcher honours a
+                # disallow on them, so blocking the deprecated names blocks
+                # the paste-into-Claude audience while blocking no training.
+                "User-agent: ClaudeBot",
                 "Disallow: /",
                 "",
                 "User-agent: CCBot",
@@ -127,7 +129,13 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "User-agent: ChatGPT-User",
                 "Allow: /",
                 "",
-                "User-agent: ClaudeBot",
+                # Claude-User fetches when a person asks Claude to read a
+                # URL; Claude-SearchBot indexes for citation. Both are the
+                # audience llms.txt exists for — never in the training block.
+                "User-agent: Claude-User",
+                "Allow: /",
+                "",
+                "User-agent: Claude-SearchBot",
                 "Allow: /",
                 "",
                 "User-agent: PerplexityBot",

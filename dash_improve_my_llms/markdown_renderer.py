@@ -29,13 +29,18 @@ import html as _stdlib_html
 import re
 from typing import List, Optional
 
-__all__ = ["render_markdown", "markdown_to_text"]
+__all__ = ["render_markdown", "markdown_to_text", "strip_directive_lines"]
 
 
 # rST-style directives (`.. toc::`, `.. llms_copy::Name`, `.. kwargs::`) come
 # from markdown2dash-style page pipelines. They are instructions to a renderer,
 # not prose, and used to leak into the crawler HTML as visible body text.
 _DIRECTIVE_RE = re.compile(r"^\.\.\s+\w[\w-]*::.*$")
+
+# A directive's option fields (`:code: false`, `:height: 300`) sit on the
+# lines immediately below it. They only mean something after a directive,
+# which is the only place they are consumed.
+_DIRECTIVE_OPTION_RE = re.compile(r"^\s*:[\w-]+:.*$")
 
 _FENCE_RE = re.compile(r"^(```+|~~~+)\s*([\w+-]*)\s*$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -182,6 +187,10 @@ class _Renderer:
 
             if self.strip_directives and _DIRECTIVE_RE.match(line.strip()):
                 index += 1
+                # Swallow the directive's `:option:` lines too — on their
+                # own they are as meaningless as the directive itself.
+                while index < len(lines) and _DIRECTIVE_OPTION_RE.match(lines[index]):
+                    index += 1
                 continue
 
             if not line.strip():
@@ -293,6 +302,56 @@ class _Renderer:
         parts.append("</tbody></table>")
         self.out.append("".join(parts))
         return index
+
+
+def strip_directive_lines(text: str) -> str:
+    """Drop rST-style directive lines and their ``:option:`` continuations.
+
+    The Markdown surfaces serve prose byte-for-byte, so renderer-only
+    instructions (``.. exec::page.module``, ``.. toc::``) have to be removed
+    on that path as well — an agent gains nothing from them, and an
+    ``.. exec::`` line sitting above a fenced block reads as though the
+    fence were the directive's payload. Content inside code fences is
+    preserved untouched, so a page *documenting* these directives still
+    shows its examples.
+    """
+    lines = text.splitlines()
+    out: List[str] = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+
+        fence = _FENCE_RE.match(stripped)
+        if fence:
+            marker, opening_len = fence.group(1)[0], len(fence.group(1))
+            out.append(lines[index])
+            index += 1
+            while index < len(lines):
+                out.append(lines[index])
+                close = _FENCE_RE.match(lines[index].strip())
+                index += 1
+                if (
+                    close
+                    and close.group(1)[0] == marker
+                    and len(close.group(1)) >= opening_len
+                    and not close.group(2)
+                ):
+                    break
+            continue
+
+        if _DIRECTIVE_RE.match(stripped):
+            index += 1
+            while index < len(lines) and _DIRECTIVE_OPTION_RE.match(lines[index]):
+                index += 1
+            continue
+
+        out.append(lines[index])
+        index += 1
+
+    result = "\n".join(out)
+    if text.endswith("\n") and not result.endswith("\n"):
+        result += "\n"
+    return result
 
 
 def render_markdown(text: Optional[str], *, strip_directives: bool = True) -> str:

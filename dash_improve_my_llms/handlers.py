@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import access
 from ._paths import normalize_path as _normalize_page_path
 from .bot_detection import get_bot_type, is_any_bot
+from .markdown_renderer import strip_directive_lines
 from .robots_generator import RobotsConfig, generate_robots_txt
 from .sitemap_generator import generate_sitemap_xml
 
@@ -74,19 +75,19 @@ def _resolve_llms_doc(
     meta = page_metadata.get(page_path) or {}
     doc = meta.get("llms_doc")
     if doc:
-        return doc
+        return strip_directive_lines(doc)
 
     if page_entry is None:
         return None
 
     entry_doc = page_entry.get("llms_doc")
     if entry_doc:
-        return entry_doc
+        return strip_directive_lines(entry_doc)
 
     for module_name in _candidate_modules(page_entry):
         module_doc = getattr(sys.modules[module_name], "LLMS_DOC", None)
         if module_doc:
-            return module_doc
+            return strip_directive_lines(module_doc)
 
     return None
 

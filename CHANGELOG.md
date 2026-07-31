@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] - 2026-07-31
+
+Two fixes prompted by an external review that compared this network's
+llms.txt surfaces with plotly.com's and dash-mantine-components'. Both are
+package-level; the consuming apps pick them up with a normal upgrade
+(their pins are `>=2.3.2`, so a redeploy suffices).
+
+### Fixed — Anthropic bots were misclassified in robots.txt
+
+The same class of bug as 2.3.2's OAI-SearchBot fix, one vendor over, and
+worse in both directions at once. `block_ai_training` disallowed
+`anthropic-ai` and `Claude-Web` — deprecated aliases — while
+`allow_ai_search` allowed `ClaudeBot`, which is Anthropic's actual
+training crawler. So the block stopped no Anthropic training, and because
+claude.ai's user-initiated fetcher honours a disallow on the legacy
+aliases, it refused to fetch the very documents this package exists to
+serve (observed in production: a paste-into-Claude fetch of a site
+running the old default config returned ROBOTS_DISALLOWED).
+
+Now: `ClaudeBot` is disallowed in the training branch; `Claude-User`
+(fetches when a person asks Claude to read a URL) and `Claude-SearchBot`
+(citation indexing) are allowed in the search branch; the deprecated
+aliases are not named at all. Regression tests parse the file and assert
+the directive per agent, including that the aliases never reappear.
+
+### Fixed — the Markdown surfaces shipped rST directives raw
+
+Directive stripping (`.. toc::`, `.. exec::page.module`,
+`.. llms_copy::`) existed only in the HTML renderer, so the Markdown an
+agent actually fetches at `/<page>/llms.txt` carried them verbatim —
+noise to a model, and an `.. exec::` line above a fenced block reads as
+though the fence were the directive's payload. Additionally, a
+directive's `:option:` field lines (`:code: false`) were never stripped
+on any surface.
+
+`strip_directive_lines()` (new public helper in `markdown_renderer`) now
+runs where the prose is resolved, so every surface — the page document,
+the index, the crawler HTML, the MCP resource — is clean; the HTML
+renderer also swallows option lines. Content inside code fences is
+preserved, so a page documenting these directives still shows its
+examples.
+
 ## [2.3.2] - 2026-07-30
 
 One bug fix on top of 2.3.0, released under its own number because 2.3.0

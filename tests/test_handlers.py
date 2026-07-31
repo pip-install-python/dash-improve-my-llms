@@ -272,3 +272,31 @@ class TestListPagesMissingLlmsDoc:
         page_metadata_sample["/about"]["llms_doc"] = "# About\n\nDocs."
         missing = list_pages_missing_llms_doc(page_metadata_sample, hidden_paths=set())
         assert missing == []
+
+
+# ---------------------------------------------------------------------------
+# directive stripping on the Markdown surface (regression, fixed in 2.3.3)
+# ---------------------------------------------------------------------------
+
+
+class TestDirectiveStrippingOnMarkdownSurface:
+    def test_llms_txt_ships_no_directives(self, fake_app, fake_page_registry, page_metadata_sample):
+        page_metadata_sample["/"]["llms_doc"] = (
+            "# Home\n\n"
+            ".. exec::docs.home.banner\n"
+            "    :code: false\n\n"
+            "Real prose.\n\n"
+            "```\n.. exec::inside.a.fence\n```\n"
+        )
+        body, status = build_llms_txt_for_page(
+            app=fake_app,
+            page_path="/",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert status == 200
+        assert ".. exec::docs.home.banner" not in body
+        assert ":code:" not in body
+        assert "Real prose." in body
+        # A page documenting the directive keeps its fenced example.
+        assert ".. exec::inside.a.fence" in body

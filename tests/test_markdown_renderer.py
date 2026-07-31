@@ -11,7 +11,11 @@ from __future__ import annotations
 
 import pytest
 
-from dash_improve_my_llms.markdown_renderer import markdown_to_text, render_markdown
+from dash_improve_my_llms.markdown_renderer import (
+    markdown_to_text,
+    render_markdown,
+    strip_directive_lines,
+)
 
 
 class TestLinks:
@@ -180,3 +184,48 @@ def test_empty_and_none():
     assert render_markdown("") == ""
     assert render_markdown(None) == ""
     assert render_markdown("   \n  ") == ""
+
+
+class TestStripDirectiveLines:
+    """Regression: through 2.3.2 the Markdown surfaces shipped directives raw.
+
+    Stripping existed only in the HTML renderer, so an agent fetching
+    /<page>/llms.txt received `.. exec::` lines and their `:option:` fields
+    verbatim — meaningless to a model, and an `.. exec::` above a fence made
+    it ambiguous whether the fence was the directive's payload.
+    """
+
+    def test_drops_directives_and_their_option_lines(self):
+        text = (
+            "# Title\n\n"
+            ".. exec::docs.demo.banner\n"
+            "    :code: false\n"
+            "    :height: 300\n"
+            "\n"
+            "Prose stays.\n\n"
+            ".. toc::\n"
+            ".. llms_copy::Demo\n"
+        )
+        out = strip_directive_lines(text)
+        assert ".. exec::" not in out
+        assert ":code:" not in out
+        assert ":height:" not in out
+        assert ".. toc::" not in out
+        assert ".. llms_copy::" not in out
+        assert "Prose stays." in out
+        assert "# Title" in out
+
+    def test_preserves_directives_inside_code_fences(self):
+        text = "Use it like this:\n\n```\n.. exec::docs.demo.banner\n    :code: false\n```\n"
+        out = strip_directive_lines(text)
+        assert ".. exec::docs.demo.banner" in out
+        assert ":code: false" in out
+
+    def test_field_list_line_without_directive_is_prose(self):
+        text = "Legend:\n:code: means the example's source\n"
+        assert ":code: means the example's source" in strip_directive_lines(text)
+
+    def test_html_render_swallows_option_lines_too(self):
+        html = render_markdown(".. exec::x.y\n    :code: false\n\nHi.")
+        assert ":code:" not in html
+        assert "Hi." in html

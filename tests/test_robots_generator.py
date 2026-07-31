@@ -56,7 +56,7 @@ def test_generate_robots_txt_default():
 
     # Check AI training bots are blocked by default
     assert "User-agent: GPTBot" in robots_content
-    assert "User-agent: anthropic-ai" in robots_content
+    assert "User-agent: ClaudeBot" in robots_content
     assert "User-agent: CCBot" in robots_content
     assert "User-agent: Google-Extended" in robots_content
 
@@ -79,7 +79,7 @@ def test_generate_robots_txt_allow_all():
 
     # Should NOT block AI training bots
     assert "User-agent: GPTBot\nDisallow: /" not in robots_content
-    assert "User-agent: anthropic-ai\nDisallow: /" not in robots_content
+    assert "User-agent: ClaudeBot\nDisallow: /" not in robots_content
 
 
 def test_generate_robots_txt_with_crawl_delay():
@@ -161,14 +161,25 @@ def test_robots_txt_ai_search_bots_are_allowed():
     )
 
     policies = _policy_by_agent(robots_content)
-    for bot in ("ChatGPT-User", "ClaudeBot", "PerplexityBot", "OAI-SearchBot"):
+    for bot in (
+        "ChatGPT-User",
+        "Claude-User",
+        "Claude-SearchBot",
+        "PerplexityBot",
+        "OAI-SearchBot",
+    ):
         assert policies.get(bot) == [
             "Allow: /"
         ], f"{bot} should be allowed, got {policies.get(bot)}"
 
 
 def test_robots_txt_training_bots_are_disallowed():
-    """The block_ai_training branch must actually disallow each agent."""
+    """The block_ai_training branch must actually disallow each agent.
+
+    ClaudeBot is in this list, not the search list: it is Anthropic's
+    training crawler. Through 2.3.2 it sat in the allow branch while the
+    deprecated aliases were blocked — backwards on both counts.
+    """
     config = RobotsConfig(block_ai_training=True)
     robots_content = generate_robots_txt(
         config=config,
@@ -177,10 +188,29 @@ def test_robots_txt_training_bots_are_disallowed():
     )
 
     policies = _policy_by_agent(robots_content)
-    for bot in ("GPTBot", "CCBot", "Google-Extended", "ByteSpider"):
+    for bot in ("GPTBot", "ClaudeBot", "CCBot", "Google-Extended", "ByteSpider"):
         assert policies.get(bot) == [
             "Disallow: /"
         ], f"{bot} should be blocked, got {policies.get(bot)}"
+
+
+def test_robots_txt_never_names_legacy_anthropic_aliases():
+    """`anthropic-ai` and `Claude-Web` must not appear in any branch.
+
+    Regression test: through 2.3.2 the training branch disallowed these
+    deprecated aliases. claude.ai's user-initiated fetcher honours a
+    disallow on them, so the block refused the paste-into-Claude audience
+    — the one llms.txt exists for — while blocking no actual training
+    (ClaudeBot, the real training crawler, was allowed).
+    """
+    for config in (RobotsConfig(), RobotsConfig(block_ai_training=True, allow_ai_search=False)):
+        robots_content = generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+        assert "anthropic-ai" not in robots_content
+        assert "Claude-Web" not in robots_content
 
 
 def test_robots_txt_has_documentation_links():
@@ -228,8 +258,7 @@ def test_robots_txt_blocks_specific_training_bots():
     # Check all major training bots
     training_bots = [
         "GPTBot",
-        "anthropic-ai",
-        "Claude-Web",
+        "ClaudeBot",
         "CCBot",
         "Google-Extended",
         "FacebookBot",
