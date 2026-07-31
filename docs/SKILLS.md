@@ -85,9 +85,19 @@ This enables:
 
 ```python
 from dash import Dash
-from dash_improve_my_llms import add_llms_routes, RobotsConfig, mark_hidden
+from dash_improve_my_llms import (
+    add_llms_routes,
+    register_page_metadata,
+    RobotsConfig,
+    mark_hidden,
+)
 
-app = Dash(__name__, use_pages=True, suppress_callback_exceptions=True)
+app = Dash(
+    __name__,
+    use_pages=True,
+    suppress_callback_exceptions=True,
+    title="my-package — what it does",               # browser tab + H1 fallback
+)
 app._base_url = "https://yourdomain.com"            # used in sitemap + robots
 app._robots_config = RobotsConfig(
     block_ai_training=True,
@@ -96,6 +106,11 @@ app._robots_config = RobotsConfig(
     crawl_delay=10,
     disallowed_paths=["/admin", "/api/*"],
 )
+
+# The site's identity: becomes the H1 of the root /llms.txt. Without this,
+# a home page registered as name="Home" would leave the index titled by
+# app.title — set at least one of the two. See "name the site" below.
+register_page_metadata(path="/", name="my-package")
 
 mark_hidden("/admin")                                # also: /settings, /internal
 add_llms_routes(app)
@@ -180,6 +195,40 @@ If a page has no `LLMS_DOC` and no `register_page_metadata(..., llms_doc=)`:
 - The MCP bridge skips registering that page.
 
 Silence the warning with `LLMSConfig(warn_missing_llms_doc=False)`.
+
+### Skill: name the site (the /llms.txt H1)
+
+The H1 of the root `/llms.txt` is the site's public identity — it is the
+first line an agent fetching your host cold ever reads. It resolves in
+this order:
+
+1. `register_page_metadata(path="/", name=...)` — the home page's
+   registered name.
+2. `app.title` — the `title=` you passed to `Dash(...)`.
+3. `"Dash Application"` — the last-ditch fallback.
+
+Generic labels are **skipped, not served**: a candidate of `Home`,
+`Homepage`, `Index`, `Main`, or `Dash` (the Dash constructor default)
+falls through to the next one. So registering your landing page as
+`name="Home"` for the navbar cannot leak `# Home` into the index — but
+don't rely on the fallback chain. Every deployed site should pin its
+identity explicitly:
+
+```python
+# app.py — browser tab, og:title, and the H1 fallback
+app = Dash(__name__, use_pages=True, title="my-package — what it does")
+
+# pages/home.py — keep the navbar label...
+register_page(__name__, path="/", name="Home")
+
+# ...and register the real identity for the index. Calls MERGE (2.2+),
+# so a name-only call leaves description and llms_doc intact.
+register_page_metadata(path="/", name="my-package")
+```
+
+Symptom that you skipped this on an older package version: your site's
+`/llms.txt` opens with `# Home`, and every agent citing you calls the
+site "Home".
 
 ---
 

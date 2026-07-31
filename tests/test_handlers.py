@@ -12,11 +12,13 @@ from __future__ import annotations
 import pytest
 
 from dash_improve_my_llms.handlers import (
+    build_llms_index,
     build_llms_txt_for_page,
     build_robots_txt,
     build_sitemap_xml,
     handle_bot_request,
     list_pages_missing_llms_doc,
+    resolve_site_title,
 )
 from dash_improve_my_llms.robots_generator import RobotsConfig
 
@@ -36,7 +38,9 @@ class TestBuildLlmsTxt:
             hidden_paths=set(),
         )
         assert status == 200
-        assert body.startswith("# Home")
+        # The root document is the site index; "Home" is a nav label, not
+        # a site identity, so the H1 falls through to app.title.
+        assert body.startswith("# Test App")
         assert "This is the landing page" in body
 
     def test_returns_stub_when_no_llms_doc(
@@ -97,7 +101,56 @@ class TestBuildLlmsTxt:
             hidden_paths=set(),
         )
         assert status == 200
-        assert body.startswith("# Home")
+        assert body.startswith("# Test App")
+
+
+# ---------------------------------------------------------------------------
+# Site title resolution — the H1 of the root /llms.txt
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSiteTitle:
+    def test_registered_home_name_wins_over_app_title(self):
+        assert resolve_site_title("my-package", "Some App") == "my-package"
+
+    def test_generic_home_name_falls_through_to_app_title(self):
+        # "Home" is a navbar label, not a site identity — never the H1
+        # when a real title is available.
+        assert resolve_site_title("Home", "my-package 2.0") == "my-package 2.0"
+
+    def test_generic_labels_are_case_insensitive(self):
+        assert resolve_site_title("HOME", "Real Title") == "Real Title"
+        assert resolve_site_title("Index", "Real Title") == "Real Title"
+
+    def test_dash_constructor_default_title_is_generic_too(self):
+        # Dash() sets title="Dash" by default; that identifies nothing.
+        assert resolve_site_title("my-package", "Dash") == "my-package"
+
+    def test_all_generic_keeps_old_behaviour(self):
+        # Nothing identifying anywhere — serve the home name as before
+        # rather than inventing a title.
+        assert resolve_site_title("Home", "Dash") == "Home"
+
+    def test_nothing_registered_falls_back_to_placeholder(self):
+        assert resolve_site_title(None, None) == "Dash Application"
+
+
+class TestBuildLlmsIndexTitle:
+    def test_home_named_home_uses_app_title_as_h1(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        # The fixture registers the home page as "Home" — the exact
+        # production bug: llms.2plot.dev served "# Home" as its identity.
+        body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        assert body.startswith("# Test App\n")
+        assert not body.startswith("# Home")
+
+    def test_specific_home_name_becomes_the_h1(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        page_metadata_sample["/"]["name"] = "my-package"
+        body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        assert body.startswith("# my-package\n")
 
 
 # ---------------------------------------------------------------------------

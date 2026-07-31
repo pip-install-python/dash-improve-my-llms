@@ -109,9 +109,15 @@ Plus a few supporting pages:
 """
 
 
+# The name here is the site's public identity: it becomes the H1 of the
+# root /llms.txt, which is the first thing an agent fetching this host
+# cold ever reads. So it is the package name, NOT "Home" — "Home" stays
+# on register_page() above, where it only labels the navbar link. (The
+# package also refuses to promote generic labels like "Home" to the index
+# title, but every *.2plot.dev site should set this explicitly anyway.)
 register_page_metadata(
     path="/",
-    name="Home",
+    name="dash-improve-my-llms",
     description="dash-improve-my-llms 2.0 — crawler/SEO companion for Dash apps with an MCP bridge for Dash 4.3+.",
 )
 

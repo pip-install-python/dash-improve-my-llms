@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — generic home-page names no longer become the site title
+
+Several network deployments served `# Home` as the H1 of their root
+`/llms.txt`. The index title preferred the home page's registered name
+over `app.title`, and Dash convention is to register the landing page as
+`name="Home"` so the navbar link reads well — so the nav label leaked out
+as the site's public identity, and agents citing those sites called them
+"Home".
+
+Title resolution now goes through `resolve_site_title()`: the registered
+home name still wins (so a name-only
+`register_page_metadata(path="/", name="my-package")` overrides the
+index title without touching the navbar), but *generic* candidates —
+`Home`, `Homepage`, `Index`, `Main`, and Dash's constructor-default
+`Dash`, case-insensitively — are skipped rather than served, falling
+through to `app.title`. The same resolution now feeds the crawler-facing
+HTML (`og:title`, schema.org `name`, the no-JS H1) and the llms.txt
+viewer's brand chip, so every surface agrees on the site's name.
+
+Sites should still pin their identity explicitly rather than lean on the
+fallback chain — see the new "name the site" section in `docs/SKILLS.md`.
+The demo app now does exactly that.
+
 ## [2.3.3] - 2026-07-31
 
 Two fixes prompted by an external review that compared this network's

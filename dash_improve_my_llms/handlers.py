@@ -243,6 +243,41 @@ def insert_nav_block(document: str, nav_block: str) -> str:
     return "\n".join(head + block + tail).lstrip("\n") + "\n"
 
 
+# Nav labels, not site identities. Dash convention is to register the
+# landing page with name="Home" so the navbar link reads well — but "# Home"
+# as the H1 of the site index identifies nothing (Home of *what*?), and every
+# agent that fetches /llms.txt cold sees that H1 as the site's name. "Dash"
+# is the Dash() constructor's default title, equally anonymous.
+_GENERIC_SITE_TITLES = frozenset({"home", "homepage", "index", "main", "dash"})
+
+
+def resolve_site_title(home_name: Any, app_title: Any) -> str:
+    """
+    Pick the H1 for the root /llms.txt.
+
+    The registered home-page name wins over ``app.title`` — that ordering is
+    what lets a site override the index title with a name-only
+    ``register_page_metadata(path="/", name="my-package")`` without touching
+    its navbar. But a *generic* value ("Home", "Index", Dash's default
+    "Dash") is skipped rather than served, falling through to the next
+    candidate, so a boilerplate nav label can never become the site's
+    public identity.
+    """
+    candidates = [home_name, app_title]
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        candidate = candidate.strip()
+        if candidate and candidate.lower() not in _GENERIC_SITE_TITLES:
+            return candidate
+    # Everything was generic or missing — keep the old behaviour rather
+    # than invent a name.
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return "Dash Application"
+
+
 def build_llms_index(
     app: Any,
     page_metadata: Dict[str, Dict[str, Any]],
@@ -268,13 +303,13 @@ def build_llms_index(
         ## External references
     """
     base_url = str(getattr(app, "_base_url", "") or "").rstrip("/")
-    app_name = getattr(app, "title", None) or "Dash Application"
 
     home_meta = page_metadata.get("/") or {}
     home_entry = _find_page("/")
     home_doc = _resolve_llms_doc("/", page_metadata, home_entry)
 
-    lines: List[str] = [f"# {home_meta.get('name') or app_name}", ""]
+    site_title = resolve_site_title(home_meta.get("name"), getattr(app, "title", None))
+    lines: List[str] = [f"# {site_title}", ""]
 
     tagline = home_meta.get("description") or (home_entry or {}).get("description")
     if tagline:
@@ -529,7 +564,12 @@ def build_llms_viewer_html(
         return render_llms_viewer(
             markdown_body=markdown_body,
             page_name=str(page_name),
-            app_name=str(getattr(app, "title", None) or "Documentation"),
+            # The brand chip in the viewer banner — same resolution as the
+            # /llms.txt H1 so the chrome and the document never disagree.
+            app_name=resolve_site_title(
+                (page_metadata.get("/") or {}).get("name"),
+                getattr(app, "title", None) or "Documentation",
+            ),
             raw_url=raw_url,
             site_llms_url=f"{base_url}/llms.txt" if base_url else "/llms.txt",
             network_name=getattr(network, "name", "") or "" if network else "",
@@ -786,7 +826,12 @@ def resolve_page_context(
         },
         "all_pages": all_pages,
         "app_config": {
-            "name": getattr(app, "title", None) or "Dash Application",
+            # Same identity the root /llms.txt H1 uses, so og:title,
+            # schema.org name, and the crawler-facing H1 all agree.
+            "name": resolve_site_title(
+                (page_metadata.get("/") or {}).get("name"),
+                getattr(app, "title", None),
+            ),
             "base_url": getattr(app, "_base_url", "https://example.com"),
         },
     }

@@ -142,6 +142,13 @@ def register_page_metadata(
     "This page contains interactive content that requires JavaScript" stub.
     To deliberately clear a field, pass the empty string.
 
+    The home page's `name` doubles as the site title: it is the H1 of the
+    root /llms.txt, ahead of `app.title`. Register the package/site name
+    there — `register_page_metadata(path="/", name="my-package")` — and keep
+    "Home" on dash.register_page for the navbar. Generic labels ("Home",
+    "Index", Dash's default "Dash") are never promoted to the index title;
+    they fall through to `app.title`.
+
     Args:
         path: Page path (must match the path you passed to dash.register_page).
         name: Display name. Falls back to the dash.register_page name.
