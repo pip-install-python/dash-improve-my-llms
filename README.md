@@ -1,5 +1,7 @@
 <div align="center">
 
+<a href="https://2plot.ai"><img src="github_assets/light_mode_2plot.png" alt="2plot.ai" width="220"></a>
+
 # dash-improve-my-llms
 
 **Make a [Plotly Dash](https://dash.plotly.com) app readable to search engines, crawlers and AI agents — without giving up the interactive app.**
