@@ -6,8 +6,8 @@
 
 Universal prerender · crawler-ready static HTML · `/llms.txt` on every page · rendered `llms.txt` viewer · `robots.txt` + `sitemap.xml` · multi-host network directory · per-request access control · Dash 4.3+ MCP bridge
 
-[![PyPI version](https://img.shields.io/badge/version-2.3.2-blue.svg)](https://pypi.org/project/dash-improve-my-llms/)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://pypi.org/project/dash-improve-my-llms/)
+[![PyPI version](https://img.shields.io/pypi/v/dash-improve-my-llms?color=blue)](https://pypi.org/project/dash-improve-my-llms/)
+[![Python](https://img.shields.io/pypi/pyversions/dash-improve-my-llms)](https://pypi.org/project/dash-improve-my-llms/)
 [![Dash 4.1+](https://img.shields.io/badge/Dash-4.1%2B-1a1a2e?logo=plotly&logoColor=white)](https://dash.plotly.com/)
 [![Backends](https://img.shields.io/badge/backends-flask%20·%20fastapi%20·%20quart-4b8bbe)](#dash-compatibility)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
