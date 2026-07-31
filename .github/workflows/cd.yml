@@ -87,6 +87,12 @@ jobs:
           cache: pip
 
       - run: pip install build twine
+
+      # The repo commits the previous release's sdist in dist/ for the
+      # Dockerfile's reference deployment. Checkout brings it along, and
+      # uploading it again is a guaranteed 400 from PyPI (v2.3.4's first
+      # run died exactly this way). Publish only what this run builds.
+      - run: rm -rf dist
       - run: python -m build
       - run: twine check dist/*
 
