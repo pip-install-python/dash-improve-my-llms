@@ -27,7 +27,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install black flake8 mypy
+      # Pinned: an unpinned black turned a release run red when 26.x changed
+      # formatting between the local check and the CI install. Bump the pin
+      # and reformat in the same commit.
+      - run: pip install "black==26.5.1" flake8 mypy
       - name: black
         run: black --check dash_improve_my_llms tests scripts
       - name: flake8

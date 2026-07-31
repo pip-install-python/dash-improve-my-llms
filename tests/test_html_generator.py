@@ -16,7 +16,6 @@ from dash_improve_my_llms.html_generator import (
     generate_static_page_html,
 )
 
-
 # ---------------------------------------------------------------------------
 # Markdown subset renderer
 # ---------------------------------------------------------------------------

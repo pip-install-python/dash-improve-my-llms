@@ -203,15 +203,13 @@ def main():
     # Print configuration info
     print("\nCurrent RobotsConfig:")
     print("-" * 80)
-    print(
-        """RobotsConfig(
+    print("""RobotsConfig(
     block_ai_training=True,   # Training bots should get 403
     allow_ai_search=True,     # Search bots should get static HTML
     allow_traditional=True,   # Traditional bots should get static HTML
     crawl_delay=10,
     disallowed_paths=["/admin", "/api/*"]
-)"""
-    )
+)""")
     print()
 
     # Print what each bot type should receive
