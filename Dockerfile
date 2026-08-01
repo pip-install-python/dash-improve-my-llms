@@ -23,8 +23,10 @@ COPY dist/dash_improve_my_llms-*.tar.gz ./dist/
 RUN pip install --no-cache-dir --no-deps ./dist/dash_improve_my_llms-*.tar.gz
 
 COPY app.py ./
+COPY lib ./lib
 COPY pages ./pages
 COPY docs ./docs
+COPY assets ./assets
 
 # Render injects PORT; 8959 matches the local default in app.py.
 ENV PORT=8959
