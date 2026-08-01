@@ -17,8 +17,21 @@ import dash
 from dash import dcc, html, register_page
 
 from dash_improve_my_llms import is_hidden, register_page_metadata
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/audiences/mcp-clients", name="MCP Clients")
+_DESCRIPTION = (
+    "Directory of pages this app registers as dash.mcp resources for Claude "
+    "Desktop and other MCP-aware clients."
+)
+
+register_page(
+    __name__,
+    path="/audiences/mcp-clients",
+    name="MCP Clients",
+    title=f"{PAGE_TITLE_PREFIX}MCP Clients",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\
@@ -96,7 +109,7 @@ working unchanged.
 register_page_metadata(
     path="/audiences/mcp-clients",
     name="MCP Clients",
-    description="Directory of pages this app registers as dash.mcp resources for Claude Desktop and other MCP-aware clients.",
+    description=_DESCRIPTION,
 )
 
 

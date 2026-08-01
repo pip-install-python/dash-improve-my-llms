@@ -16,8 +16,21 @@ the human-facing UI matches what crawlers and MCP clients receive.
 from dash import dcc, html, register_page
 
 from dash_improve_my_llms import register_page_metadata
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/v200-features", name="v2.0 Features")
+_DESCRIPTION = (
+    "What changed in dash-improve-my-llms 2.0: narrowed scope, LLMS_DOC "
+    "pattern, multi-backend support, and the MCP bridge."
+)
+
+register_page(
+    __name__,
+    path="/v200-features",
+    name="v2.0 Features",
+    title=f"{PAGE_TITLE_PREFIX}v2.0 Features",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 # This is the canonical 2.0 pattern: a module-level LLMS_DOC string.
@@ -102,8 +115,7 @@ prose through a tool call instead of HTTP.
 register_page_metadata(
     path="/v200-features",
     name="v2.0 Features",
-    description="What changed in dash-improve-my-llms 2.0: narrowed scope, "
-    "LLMS_DOC pattern, multi-backend support, and the MCP bridge.",
+    description=_DESCRIPTION,
 )
 
 

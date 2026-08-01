@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Docs site only — llms.2plot.dev network-standard pass (no package changes)
+
+The package is untouched at 2.3.4; everything below is the demo/docs app
+(`app.py`, `pages/`, new site-only `lib/`, `scripts/`, `tests/site/`).
+
+llms.2plot.dev was the last host on the 2plot network serving the blank
+social card: none of the eight `register_page` calls passed `image_url=` or
+`description=`, so Dash emitted empty `og:image` / `twitter:image` /
+`twitter:description` tags per page — and the empty tag, later in document
+order, is the one scrapers honour. The head also carried a static
+description duplicating Dash's per-page one, and the brand said
+"dash-improve-my-llms 2.0" four releases after 2.0.
+
+- New `lib/constants.py` (site identity + OG + internal-UA block; the wheel
+  is unaffected — pyproject enumerates its packages). Brand is unversioned
+  and package-name-first: "dash-improve-my-llms — crawler / SEO companion
+  for Dash apps"; the header version chip now reads the package's
+  `__version__` live.
+- `image_url=` + `description=` + prefixed `title=` at every
+  `register_page`; `register_page_metadata(path="/")` now carries the brand,
+  so `/llms.txt`'s H1 and the viewer brand chip state it.
+- `app.index_string` declares only what Dash omits (`og:url`,
+  `og:site_name`, `og:image:*` auxiliaries, `twitter:image:alt`), plus the
+  favicon set, the web manifest (which wore another site's name) and an
+  og:url/canonical sync script for SPA navigation. The card itself lives on
+  the network CDN: `https://cdn.2plot.ai/github_assets/llms.2plot.dev.png`
+  (1200x630), regenerable via the new `scripts/make_social_card.py`.
+- Visitor tracking drops the `2plot-internal` UA token at write time, never
+  counts `/healthz`, and honours `VISITOR_ANALYTICS_FILE` so test runs stop
+  dirtying the checked-in ledger.
+- New secretless site suite in `tests/site/` (43 tests: social card,
+  identity, internal traffic) alongside the untouched package suite.
+- Site runtime floor: `gunicorn>=23` (request-smuggling CVEs in 21.x/22.x).
+
 ## [2.3.4] - 2026-07-31
 
 ### Fixed — generic home-page names no longer become the site title

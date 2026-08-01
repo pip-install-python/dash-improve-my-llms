@@ -14,8 +14,21 @@ import dash
 from dash import dcc, html, register_page
 
 from dash_improve_my_llms import is_hidden, register_page_metadata
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/audiences/llm-context", name="Paste-to-Chat")
+_DESCRIPTION = (
+    "Copy any page's LLMS_DOC to your clipboard for one-shot fetches into "
+    "Claude, ChatGPT, or an in-product assistant."
+)
+
+register_page(
+    __name__,
+    path="/audiences/llm-context",
+    name="Paste-to-Chat",
+    title=f"{PAGE_TITLE_PREFIX}Paste-to-Chat",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\
@@ -76,7 +89,7 @@ you'd get from `curl /<page>/llms.txt`.
 register_page_metadata(
     path="/audiences/llm-context",
     name="Paste-to-Chat",
-    description="Copy any page's LLMS_DOC to your clipboard for one-shot fetches into Claude, ChatGPT, or an in-product assistant.",
+    description=_DESCRIPTION,
 )
 
 

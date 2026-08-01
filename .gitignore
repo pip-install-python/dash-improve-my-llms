@@ -11,6 +11,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# ...but /lib at the repo root is the docs site's own package
+# (constants for app.py + pages/), not a virtualenv dir. Re-include it.
+!/lib/
 lib64/
 parts/
 sdist/

@@ -8,7 +8,9 @@
 
 dash>=4.1,<5
 flask>=2.0.0
-gunicorn>=21.2.0
+# >=23: 21.x/22.x are stuck on CVE-2024-6827 / CVE-2024-1135 (request
+# smuggling). Network floor for every host gunicorn fronts.
+gunicorn>=23
 
 # Demo app UI and the /analytics page.
 dash-mantine-components>=2.3.0
