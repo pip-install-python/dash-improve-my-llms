@@ -34,6 +34,19 @@ from pathlib import Path
 
 import pytest
 
+# The package's CI matrix installs ONLY the package's deps (dash + the pinned
+# version under test — that is what the matrix exists to prove) and must keep
+# meaning exactly the 289-test package suite. The docs site needs its own
+# requirements.txt on top; dash-mantine-components is the import that tells
+# the two environments apart, so its absence skips this whole directory at
+# collection time instead of failing nine matrix jobs at setup. The site
+# suite is still ENFORCED — ci.yml's dedicated `site` job installs
+# requirements.txt and runs `pytest tests/site` on every PR.
+pytest.importorskip(
+    "dash_mantine_components",
+    reason="site suite needs the docs site's requirements.txt (dash-mantine-components)",
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
