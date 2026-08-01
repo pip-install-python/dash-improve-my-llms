@@ -35,13 +35,23 @@ from dash import Dash, dcc, html, page_container
 
 from dash_improve_my_llms import (
     RobotsConfig,
+    __version__ as DIMLL_VERSION,
     add_llms_routes,
     configure_bulletin,
     mark_hidden,
     register_network,
 )
 from dash_improve_my_llms.bot_detection import get_bot_type, is_any_bot
-
+from lib.constants import (
+    BASE_URL,
+    INTERNAL_UA_TOKEN,
+    OG_IMAGE_ALT,
+    OG_IMAGE_HEIGHT,
+    OG_IMAGE_TYPE,
+    OG_IMAGE_URL,
+    OG_IMAGE_WIDTH,
+    SITE_BRAND,
+)
 
 # -----------------------------------------------------------------------------
 # App setup
@@ -51,15 +61,37 @@ app = Dash(
     __name__,
     use_pages=True,
     suppress_callback_exceptions=True,
-    title="dash-improve-my-llms 2.0",
+    # The brand, unversioned. This string is resolve_site_title()'s fallback
+    # and the <title> of any page that registers no title of its own. The
+    # version lives in the header chip (read live from the package), never in
+    # the brand — "dash-improve-my-llms 2.0" sat here well into 2.3.x.
+    title=SITE_BRAND,
 )
 server = app.server
 
 
-# AI-discovery hints in the document <head>. Notice: only /llms.txt is
-# advertised — /page.json and /architecture.* are gone in 2.0.
-app.index_string = """<!DOCTYPE html>
-<html>
+# The document head. TWO RULES, both learned the hard way on this network:
+#
+# 1. Declare ONLY what Dash does not emit itself. dash.register_page() makes
+#    Dash generate `description`, `og:type/title/description/image` and the
+#    full `twitter:*` set per page (dash/_pages.py `_page_meta_tags`). A
+#    static copy here makes two of each, describes the SITE where Dash's
+#    describes the PAGE, and — because scrapers take the LAST tag — an empty
+#    Dash tag wins over a careful static one. This host shipped exactly that:
+#    empty og:image/twitter:image beat the template until every register_page
+#    call passed image_url= and description=. What stays static is the set
+#    Dash omits: og:url, og:site_name, the og:image:* auxiliaries and
+#    twitter:image:alt.
+#
+# 2. Never name a Dash placeholder inside a comment. Dash resolves the
+#    percent-brace tokens by plain string replacement over the whole
+#    index_string, comments included — a commented mention emits the block
+#    twice (bit dash-email; tests/test_social_card.py guards it here).
+#
+# Only /llms.txt is advertised as the machine-readable surface — /page.json
+# and /architecture.* are gone in 2.0.
+_INDEX_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
     <head>
         {%metas%}
         <title>{%title%}</title>
@@ -68,11 +100,70 @@ app.index_string = """<!DOCTYPE html>
 
         <link rel="alternate" type="text/markdown" href="/llms.txt" title="LLM-friendly documentation">
         <link rel="sitemap" type="application/xml" href="/sitemap.xml">
-        <meta name="description" content="dash-improve-my-llms 2.0 — crawler/SEO companion for Dash apps with an MCP bridge for Dash 4.3+.">
+        <meta name="author" content="Pip Install Python LLC">
+
+        <meta property="og:url" content="__BASE_URL__/">
+        <meta property="og:site_name" content="__BRAND__">
+        <meta property="og:image:secure_url" content="__OG_IMAGE_URL__">
+        <meta property="og:image:type" content="__OG_IMAGE_TYPE__">
+        <meta property="og:image:width" content="__OG_IMAGE_WIDTH__">
+        <meta property="og:image:height" content="__OG_IMAGE_HEIGHT__">
+        <meta property="og:image:alt" content="__OG_IMAGE_ALT__">
+        <meta name="twitter:image:alt" content="__OG_IMAGE_ALT__">
+
+        <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon/favicon-16x16.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon/apple-touch-icon.png">
+        <link rel="manifest" href="/assets/favicon/site.webmanifest">
+        <meta name="theme-color" content="#12B886">
+
+        <script>
+        // og:url above is static, so after any client-side route change it
+        // advertises the entry page; twitter:url is built by Dash from the
+        // landing request and frozen there; the canonical link is injected
+        // per page server-side and goes stale the same way. Dash routes via
+        // history.pushState, which fires no event — so correct all three on
+        // navigation. The origin is read from the og:url tag rather than
+        // location.origin: the Render hostname keeps resolving after the
+        // custom domain is attached, and hits on it must consolidate.
+        (function () {
+            var declared = document.querySelector('meta[property="og:url"]');
+            var ORIGIN;
+            try {
+                ORIGIN = new URL(declared.content).origin;
+            } catch (e) {
+                return;
+            }
+
+            function sync() {
+                var path = location.pathname.replace(/\\/+$/, '') || '/';
+                var href = ORIGIN + (path === '/' ? '/' : path);
+                document.querySelectorAll(
+                    'meta[property="og:url"], meta[property="twitter:url"], ' +
+                    'link[rel="canonical"]'
+                ).forEach(function (el) {
+                    if (el.tagName === 'LINK') { el.href = href; }
+                    else { el.setAttribute('content', href); }
+                });
+            }
+
+            sync();
+
+            ['pushState', 'replaceState'].forEach(function (method) {
+                var original = history[method];
+                history[method] = function () {
+                    var result = original.apply(this, arguments);
+                    sync();
+                    return result;
+                };
+            });
+            window.addEventListener('popstate', sync);
+        })();
+        </script>
 
         <noscript>
             <div style="padding: 24px; font-family: sans-serif; max-width: 720px; margin: 0 auto;">
-                <h1>dash-improve-my-llms 2.0</h1>
+                <h1>__BRAND__</h1>
                 <p>This demo is an interactive Dash application. For programmatic access:</p>
                 <ul>
                     <li><a href="/llms.txt">LLM-friendly documentation</a></li>
@@ -92,13 +183,24 @@ app.index_string = """<!DOCTYPE html>
     </body>
 </html>"""
 
+app.index_string = (
+    _INDEX_TEMPLATE.replace("__BASE_URL__", BASE_URL)
+    .replace("__BRAND__", SITE_BRAND)
+    .replace("__OG_IMAGE_URL__", OG_IMAGE_URL)
+    .replace("__OG_IMAGE_TYPE__", OG_IMAGE_TYPE)
+    .replace("__OG_IMAGE_WIDTH__", str(OG_IMAGE_WIDTH))
+    .replace("__OG_IMAGE_HEIGHT__", str(OG_IMAGE_HEIGHT))
+    .replace("__OG_IMAGE_ALT__", OG_IMAGE_ALT)
+)
+
 
 # Public origin. Drives sitemap.xml, robots.txt, absolute URLs in llms.txt,
 # and — most consequentially — the <link rel="canonical"> on every page. A
 # stale value here points every canonical at the wrong host and asks search
-# engines to deindex this deployment, so it is read from the environment with
-# the real production host as the default rather than left as a placeholder.
-app._base_url = os.environ.get("APP_BASE_URL", "https://llms.2plot.dev").rstrip("/")
+# engines to deindex this deployment, so lib/constants.py reads it from the
+# environment (APP_BASE_URL) with the real production host as the default
+# rather than a placeholder.
+app._base_url = BASE_URL
 
 # Configure bot-class access policies. RobotsConfig is the package's only
 # imperative API for crawler control; everything else flows from this and
@@ -230,8 +332,17 @@ def healthz():
 # Visitor tracking (example-only — powers the /admin dashboard)
 # -----------------------------------------------------------------------------
 
-ANALYTICS_FILE = Path(__file__).parent / "visitor_analytics.json"
+# Env-overridable so the test suite (and any ephemeral runner) can point the
+# ledger at a temp dir instead of appending its own hits to the checked-out
+# file, which otherwise shows up in `git status` after every local run.
+ANALYTICS_FILE = Path(
+    os.environ.get("VISITOR_ANALYTICS_FILE") or Path(__file__).parent / "visitor_analytics.json"
+)
 _ASSET_MARKERS = (".css", ".js", ".png", ".jpg", ".ico", "_dash", "_reload-hash")
+
+# Paths that are machinery, not visits. /healthz is probed by Render's health
+# check and the hub's hourly sweep — counting it would swamp the demo data.
+_NON_VISIT_PATHS = ("/healthz",)
 
 
 def load_analytics():
@@ -278,10 +389,18 @@ def track_visit():
 
     try:
         path = request.path
-        if any(m in path for m in _ASSET_MARKERS):
+        if any(m in path for m in _ASSET_MARKERS) or path in _NON_VISIT_PATHS:
             return
 
         user_agent = request.headers.get("User-Agent", "Unknown")
+
+        # The network's internal-traffic contract: hub sweeps, smoke batteries
+        # and sibling satellites identify themselves with this token, and the
+        # drop happens AT WRITE TIME — before bot classification — so internal
+        # probes never reach the ledger under any category.
+        if INTERNAL_UA_TOKEN in user_agent:
+            return
+
         device_type = detect_device_type(user_agent)
 
         analytics = load_analytics()
@@ -351,7 +470,9 @@ _HEADER = html.Div(
         html.Div(
             [
                 html.Span(
-                    "v2.0",
+                    # Read live from the package so the chip can never lag a
+                    # release the way a hard-coded "v2.0" did.
+                    f"v{DIMLL_VERSION}",
                     style={
                         "background": "rgba(255,255,255,0.18)",
                         "padding": "2px 10px",
@@ -491,7 +612,7 @@ app.layout = dmc.MantineProvider(
 
 if __name__ == "__main__":
     print()
-    print("dash-improve-my-llms 2.0 — example app")
+    print(f"dash-improve-my-llms {DIMLL_VERSION} — example app")
     print("--------------------------------------")
     print("Pages:")
     print("  http://localhost:8959/")

@@ -16,8 +16,21 @@ from dash_improve_my_llms.bot_detection import (
     AI_TRAINING_BOTS,
     TRADITIONAL_BOTS,
 )
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/audiences/web-crawlers", name="Web Crawlers")
+_DESCRIPTION = (
+    "What crawlers see when they hit this app, and how to configure "
+    "RobotsConfig for common policies."
+)
+
+register_page(
+    __name__,
+    path="/audiences/web-crawlers",
+    name="Web Crawlers",
+    title=f"{PAGE_TITLE_PREFIX}Web Crawlers",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\
@@ -95,7 +108,7 @@ curl https://myapp.com/llms.txt
 register_page_metadata(
     path="/audiences/web-crawlers",
     name="Web Crawlers",
-    description="What crawlers see when they hit this app, and how to configure RobotsConfig for common policies.",
+    description=_DESCRIPTION,
 )
 
 

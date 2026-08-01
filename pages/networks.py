@@ -9,8 +9,22 @@ import dash_mantine_components as dmc
 from dash import dcc, html, register_page
 
 from dash_improve_my_llms import _state
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/networks", name="Multi-Domain Networks")
+_DESCRIPTION = (
+    "Explains and demonstrates register_network() — the API that turns a set "
+    "of independently-hosted Dash apps into a directory that search engines "
+    "and AI agents can traverse."
+)
+
+register_page(
+    __name__,
+    path="/networks",
+    name="Multi-Domain Networks",
+    title=f"{PAGE_TITLE_PREFIX}Multi-Domain Networks",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\

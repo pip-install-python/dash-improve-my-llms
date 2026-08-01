@@ -18,6 +18,7 @@ by the visitor tracker in the project's app.py.
 import dash_mantine_components as dmc
 from dash import Input, Output, callback, dcc, html, register_page
 from dash_improve_my_llms import mark_hidden, register_page_metadata
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
@@ -25,18 +26,28 @@ import json
 from pathlib import Path
 from collections import Counter
 
-# Register page
+_DESCRIPTION = (
+    "Visitor analytics dashboard with device and bot tracking - " "Hidden from search engines"
+)
+
+# Register page. image_url= and description= even though the page is hidden:
+# the rule is EVERY register_page, because one missing call makes Dash emit
+# an empty og:image that wins over the real one in scraper tag order — and a
+# signed-in human can still land here and share the URL.
 register_page(
     __name__,
     path="/admin",
     name="Admin Dashboard",
+    title=f"{PAGE_TITLE_PREFIX}Admin Dashboard",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
 )
 
 # Register metadata
 register_page_metadata(
     path="/admin",
     name="Admin Dashboard",
-    description="Visitor analytics dashboard with device and bot tracking - Hidden from search engines",
+    description=_DESCRIPTION,
 )
 
 # Hide this page from crawlers, sitemaps, and MCP resource registration.

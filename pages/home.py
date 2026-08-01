@@ -9,12 +9,26 @@ also registered with dash.mcp as a resource when Dash 4.3+ is detected.
 from dash import dcc, html, register_page
 
 from dash_improve_my_llms import register_page_metadata
+from lib.constants import OG_IMAGE_URL, SITE_BRAND, SITE_DESCRIPTION
 
-register_page(__name__, path="/", name="Home")
+register_page(
+    __name__,
+    path="/",
+    # `name` labels the navbar link, so it stays "Home"; the site identity
+    # (register_page_metadata below, resolve_site_title's input) is the brand.
+    name="Home",
+    # `title` is what Dash puts in og:title/twitter:title for this page —
+    # the headline of every unfurl of the site root.
+    title=SITE_BRAND,
+    description=SITE_DESCRIPTION,
+    # image_url= at EVERY register_page: one missing and Dash emits an empty
+    # og:image, and the empty tag, later in document order, wins with scrapers.
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\
-# dash-improve-my-llms 2.0
+# dash-improve-my-llms
 
 > Crawler / SEO companion for Dash apps, with a thin MCP bridge.
 
@@ -117,8 +131,11 @@ Plus a few supporting pages:
 # title, but every *.2plot.dev site should set this explicitly anyway.)
 register_page_metadata(
     path="/",
-    name="dash-improve-my-llms",
-    description="dash-improve-my-llms 2.0 — crawler/SEO companion for Dash apps with an MCP bridge for Dash 4.3+.",
+    # The H1 of /llms.txt and the viewer's brand chip, via resolve_site_title.
+    # Unversioned on purpose: a version baked into the identity goes stale
+    # (this said "2.0" until 2.3.4 was current).
+    name=SITE_BRAND,
+    description=SITE_DESCRIPTION,
 )
 
 

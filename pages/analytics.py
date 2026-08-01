@@ -10,8 +10,21 @@ import dash_mantine_components as dmc
 from dash import Input, Output, callback, dcc, html, register_page
 
 from dash_improve_my_llms import register_page_metadata
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 
-register_page(__name__, path="/analytics", name="Analytics Dashboard")
+_DESCRIPTION = (
+    "Headline metrics, a trend chart selector, and a recent-activity feed — "
+    "a regular Dash page wired up with its own LLMS_DOC."
+)
+
+register_page(
+    __name__,
+    path="/analytics",
+    name="Analytics Dashboard",
+    title=f"{PAGE_TITLE_PREFIX}Analytics Dashboard",
+    description=_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
 
 LLMS_DOC = """\
@@ -54,7 +67,7 @@ static and re-render only on full page load.
 register_page_metadata(
     path="/analytics",
     name="Analytics Dashboard",
-    description="Headline metrics, a trend chart selector, and a recent-activity feed — a regular Dash page wired up with its own LLMS_DOC.",
+    description=_DESCRIPTION,
 )
 
 
