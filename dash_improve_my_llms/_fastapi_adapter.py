@@ -19,7 +19,11 @@ from typing import Any
 
 from . import access
 from .handlers import (
+    TIER_DOC_META,
+    TIER_DOC_PATHS,
     apply_prerender,
+    build_llms_full_summary,
+    build_llms_tier_doc,
     build_llms_txt_for_page,
     build_llms_viewer_html,
     build_robots_txt,
@@ -171,6 +175,71 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
     @router.get("/llms.txt")
     def _llms_txt_root(request: Request):
         return _serve_llms("", request)
+
+    if getattr(config, "llms_tiers", True):
+
+        def _serve_tier(tier: str, request: Request) -> Response:
+            """Shared body for both tier routes — mirrors _serve_llms."""
+            body, status = build_llms_tier_doc(
+                app=app,
+                tier=tier,
+                page_metadata=state.page_metadata,
+                hidden_paths=state.hidden_pages,
+                state=state,
+                full_max_bytes=getattr(config, "llms_full_max_bytes", 4_000_000),
+            )
+            tier_path = TIER_DOC_PATHS[tier]
+
+            headers = _doc_headers()
+            if tier == "full":
+                # The corpus duplicates every page's content; indexed, it
+                # would compete with the real pages in search results.
+                headers["X-Robots-Tag"] = "noindex"
+
+            if status == 200 and getattr(config, "llms_viewer", True):
+                if wants_html_viewer(
+                    accept=request.headers.get("accept", ""),
+                    user_agent=request.headers.get("user-agent", ""),
+                    query=dict(request.query_params),
+                ):
+                    markdown_body = body
+                    if tier == "full":
+                        # Never render the multi-megabyte corpus to HTML — a
+                        # browser gets a card describing it. The same URL with
+                        # ?raw=1, or any agent UA, gets the corpus itself.
+                        markdown_body = build_llms_full_summary(app, body)
+                    html = build_llms_viewer_html(
+                        app=app,
+                        page_path=tier_path,
+                        markdown_body=markdown_body,
+                        page_metadata=state.page_metadata,
+                        state=state,
+                        raw_url=tier_path,
+                        page_name=(state.page_metadata.get(tier_path) or {}).get("name")
+                        or TIER_DOC_META[tier]["name"],
+                    )
+                    if html is not None:
+                        return Response(
+                            content=html,
+                            status_code=status,
+                            media_type="text/html",
+                            headers=headers,
+                        )
+
+            return Response(
+                content=body,
+                status_code=status,
+                media_type="text/markdown",
+                headers=headers,
+            )
+
+        @router.get(TIER_DOC_PATHS["small"])
+        def _llms_small(request: Request):
+            return _serve_tier("small", request)
+
+        @router.get(TIER_DOC_PATHS["full"])
+        def _llms_full(request: Request):
+            return _serve_tier("full", request)
 
     @router.get("/{page_path:path}/llms.txt")
     def _llms_txt(page_path: str, request: Request):

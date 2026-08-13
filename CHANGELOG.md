@@ -5,12 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.0] - 2026-08-13
 
-### Docs site only — llms.2plot.dev network-standard pass (no package changes)
+### Added — tiered corpus documents: /llms-small.txt and /llms-full.txt
 
-The package is untouched at 2.3.4; everything below is the demo/docs app
-(`app.py`, `pages/`, new site-only `lib/`, `scripts/`, `tests/site/`).
+The Svelte docs popularised serving llms.txt at more than one size, because
+one document cannot be both small enough to sit whole in a tight context
+window and complete enough to feed an offline ingestion job. This release
+adopts the same tiering; the root `/llms.txt` stays the medium index and
+now advertises both sizes above its page listing (a tier the access check
+denies is not advertised, same rule as a denied page).
+
+- `/llms-small.txt` — a compact briefing: the site's identity, the home
+  page's first paragraph, one document link per page, and pointers to the
+  larger documents. An application can replace the synthesized version
+  wholesale with `register_page_metadata("/llms-small.txt", llms_doc=…)`.
+- `/llms-full.txt` — every page's prose in one document, in path order,
+  each section preceded by a source comment naming the page and its own
+  `llms.txt` URL so any passage stays traceable. Denied pages are omitted;
+  gated pages contribute their gate document, never the prose the per-page
+  route withholds; a page with no prose gets a one-line pointer instead of
+  a stub. A byte budget (`LLMSConfig(llms_full_max_bytes=…)`, default
+  4 MB) stops the corpus page-by-page — everything past the cap is listed
+  as links under "Not included (size cap)" rather than silently dropped.
+  Compression is deliberately left to the proxy: the corpus is plain
+  `text/markdown`, and gzip/br belongs to the layer that already
+  negotiates it per request.
+
+The routes exist on all three backends and negotiate content exactly like
+`/llms.txt` — browsers get the rendered viewer, agents/crawlers/`?raw=1`
+get Markdown — with one exception: a browser asking for `/llms-full.txt`
+receives a short summary card (page count, size, links to the raw corpus
+and the other tiers) instead of the corpus rendered to HTML, which at full
+size would freeze the tab. The full tier always carries
+`X-Robots-Tag: noindex`, because a document that duplicates every page's
+content would otherwise compete with those pages in search results.
+`LLMSConfig(llms_tiers=False)` turns both routes off.
+
+The tier suffixes joined `_DOC_ROUTE_SUFFIXES`, so the bot middleware
+treats them as documentation routes. Without that,
+`RobotsConfig(block_ai_training=True)` served training bots a 403 on the
+very documents that exist for them (regression-tested).
+
+Access control composes end to end: `configure_access` verdicts apply to
+the tier paths themselves (`deny` → 404 and de-listed from the index,
+`gated` → the gate document at 200 — the tier paths are pre-seeded with a
+name and description so that gate never renders a bare path as its title),
+and `decorate_body` now carries a request's `link_suffix` across
+same-origin tier links with the same peer-host and protocol-relative
+protections as the existing patterns. `build_llms_tier_doc` is
+deliberately a single pure verdict→response mapping: it is the seam where
+a future release maps a `priced` verdict to HTTP 402.
+
+### Docs site only — llms.2plot.dev network-standard pass
+
+Everything in this section is the demo/docs app (`app.py`, `pages/`, the
+site-only `lib/`, `scripts/`, `tests/site/`). None of it ships in the
+wheel — pyproject enumerates the packaged modules — but it lands in the
+repo with this release.
 
 llms.2plot.dev was the last host on the 2plot network serving the blank
 social card: none of the eight `register_page` calls passed `image_url=` or

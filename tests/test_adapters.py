@@ -436,6 +436,115 @@ def test_hidden_page_llms_txt_is_still_404_in_a_browser(client):
     assert status == 404
 
 
+# ---------------------------------------------------------------------------
+# Tiered corpus documents — /llms-small.txt and /llms-full.txt
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clean_access():
+    """Access control is process-global; no test may inherit another's."""
+    from dash_improve_my_llms import access
+
+    access.reset()
+    yield
+    access.reset()
+
+
+def test_llms_small_serves_markdown(client):
+    status, body, headers = client.get_full("/llms-small.txt")
+    assert status == 200
+    assert "text/markdown" in headers.get("content-type", "").lower()
+    assert body.startswith("# Test App")
+    # One document link per visible page, none for the hidden one.
+    assert "https://example.com/guide/llms.txt" in body
+    assert "/admin" not in body
+
+
+def test_llms_full_is_the_whole_corpus(client):
+    status, body, headers = client.get_full("/llms-full.txt")
+    assert status == 200
+    assert "text/markdown" in headers.get("content-type", "").lower()
+    assert "Welcome." in body  # home prose
+    assert "step one" in body  # guide prose
+    assert "<!-- /guide — https://example.com/guide/llms.txt -->" in body
+    assert "/admin" not in body  # hidden page: absent entirely
+
+
+def test_root_index_advertises_both_tiers(client):
+    _, body = client.get("/llms.txt")
+    assert "https://example.com/llms-small.txt" in body
+    assert "https://example.com/llms-full.txt" in body
+
+
+def test_small_tier_negotiates_like_llms_txt(client):
+    """Browser gets the viewer; ?raw=1 gets the document back."""
+    status, html, headers = client.get_full("/llms-small.txt", ua=BROWSER, accept=BROWSER_ACCEPT)
+    assert status == 200
+    assert "text/html" in headers.get("content-type", "").lower()
+    assert 'class="dv-banner"' in html
+    # The view-raw link points at the tier document, not <tier>/llms.txt.
+    assert "/llms-small.txt?raw=1" in html
+    assert "llms-small.txt/llms.txt" not in html
+
+    _, raw, raw_headers = client.get_full(
+        "/llms-small.txt?raw=1", ua=BROWSER, accept=BROWSER_ACCEPT
+    )
+    assert "text/markdown" in raw_headers.get("content-type", "").lower()
+    assert "dv-banner" not in raw
+
+
+def test_browser_on_full_gets_a_summary_card_not_the_corpus(client):
+    """The corpus can run to megabytes; a browser tab gets a card instead."""
+    status, html, headers = client.get_full("/llms-full.txt", ua=BROWSER, accept=BROWSER_ACCEPT)
+    assert status == 200
+    assert "text/html" in headers.get("content-type", "").lower()
+    assert "step one" not in html  # no page prose rendered
+    assert "/llms-full.txt?raw=1" in html  # ...but the way to it is named
+
+    # Agents keep receiving the corpus itself from the same URL.
+    _, agent_body = client.get("/llms-full.txt", ua=GPTBOT)
+    assert "step one" in agent_body
+
+
+def test_full_tier_is_noindex(client):
+    _, _, headers = client.get_full("/llms-full.txt")
+    assert "noindex" in headers.get("x-robots-tag", "").lower()
+
+
+def test_tier_docs_bypass_the_training_bot_block(backend):
+    """Regression: block_ai_training must not 403 the tier documents."""
+    app = _build_app(backend)
+    app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+    client = _Client(app, backend)
+
+    status, body = client.get("/llms-full.txt", ua=GPTBOT)
+    assert status == 200
+    assert "step one" in body
+
+
+def test_tier_docs_with_authority_are_never_shared_cached(backend):
+    from dash_improve_my_llms import access
+
+    app = _build_app(backend)
+    access.configure_access(lambda p: "allow", link_suffix=lambda: "key=K1")
+    _, _, headers = _Client(app, backend).get_full("/llms-small.txt")
+    assert headers.get("cache-control") == "private, no-store"
+
+
+def test_tiers_can_be_disabled(backend):
+    app = _build_app(backend, llms_tiers=False)
+    client = _Client(app, backend)
+    for path in ("/llms-small.txt", "/llms-full.txt"):
+        status, _, headers = client.get_full(path)
+        content_type = headers.get("content-type", "").lower()
+        # Whatever Dash serves for an unknown path (404, or the app shell),
+        # it must not be the tier document.
+        assert not (
+            status == 200 and "text/markdown" in content_type
+        ), f"{path} still served with llms_tiers=False"
+
+
 def test_network_directory_reaches_llms_txt_and_html(backend):
     app = _build_app(backend)
     pkg.register_network(

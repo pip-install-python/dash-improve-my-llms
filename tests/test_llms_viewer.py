@@ -237,6 +237,41 @@ class TestRenderViewer:
             assert marker not in html
 
 
+class TestViewerOverrides:
+    """build_llms_viewer_html computes raw_url/page_name from the page path;
+    the tier documents are not page documents, so both are overridable."""
+
+    def test_raw_url_override_lands_in_the_view_raw_link(self, fake_app):
+        from dash_improve_my_llms.handlers import build_llms_viewer_html
+
+        html = build_llms_viewer_html(
+            app=fake_app,
+            page_path="/llms-full.txt",
+            markdown_body="# Full corpus\n\nCard.",
+            page_metadata={},
+            raw_url="/llms-full.txt",
+            page_name="Full corpus",
+        )
+        assert html is not None
+        assert "/llms-full.txt?raw=1" in html
+        # The derived value would have pointed at a URL that serves nothing.
+        assert "llms-full.txt/llms.txt" not in html
+
+    def test_page_name_override_titles_the_view(self, fake_app):
+        from dash_improve_my_llms.handlers import build_llms_viewer_html
+
+        html = build_llms_viewer_html(
+            app=fake_app,
+            page_path="/llms-small.txt",
+            markdown_body="# Briefing.",
+            page_metadata={},
+            raw_url="/llms-small.txt",
+            page_name="Compact briefing",
+        )
+        assert html is not None
+        assert "Compact briefing · llms.txt" in html
+
+
 # ---------------------------------------------------------------------------
 # Bulletin client
 # ---------------------------------------------------------------------------

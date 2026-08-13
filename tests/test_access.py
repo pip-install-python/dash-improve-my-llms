@@ -169,6 +169,34 @@ def test_decorate_body_is_a_no_op_without_authority():
     assert access.decorate_body(body, "https://example.com") == body
 
 
+def test_decorate_body_rewrites_same_origin_tier_documents():
+    """The tier docs live at the origin root with a filename that is not
+    `llms.txt`, so they need their own patterns — relative and absolute."""
+    access.configure_access(lambda p: "allow", link_suffix=lambda: "key=K1")
+    body = (
+        "- small: /llms-small.txt\n"
+        "- full: https://example.com/llms-full.txt\n"
+        "- already keyed: /llms-full.txt?raw=1"
+    )
+    out = access.decorate_body(body, "https://example.com")
+    assert "/llms-small.txt?key=K1" in out
+    assert "https://example.com/llms-full.txt?key=K1" in out
+    # An existing query string is left alone, same as for llms.txt.
+    assert "/llms-full.txt?raw=1" in out
+    assert "/llms-full.txt?raw=1?key" not in out
+
+
+def test_decorate_body_never_hands_a_peer_a_tier_key():
+    """Same protections as the llms.txt patterns: a peer host or a
+    protocol-relative URL must not receive this site's capability."""
+    access.configure_access(lambda p: "allow", link_suffix=lambda: "key=K1")
+    body = (
+        "- peer: https://leaflet.example.net/llms-full.txt\n"
+        "- protocol-relative: //peer.example.com/llms-small.txt"
+    )
+    assert access.decorate_body(body, "https://example.com") == body
+
+
 # ---------------------------------------------------------------------------
 # Viewer identity
 # ---------------------------------------------------------------------------

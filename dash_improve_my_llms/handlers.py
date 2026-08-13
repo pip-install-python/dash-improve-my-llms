@@ -324,6 +324,27 @@ def build_llms_index(
         lines += [body.strip(), ""]
 
     pages = _visible_pages(page_metadata, hidden_paths)
+
+    # Advertise the other two sizes of this document, above the page listing
+    # so an agent with a tight budget finds the small tier before it has paid
+    # for the enumeration. A denied tier is not advertised — same rule as a
+    # denied page.
+    tier_lines: List[str] = []
+    small_path = TIER_DOC_PATHS["small"]
+    if access.resolve(small_path, hidden_paths) != access.DENY:
+        url = access.decorate(f"{base_url}{small_path}" if base_url else small_path)
+        tier_lines.append(
+            f"- [{small_path}]({url}): compact briefing — start here if context is tight."
+        )
+    full_path = TIER_DOC_PATHS["full"]
+    if access.resolve(full_path, hidden_paths) != access.DENY:
+        url = access.decorate(f"{base_url}{full_path}" if base_url else full_path)
+        tier_lines.append(
+            f"- [{full_path}]({url}): every page's prose in one document " f"({len(pages)} pages)."
+        )
+    if tier_lines:
+        lines += tier_lines + [""]
+
     if pages:
         lines += [
             "## Pages",
@@ -393,6 +414,329 @@ def _visible_pages(
         )
     pages.sort(key=lambda p: p["path"])
     return pages
+
+
+# ---------------------------------------------------------------------------
+# Tiered corpus documents — /llms-small.txt and /llms-full.txt
+# ---------------------------------------------------------------------------
+#
+# The Svelte docs popularised serving llms.txt at more than one size: one
+# document cannot be both small enough to sit whole in a tight context
+# window and complete enough to feed an offline ingestion job. The root
+# /llms.txt stays the medium index and advertises the other two.
+
+
+TIER_DOC_PATHS: Dict[str, str] = {
+    "small": "/llms-small.txt",
+    "full": "/llms-full.txt",
+}
+
+# Default identity per tier. Seeded into page_metadata at registration so a
+# gated tier never renders its gate document as "# /llms-full.txt".
+TIER_DOC_META: Dict[str, Dict[str, str]] = {
+    "small": {
+        "name": "Compact briefing",
+        "description": "The whole site in a few hundred tokens — for tight context windows.",
+    },
+    "full": {
+        "name": "Full corpus",
+        "description": "Every page's prose in one document — for offline ingestion.",
+    },
+}
+
+
+def _first_paragraph(doc: str, max_chars: int = 600) -> str:
+    """The first prose paragraph of a document, without its H1 or tagline."""
+    lines: List[str] = []
+    for line in (doc or "").strip().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if lines:
+                break
+            continue
+        if not lines and (stripped.startswith("# ") or stripped.startswith(">")):
+            continue
+        if stripped.startswith("#"):
+            # A later heading with no prose before it — there is no intro.
+            break
+        lines.append(stripped)
+    paragraph = " ".join(lines)
+    if len(paragraph) > max_chars:
+        paragraph = paragraph[: max_chars - 1].rstrip() + "…"
+    return paragraph
+
+
+def build_llms_small(
+    app: Any,
+    page_metadata: Dict[str, Dict[str, Any]],
+    hidden_paths: set,
+    state: Any = None,
+) -> str:
+    """
+    Build /llms-small.txt — the compact briefing.
+
+    An application that registers its own prose for the tier path serves it
+    verbatim (``register_page_metadata("/llms-small.txt", llms_doc=...)``).
+    Otherwise the briefing is synthesized: the site's identity, the home
+    page's first paragraph, one line per listable page, and pointers to the
+    two larger documents. Page links point at each page's *document*, not
+    the page itself, because the reader of this file is an agent choosing
+    what to fetch next.
+    """
+    override = (page_metadata.get(TIER_DOC_PATHS["small"]) or {}).get("llms_doc")
+    if override:
+        return str(override)
+
+    base_url = str(getattr(app, "_base_url", "") or "").rstrip("/")
+
+    home_meta = page_metadata.get("/") or {}
+    home_entry = _find_page("/")
+
+    site_title = resolve_site_title(home_meta.get("name"), getattr(app, "title", None))
+    lines: List[str] = [f"# {site_title}", ""]
+
+    tagline = home_meta.get("description") or (home_entry or {}).get("description")
+    if tagline:
+        lines += [f"> {tagline}", ""]
+
+    intro = _first_paragraph(_resolve_llms_doc("/", page_metadata, home_entry) or "")
+    if intro:
+        lines += [intro, ""]
+
+    pages = _visible_pages(page_metadata, hidden_paths)
+    if pages:
+        lines += ["## Pages", ""]
+        for page in pages:
+            path = page["path"]
+            url = f"{base_url}{path}" if base_url else path
+            # The root's document lives at /llms.txt, not //llms.txt.
+            llms_url = f"{base_url}/llms.txt" if path == "/" else f"{url}/llms.txt"
+            llms_url = access.decorate(llms_url)
+            suffix = f": {page['description']}" if page["description"] else ""
+            lines.append(f"- [{page['name']}]({llms_url}){suffix}")
+        lines.append("")
+
+    index_url = access.decorate(f"{base_url}/llms.txt" if base_url else "/llms.txt")
+    full_url = access.decorate(
+        f"{base_url}{TIER_DOC_PATHS['full']}" if base_url else TIER_DOC_PATHS["full"]
+    )
+    lines += [
+        f"Page index: {index_url}",
+        f"Full corpus: {full_url}",
+    ]
+
+    network = getattr(state, "network", None) if state is not None else None
+    if network is not None and not network.is_empty:
+        hub = (network.hub_url or "").rstrip("/")
+        if hub:
+            lines.append(f"Network hub: {hub}/llms.txt — {network.name or 'the wider network'}.")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _corpus_pages(
+    page_metadata: Dict[str, Dict[str, Any]],
+    hidden_paths: set,
+) -> List[Dict[str, Any]]:
+    """Every page the corpus may name, sorted by path, with its verdict.
+
+    ``resolve()`` is called exactly once per page: the verdict decides both
+    whether the page appears and what body it contributes, and resolving
+    twice would let a time-varying check answer each question differently.
+    ``deny`` pages are omitted here, so no later step can leak one.
+    """
+    try:
+        import dash
+    except ImportError:
+        return []
+
+    registry = getattr(dash, "page_registry", None) or {}
+    pages: List[Dict[str, Any]] = []
+    for entry in registry.values():
+        path = _normalize_page_path(entry.get("path") or "/")
+        verdict = access.resolve(path, hidden_paths)
+        if verdict == access.DENY:
+            continue
+        meta = page_metadata.get(path) or {}
+        pages.append(
+            {
+                "path": path,
+                "name": str(meta.get("name") or entry.get("name") or path),
+                "description": str(meta.get("description") or entry.get("description") or ""),
+                "verdict": verdict,
+                "entry": entry,
+            }
+        )
+    pages.sort(key=lambda p: p["path"])
+    return pages
+
+
+def build_llms_full(
+    app: Any,
+    page_metadata: Dict[str, Dict[str, Any]],
+    hidden_paths: set,
+    state: Any = None,
+    max_bytes: int = 4_000_000,
+) -> str:
+    """
+    Build /llms-full.txt — every page's prose in one document.
+
+    Each page's prose appears verbatim, with **no** navigation block: the
+    corpus is one document, and a per-page "way out" repeated N times is
+    noise. A source comment above each page keeps every passage traceable
+    back to the page's own llms.txt. Gated pages contribute their gate
+    document rather than prose — the corpus must never hold the text the
+    per-page route withholds. Denied pages are omitted entirely.
+
+    The byte budget is enforced page-by-page in path order: the first page
+    that would push the document past ``max_bytes`` stops the corpus, and
+    everything from there on is listed as links under "Not included" rather
+    than silently dropped. Compression is deliberately left to the proxy.
+    """
+    base_url = str(getattr(app, "_base_url", "") or "").rstrip("/")
+
+    home_meta = page_metadata.get("/") or {}
+    home_entry = _find_page("/")
+    site_title = resolve_site_title(home_meta.get("name"), getattr(app, "title", None))
+
+    pages = _corpus_pages(page_metadata, hidden_paths)
+
+    lines: List[str] = [f"# {site_title} — full corpus", ""]
+    tagline = home_meta.get("description") or (home_entry or {}).get("description")
+    if tagline:
+        lines += [f"> {tagline}", ""]
+
+    index_url = f"{base_url}/llms.txt" if base_url else "/llms.txt"
+    small_url = f"{base_url}{TIER_DOC_PATHS['small']}" if base_url else TIER_DOC_PATHS["small"]
+    plural = "s" if len(pages) != 1 else ""
+    lines.append(
+        f"Generated from {len(pages)} page{plural}. The page index lives at "
+        f"{index_url} and a compact briefing at {small_url}; each page also "
+        f"serves its own document at `<page>/llms.txt`."
+    )
+
+    body = "\n".join(lines)
+    used = len(body.encode("utf-8"))
+    overflow: List[Dict[str, Any]] = []
+
+    for page in pages:
+        if overflow:
+            # The cap was hit on an earlier page. Order is the contract —
+            # squeezing a smaller later page in would reorder the corpus
+            # relative to the index.
+            overflow.append(page)
+            continue
+
+        path = page["path"]
+        doc_path = "/llms.txt" if path == "/" else f"{path}/llms.txt"
+        doc_url = f"{base_url}{doc_path}" if base_url else doc_path
+
+        if page["verdict"] == access.GATED:
+            content = access.gate_document(path, page_metadata, state).strip()
+        else:
+            prose = _resolve_llms_doc(path, page_metadata, page["entry"])
+            if prose:
+                content = prose.strip()
+            else:
+                content = f"_No prose registered for `{path}` — see {doc_path}._"
+
+        chunk = f"\n\n---\n\n<!-- {path} — {doc_url} -->\n\n{content}"
+        chunk_bytes = len(chunk.encode("utf-8"))
+        if used + chunk_bytes > max_bytes:
+            overflow.append(page)
+            continue
+        body += chunk
+        used += chunk_bytes
+
+    if overflow:
+        listing = ["", "---", "", "## Not included (size cap)", ""]
+        for page in overflow:
+            path = page["path"]
+            doc_path = "/llms.txt" if path == "/" else f"{path}/llms.txt"
+            doc_url = f"{base_url}{doc_path}" if base_url else doc_path
+            listing.append(f"- [{page['name']}]({doc_url})")
+        body += "\n" + "\n".join(listing)
+
+    # Carry authority across every same-origin document link, source
+    # comments included — an agent handed an authorised corpus follows them.
+    return access.decorate_body(
+        body.rstrip() + "\n",
+        str(getattr(app, "_base_url", "") or ""),
+    )
+
+
+def build_llms_tier_doc(
+    app: Any,
+    tier: str,
+    page_metadata: Dict[str, Dict[str, Any]],
+    hidden_paths: set,
+    state: Any = None,
+    full_max_bytes: int = 4_000_000,
+) -> Tuple[str, int]:
+    """
+    Build the body of one tier document. Returns (body, status).
+
+    Kept as a single pure verdict→response mapping on purpose: this is the
+    seam where a future release maps a ``priced`` verdict to HTTP 402, and
+    the payment branch will slot in here without the adapters changing.
+    """
+    tier_path = TIER_DOC_PATHS[tier]
+    verdict = access.resolve(tier_path, hidden_paths)
+
+    if verdict == access.DENY:
+        return ("Document not available", 404)
+
+    if verdict == access.GATED:
+        return (access.gate_document(tier_path, page_metadata, state), 200)
+
+    if tier == "small":
+        return (build_llms_small(app, page_metadata, hidden_paths, state), 200)
+    return (
+        build_llms_full(app, page_metadata, hidden_paths, state, max_bytes=full_max_bytes),
+        200,
+    )
+
+
+def build_llms_full_summary(app: Any, corpus: str) -> str:
+    """
+    The browser-facing stand-in for /llms-full.txt.
+
+    The corpus can run to megabytes, and rendering that through the viewer
+    would freeze the tab — so a browser gets this card instead: what the
+    document is, how big it is, and where the real thing lives. Agents,
+    crawlers and ``?raw=1`` receive the corpus itself from the same URL.
+    """
+    size = len(corpus.encode("utf-8"))
+    if size >= 1_000_000:
+        size_label = f"{size / 1_000_000:.1f} MB"
+    elif size >= 1_000:
+        size_label = f"{size / 1_000:.0f} kB"
+    else:
+        size_label = f"{size} bytes"
+
+    page_count = corpus.count("\n\n---\n\n<!-- ")
+
+    small_path = TIER_DOC_PATHS["small"]
+    full_path = TIER_DOC_PATHS["full"]
+    raw_url = access.decorate(f"{full_path}?raw=1")
+    small_url = access.decorate(small_path)
+    index_url = access.decorate("/llms.txt")
+
+    return (
+        "# Full corpus\n\n"
+        f"> Every page's prose in one document — {page_count} pages, {size_label}.\n\n"
+        "This document is built for agents and offline ingestion, not for "
+        f"reading in a browser; rendering {size_label} of Markdown here would "
+        "help nobody. The corpus itself is one click away:\n\n"
+        f"- **Raw corpus:** [{full_path}?raw=1]({raw_url}) — the complete "
+        "document, as Markdown.\n"
+        f"- **Compact briefing:** [{small_path}]({small_url}) — the whole "
+        "site in a few hundred tokens.\n"
+        f"- **Page index:** [/llms.txt]({index_url}) — every page, each with "
+        "its own document.\n\n"
+        "Agents and crawlers fetching this same URL receive the corpus "
+        "directly.\n"
+    )
 
 
 def build_llms_txt_for_page(
@@ -540,8 +884,15 @@ def build_llms_viewer_html(
     markdown_body: str,
     page_metadata: Dict[str, Dict[str, Any]],
     state: Any = None,
+    raw_url: Optional[str] = None,
+    page_name: Optional[str] = None,
 ) -> Optional[str]:
-    """Render the browser-facing view of an llms.txt document."""
+    """Render the browser-facing view of an llms.txt document.
+
+    ``raw_url`` and ``page_name`` override the computed values for documents
+    that are not page documents — the tier docs live at ``/llms-small.txt``,
+    not ``/<page>/llms.txt``, so the derived raw link would point nowhere.
+    """
     try:
         from .bulletin import get_bulletin
         from .llms_viewer import render_llms_viewer
@@ -553,12 +904,14 @@ def build_llms_viewer_html(
 
     meta = page_metadata.get(page_path) or {}
     entry = _find_page(page_path)
-    page_name = meta.get("name") or (entry or {}).get("name") or page_path
+    if page_name is None:
+        page_name = meta.get("name") or (entry or {}).get("name") or page_path
 
     network = getattr(state, "network", None) if state is not None else None
     hub = (getattr(network, "hub_url", "") or "").rstrip("/") if network else ""
 
-    raw_url = "/llms.txt" if page_path == "/" else f"{page_path}/llms.txt"
+    if raw_url is None:
+        raw_url = "/llms.txt" if page_path == "/" else f"{page_path}/llms.txt"
 
     try:
         return render_llms_viewer(
@@ -645,7 +998,17 @@ def build_sitemap_xml(
 # ---------------------------------------------------------------------------
 
 
-_DOC_ROUTE_SUFFIXES: Tuple[str, ...] = ("/llms.txt", "/robots.txt", "/sitemap.xml")
+# The tier documents are listed explicitly: "/llms-small.txt" does not end
+# with "/llms.txt", so without these entries the bot middleware would treat
+# the tier routes as ordinary pages — and block_ai_training would serve
+# training bots a 403 on the very documents that exist for them.
+_DOC_ROUTE_SUFFIXES: Tuple[str, ...] = (
+    "/llms.txt",
+    "/llms-small.txt",
+    "/llms-full.txt",
+    "/robots.txt",
+    "/sitemap.xml",
+)
 _ASSET_MARKERS: Tuple[str, ...] = (
     ".css",
     ".js",

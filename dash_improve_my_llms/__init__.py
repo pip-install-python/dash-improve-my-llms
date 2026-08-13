@@ -37,7 +37,7 @@ or via register_page_metadata(path, llms_doc="..."):
 
 from __future__ import annotations
 
-__version__ = "2.3.4"
+__version__ = "2.4.0"
 
 import logging
 import warnings
@@ -85,6 +85,8 @@ class LLMSConfig:
         prerender: bool = True,
         llms_nav: bool = True,
         llms_viewer: bool = True,
+        llms_tiers: bool = True,
+        llms_full_max_bytes: int = 4_000_000,
     ) -> None:
         """
         Args:
@@ -107,6 +109,13 @@ class LLMSConfig:
                 while agents and crawlers keep receiving the identical
                 Markdown from the same URL. The chrome exists only in the HTML
                 variant, so it costs an agent nothing.
+            llms_tiers: Serve the tiered corpus documents — /llms-small.txt
+                (a compact briefing for tight context windows) and
+                /llms-full.txt (every page's prose in one document). The
+                root /llms.txt stays the medium index and advertises both.
+            llms_full_max_bytes: Byte budget for /llms-full.txt. Pages past
+                the cap are listed as links under "Not included (size cap)"
+                instead of inlined. Compression is left to the proxy.
         """
         self.enabled = enabled
         self.warn_missing_llms_doc = warn_missing_llms_doc
@@ -114,6 +123,8 @@ class LLMSConfig:
         self.prerender = prerender
         self.llms_nav = llms_nav
         self.llms_viewer = llms_viewer
+        self.llms_tiers = llms_tiers
+        self.llms_full_max_bytes = llms_full_max_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +366,9 @@ def add_llms_routes(app: Any, config: Optional[LLMSConfig] = None) -> None:
     if config.warn_missing_llms_doc:
         _warn_missing_llms_docs()
 
+    if config.llms_tiers:
+        _seed_tier_metadata()
+
     backend = _detect_backend(app)
 
     from ._compat import warn_on_known_issues
@@ -386,6 +400,42 @@ def add_llms_routes(app: Any, config: Optional[LLMSConfig] = None) -> None:
             _register_mcp(app, _state)
         except Exception as exc:
             logger.debug("MCP bridge registration skipped: %s", exc)
+
+
+def _seed_tier_metadata() -> None:
+    """Give the tier documents a registered identity before any gate needs one.
+
+    A ``gated`` verdict on a tier path renders a gate document assembled from
+    ``page_metadata``; without this seed that document's H1 would be the bare
+    path ("# /llms-full.txt"). ``setdefault`` at both levels, so anything the
+    application registered for a tier path — including its own ``llms_doc``
+    for /llms-small.txt — wins over the defaults.
+    """
+    from .handlers import TIER_DOC_META, TIER_DOC_PATHS
+
+    for tier, tier_path in TIER_DOC_PATHS.items():
+        entry = _state.page_metadata.setdefault(tier_path, {})
+        for key, value in TIER_DOC_META[tier].items():
+            entry.setdefault(key, value)
+
+    try:
+        import dash
+    except ImportError:
+        return
+
+    tier_paths = set(TIER_DOC_PATHS.values())
+    registry = getattr(dash, "page_registry", None) or {}
+    for page in registry.values():
+        path = _normalize_path(page.get("path") or "/")
+        if path in tier_paths:
+            warnings.warn(
+                f"dash-improve-my-llms: a Dash page is registered at {path}, "
+                f"which is also a tier-document route. The document route "
+                f"wins and the page will not be reachable. Move the page, or "
+                f"pass LLMSConfig(llms_tiers=False).",
+                UserWarning,
+                stacklevel=3,
+            )
 
 
 # ---------------------------------------------------------------------------

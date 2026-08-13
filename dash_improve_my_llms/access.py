@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 ALLOW = "allow"
 GATED = "gated"
 DENY = "deny"
+# PRICED = "priced" is reserved for a future release — the HTTP-402 seam in
+# handlers.build_llms_tier_doc. Deliberately NOT in _VERDICTS yet: a check
+# returning it today degrades to GATED instead of publishing the prose.
 
 _VERDICTS = (ALLOW, GATED, DENY)
 
@@ -271,6 +274,14 @@ def decorate_body(body: str, base_url: str = "") -> str:
     patterns = [r"(?<![\w/:])(/[\w\-./]*?/llms\.txt)(?![\w?&=])"]
     if origin:
         patterns.insert(0, rf"({re.escape(origin)}[\w\-./]*?/llms\.txt)(?![\w?&=])")
+
+    # The tier documents live at the origin root and their filename is not
+    # `llms.txt`, so neither pattern above can match them. Same lookbehind,
+    # for the same reason: the `//peer.example/llms-full.txt` tail of an
+    # absolute or protocol-relative URL must not read as a path start.
+    patterns.append(r"(?<![\w/:])(/llms-(?:small|full)\.txt)(?![\w?&=])")
+    if origin:
+        patterns.append(rf"({re.escape(origin)}/llms-(?:small|full)\.txt)(?![\w?&=])")
 
     def _add(match: "re.Match") -> str:
         return f"{match.group(1)}?{param}"
