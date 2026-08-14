@@ -19,7 +19,9 @@ Pages resolves per-page titles server-side, so the boilerplate served
 
 - The prerender `<title>` and `og:title` now resolve through the same
   `resolve_page_title` as the crawler document: explicit `title` first, else
-  `page · site`.
+  `page · site`. A name that already carries a title separator
+  (`pkg | Page`) is a composed title and is never suffixed — the author did
+  the branding, and `pkg | Page · pkg` doubles it.
 - The `<title>` is only rewritten when that is an upgrade. An explicit
   metadata title is authoritative; otherwise a document title that already
   carries the page's name is the application's own per-page title and is

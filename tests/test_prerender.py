@@ -48,6 +48,17 @@ class TestTitleResolution:
         out = inject_prerender(_document("Test App | The Guide"), _context())
         assert "<title>Test App | The Guide</title>" in out
 
+    def test_a_name_that_is_already_a_composed_title_is_not_suffixed(self):
+        """A page NAME carrying a title separator ("Smoke | The Guide") is
+        already branded by its author — appending the site would double it
+        ("Smoke | The Guide · Smoke App"). Caught by CI's smoke script the
+        first time the resolver ran on the prerender path."""
+        out = inject_prerender(
+            _document("App"),
+            _context(name="Smoke | The Guide"),
+        )
+        assert "<title>Smoke | The Guide</title>" in out
+
     def test_explicit_metadata_title_is_authoritative(self):
         out = inject_prerender(
             _document("Test App | The Guide"),

@@ -70,6 +70,11 @@ def resolve_page_title(page_path: str, page_metadata: Dict, site_name: str) -> s
     if explicit:
         return explicit
     name = str(page_metadata.get("name") or "Page")
+    if any(separator in name for separator in _TITLE_SEPARATORS):
+        # A name carrying a title separator ("pkg | Page") is already a
+        # composed title — the author did the branding, and a suffix would
+        # double it ("pkg | Page · pkg").
+        return name
     short_site = _short_site_name(site_name)
     if short_site and page_path != "/" and short_site.lower() not in name.lower():
         return f"{name} · {short_site}"
