@@ -27,11 +27,17 @@ circuits before Dash runs and is cheaper for a pure crawler hit.
 
 Head metadata
 -------------
-Injection also rewrites ``<title>`` and adds a description, canonical, and
-JSON-LD per page. Dash's index is one static template for every route, so
-without this every URL in a pages app ships the same app-level title and no
-description at all — which is most of what "28 thin near-duplicates" means
-to a search engine.
+Injection also resolves the page ``<title>`` (same resolution as the crawler
+document: explicit ``title``, else "page · site") and adds a description,
+canonical, and JSON-LD per page. Dash's classic index is one static template
+for every route, so without this every URL in a pages app ships the same
+app-level title and no description at all — which is most of what "28 thin
+near-duplicates" means to a search engine.
+
+The app's own head wins. Every injected tag is skipped when the document
+already declares its counterpart, and the ``<title>`` is only rewritten when
+that is an upgrade — an app whose title already carries the page's name
+(Dash Pages resolves per-page titles server-side) keeps it verbatim.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from .html_generator import _json_ld
+from .html_generator import _json_ld, resolve_page_title
 from .markdown_renderer import markdown_to_text, render_markdown
 
 logger = logging.getLogger(__name__)
@@ -69,17 +75,41 @@ def _esc(value: Any) -> str:
     return _stdlib_html.escape(str(value or ""), quote=True)
 
 
-def build_head_tags(context: Dict[str, Any], *, peers_html: str = "") -> str:
-    """Per-page <head> metadata: description, canonical, OpenGraph, JSON-LD."""
+def build_head_tags(context: Dict[str, Any], *, peers_html: str = "", document: str = "") -> str:
+    """Per-page <head> metadata: description, canonical, OpenGraph, JSON-LD.
+
+    Pass the ``document`` being injected into and each tag is emitted only
+    when the document does not already declare its counterpart. The app's own
+    head always wins: Dash Pages and hand-written index templates both emit
+    per-page metadata, and a second description, canonical, or og:title is
+    not reinforcement — duplicate canonicals are ignored by crawlers and
+    conflicting og:titles make the scraper pick one arbitrarily.
+    """
     meta = context["page_metadata"]
     app_config = context["app_config"]
     page_path = context["page_path"]
 
     base_url = str(app_config.get("base_url") or "").rstrip("/")
     name = meta.get("name") or "Page"
+    title = resolve_page_title(page_path, meta, str(app_config.get("name") or ""))
     description = meta.get("description") or markdown_to_text(meta.get("llms_doc"), limit=155)
     canonical = f"{base_url}{page_path}"
     llms_link = "/llms.txt" if page_path == "/" else f"{page_path}/llms.txt"
+
+    def missing(tag: str, attr: str, value: str) -> bool:
+        """True when the document has no non-empty counterpart of a tag.
+
+        Dash emits `<meta name="description" content="">` for a page with no
+        description — an empty declaration is a slot nobody filled, not a
+        decision to defer to, so only a non-empty content/href suppresses
+        the injected tag.
+        """
+        for match in re.finditer(
+            rf'<{tag}[^>]*\b{attr}=["\']{re.escape(value)}["\'][^>]*>', document, re.IGNORECASE
+        ):
+            if re.search(r'(?:content|href)=["\'][^"\']+["\']', match.group(0), re.IGNORECASE):
+                return False
+        return True
 
     structured = {
         "@context": "https://schema.org",
@@ -94,20 +124,29 @@ def build_head_tags(context: Dict[str, Any], *, peers_html: str = "") -> str:
         },
     }
 
-    parts = [
-        f'<meta {_MARKER}="1" name="description" content="{_esc(description)}">',
-        f'<link {_MARKER}="1" rel="canonical" href="{_esc(canonical)}">',
+    parts = []
+    if missing("meta", "name", "description"):
+        parts.append(f'<meta {_MARKER}="1" name="description" content="{_esc(description)}">')
+    if missing("link", "rel", "canonical"):
+        parts.append(f'<link {_MARKER}="1" rel="canonical" href="{_esc(canonical)}">')
+    parts.append(
         f'<link {_MARKER}="1" rel="alternate" type="text/markdown" '
-        f'href="{_esc(llms_link)}" title="LLM-friendly documentation">',
-        f'<link {_MARKER}="1" rel="sitemap" type="application/xml" href="/sitemap.xml">',
-        f'<meta {_MARKER}="1" property="og:type" content="website">',
-        f'<meta {_MARKER}="1" property="og:title" content="{_esc(name)}">',
-        f'<meta {_MARKER}="1" property="og:description" content="{_esc(description)}">',
-        f'<meta {_MARKER}="1" property="og:url" content="{_esc(canonical)}">',
-    ]
+        f'href="{_esc(llms_link)}" title="LLM-friendly documentation">'
+    )
+    parts.append(f'<link {_MARKER}="1" rel="sitemap" type="application/xml" href="/sitemap.xml">')
+    if missing("meta", "property", "og:type"):
+        parts.append(f'<meta {_MARKER}="1" property="og:type" content="website">')
+    if missing("meta", "property", "og:title"):
+        parts.append(f'<meta {_MARKER}="1" property="og:title" content="{_esc(title)}">')
+    if missing("meta", "property", "og:description"):
+        parts.append(
+            f'<meta {_MARKER}="1" property="og:description" content="{_esc(description)}">'
+        )
+    if missing("meta", "property", "og:url"):
+        parts.append(f'<meta {_MARKER}="1" property="og:url" content="{_esc(canonical)}">')
 
-    og_image = meta.get("og_image")
-    if og_image:
+    og_image = meta.get("og_image") or meta.get("image_url")
+    if og_image and missing("meta", "property", "og:image"):
         image_url = og_image if "://" in str(og_image) else f"{base_url}{og_image}"
         parts.append(f'<meta {_MARKER}="1" property="og:image" content="{_esc(image_url)}">')
 
@@ -219,12 +258,33 @@ def inject_prerender(
         + document[match.end() :]
     )
 
-    head_tags = build_head_tags(context, peers_html=peers_html)
+    head_tags = build_head_tags(context, peers_html=peers_html, document=document)
     document = _HEAD_CLOSE_RE.sub(lambda _m: f"    {head_tags}\n</head>", document, count=1)
 
     if set_title:
-        name = context["page_metadata"].get("name")
-        if name:
-            document = _TITLE_RE.sub(lambda _m: f"<title>{_esc(name)}</title>", document, count=1)
+        meta = context["page_metadata"]
+        app_config = context.get("app_config") or {}
+        resolved = resolve_page_title(
+            context.get("page_path") or "/", meta, str(app_config.get("name") or "")
+        )
+        explicit = str(meta.get("title") or "").strip()
+        current_match = _TITLE_RE.search(document)
+        current = re.sub(r"</?title>", "", current_match.group(0)).strip() if current_match else ""
+        page_name = str(meta.get("name") or "").strip()
+
+        # Rewrite only when it is an upgrade. An explicit metadata title is
+        # authoritative; otherwise a title that already carries the page's
+        # name is page-specific — Dash Pages resolves per-page titles
+        # server-side from 4.x, and replacing "site | page" with a
+        # synthesized "page · site" would clobber the application's own,
+        # deliberate title. The rewrite exists for the static-template case,
+        # where every URL ships the same app-level <title>.
+        already_specific = bool(
+            page_name and current and page_name.lower() in _stdlib_html.unescape(current).lower()
+        )
+        if resolved and (explicit or not already_specific):
+            document = _TITLE_RE.sub(
+                lambda _m: f"<title>{_esc(resolved)}</title>", document, count=1
+            )
 
     return document

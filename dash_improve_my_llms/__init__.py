@@ -37,7 +37,7 @@ or via register_page_metadata(path, llms_doc="..."):
 
 from __future__ import annotations
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
 
 import logging
 import warnings

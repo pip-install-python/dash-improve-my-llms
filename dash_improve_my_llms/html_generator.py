@@ -57,6 +57,25 @@ def _short_site_name(site_name: str) -> str:
     return site_name.strip()
 
 
+def resolve_page_title(page_path: str, page_metadata: Dict, site_name: str) -> str:
+    """The document title for a page, resolved once for every surface.
+
+    An explicit ``title`` wins; otherwise the site's short name is appended,
+    except on the home page (where the site name IS the title) and where the
+    page name already carries it. Both the crawler document and the universal
+    prerender resolve through here — two implementations is how the fleet
+    shipped one title to browsers and a different one to Google.
+    """
+    explicit = str(page_metadata.get("title") or "").strip()
+    if explicit:
+        return explicit
+    name = str(page_metadata.get("name") or "Page")
+    short_site = _short_site_name(site_name)
+    if short_site and page_path != "/" and short_site.lower() not in name.lower():
+        return f"{name} · {short_site}"
+    return name
+
+
 def _breadcrumb_list(page_path: str, name: str, base_url: str, site_name: str) -> Dict:
     """A BreadcrumbList for a non-home page, or {} when there is no trail.
 
@@ -167,14 +186,7 @@ def generate_static_page_html(
     # the web with that heading. An explicit `title` wins; otherwise the site
     # name is appended, except on the home page (where it IS the title) and
     # where the page name already carries it.
-    explicit_title = str(page_metadata.get("title") or "").strip()
-    short_site = _short_site_name(site_name)
-    if explicit_title:
-        heading_title = explicit_title
-    elif short_site and page_path != "/" and short_site.lower() not in name.lower():
-        heading_title = f"{name} · {short_site}"
-    else:
-        heading_title = name
+    heading_title = resolve_page_title(page_path, page_metadata, site_name)
 
     title = _stdlib_html.escape(name)
     head_title = _stdlib_html.escape(heading_title)

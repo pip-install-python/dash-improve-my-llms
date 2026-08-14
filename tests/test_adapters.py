@@ -251,7 +251,10 @@ def test_ordinary_browser_also_gets_the_prose_in_initial_html(client):
 
 def test_prerender_sets_per_page_head_metadata(client):
     _, body = client.get("/guide", ua=BROWSER)
-    assert "<title>The Guide</title>" in body
+    # 2.5.1 contract change: the browser title resolves exactly like the
+    # crawler document's — this used to pin the bare page name, which is the
+    # defect 2.5.0 fixed for crawlers and 2.5.1 fixes here.
+    assert "<title>The Guide · Test App</title>" in body
     assert 'content="How to use it."' in body
     assert '<link data-dimll-prerender="1" rel="canonical" ' in body
     assert "https://example.com/guide" in body

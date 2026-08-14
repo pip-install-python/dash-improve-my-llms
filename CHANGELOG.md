@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-08-14
+
+### Fixed — the prerender stops fighting the application's own head
+
+Found by running the 2.5.0 Tier-B standard against the boilerplate: the
+universal prerender — the browser-facing path — still had the exact defect
+2.5.0 fixed for the crawler document, plus a new way to make it worse. Dash
+Pages resolves per-page titles server-side, so the boilerplate served
+`Dash Documentation Boilerplate | Getting Started` — and the prerender then
+**rewrote it to the bare page name** and injected a second, conflicting
+`og:title` beside the application's own.
+
+- The prerender `<title>` and `og:title` now resolve through the same
+  `resolve_page_title` as the crawler document: explicit `title` first, else
+  `page · site`.
+- The `<title>` is only rewritten when that is an upgrade. An explicit
+  metadata title is authoritative; otherwise a document title that already
+  carries the page's name is the application's own per-page title and is
+  kept verbatim. The rewrite exists for Dash's static-template case, where
+  every URL ships the same app-level title.
+- Every injected head tag (description, canonical, `og:*`) is skipped when
+  the document already declares its counterpart. Duplicate canonicals are
+  ignored by crawlers, and conflicting `og:title`s make the scraper pick one
+  arbitrarily — a second copy was never reinforcement.
+- `image_url` is accepted as the `og_image` alias on this path too, matching
+  2.5.0's crawler document.
+
 ## [2.5.0] - 2026-08-14
 
 ### Fixed — the crawler sees what the browser sees
