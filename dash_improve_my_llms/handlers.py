@@ -1025,13 +1025,22 @@ def build_sitemap_xml(
 # with "/llms.txt", so without these entries the bot middleware would treat
 # the tier routes as ordinary pages — and block_ai_training would serve
 # training bots a 403 on the very documents that exist for them.
-_DOC_ROUTE_SUFFIXES: Tuple[str, ...] = (
+#
+# The corpus is CONTENT and may be gated (`block_ai_training_docs`). The
+# policy routes never are: robots.txt is the channel that tells a blocked
+# bot "Disallow: /", and RFC 9309 treats an unreadable (4xx) robots.txt as
+# no-rules-at-all — so 403ing it would silence the very signal that asks
+# the bot to stop requesting.
+_CORPUS_ROUTE_SUFFIXES: Tuple[str, ...] = (
     "/llms.txt",
     "/llms-small.txt",
     "/llms-full.txt",
+)
+_POLICY_ROUTE_SUFFIXES: Tuple[str, ...] = (
     "/robots.txt",
     "/sitemap.xml",
 )
+_DOC_ROUTE_SUFFIXES: Tuple[str, ...] = _CORPUS_ROUTE_SUFFIXES + _POLICY_ROUTE_SUFFIXES
 _ASSET_MARKERS: Tuple[str, ...] = (
     ".css",
     ".js",
@@ -1078,8 +1087,16 @@ def handle_bot_request(
                 "headers": dict,
             }
     """
-    if _is_asset_path(path) or _is_documentation_route(path):
+    if _is_asset_path(path):
         return None
+
+    # Documentation routes used to short-circuit here unconditionally, which
+    # meant `block_ai_training=True` protected every page EXCEPT the corpus —
+    # the one surface built to be read by machines and the only one worth
+    # metering. They are now subject to policy like anything else, but the
+    # DEFAULT still lets them through: the documents exist to get the
+    # packages used, and an upgrade must not silently start 403ing them.
+    is_doc_route = _is_documentation_route(path)
 
     if not is_any_bot(user_agent):
         return None
@@ -1088,19 +1105,34 @@ def handle_bot_request(
     robots_config: Optional[RobotsConfig] = getattr(app, "_robots_config", None)
 
     if bot_type == "training" and robots_config and robots_config.block_ai_training:
-        body = (
-            "403 Forbidden - AI training bots are not allowed to access this content.\n"
-            "This site blocks AI training bots to prevent unauthorized use of content "
-            "for model training.\n"
-            f"Bot detected: {user_agent[:100]}\n"
-            "For more information, see /robots.txt"
-        )
-        return {
-            "status": 403,
-            "body": body,
-            "content_type": "text/plain",
-            "headers": {},
-        }
+        # `block_ai_training_docs` is the opt-in, and the seam a future
+        # release's per-vendor `meter` policy slots into: the decision about
+        # who may read the corpus belongs here, not in a hard-coded exemption.
+        # It gates the CORPUS routes only — robots.txt and sitemap.xml stay
+        # readable even by a blocked bot, because they are where the block
+        # itself is announced.
+        docs_blocked = getattr(robots_config, "block_ai_training_docs", False)
+        is_corpus_route = any(path.endswith(suffix) for suffix in _CORPUS_ROUTE_SUFFIXES)
+        if not is_doc_route or (docs_blocked and is_corpus_route):
+            body = (
+                "403 Forbidden - AI training bots are not allowed to access this content.\n"
+                "This site blocks AI training bots to prevent unauthorized use of content "
+                "for model training.\n"
+                f"Bot detected: {user_agent[:100]}\n"
+                "For more information, see /robots.txt"
+            )
+            return {
+                "status": 403,
+                "body": body,
+                "content_type": "text/plain",
+                "headers": {},
+            }
+
+    # A documentation route that survived policy is served by its own handler,
+    # which runs the access verdict itself. Never fall through to the page
+    # branches below — they would render the app shell for /llms.txt.
+    if is_doc_route:
+        return None
 
     if bot_type in ("search", "traditional"):
         page_path = _normalize_page_path(path)

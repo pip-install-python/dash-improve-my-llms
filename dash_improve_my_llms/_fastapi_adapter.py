@@ -33,6 +33,7 @@ from .handlers import (
     should_prerender,
     wants_html_viewer,
 )
+from .seo import ROOT_ICON_PATHS, root_icon_target
 
 
 def _doc_headers():
@@ -59,7 +60,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
     """
     try:
         from fastapi import APIRouter, Request, Response
-        from fastapi.responses import PlainTextResponse
+        from fastapi.responses import PlainTextResponse, RedirectResponse
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI backend detected but `fastapi` is not installed. "
@@ -263,6 +264,32 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             hidden_paths=state.hidden_pages,
         )
         return Response(content=body, media_type="application/xml")
+
+    # Well-known root icons — see the note in _flask_adapter. Dash's page
+    # catch-all answers these with the app shell, so a search engine falling
+    # back to /favicon.ico receives markup where an image should be. A route
+    # the application registered for one of these paths before improve()
+    # keeps precedence; the package only claims paths nobody else has.
+    _claimed = {getattr(route, "path", None) for route in server.routes}
+
+    def _make_root_icon(icon_path):
+        def _root_icon():
+            target = root_icon_target(icon_path)
+            if not target:
+                return Response(status_code=404)
+            return RedirectResponse(target, status_code=302)
+
+        return _root_icon
+
+    for _root_path in ROOT_ICON_PATHS:
+        if _root_path in _claimed:
+            continue
+        router.add_api_route(
+            _root_path,
+            _make_root_icon(_root_path),
+            methods=["GET", "HEAD"],
+            include_in_schema=False,
+        )
 
     # IMPORTANT: register router last so /{page_path:path}/llms.txt doesn't
     # shadow user-registered routes like /api/something.

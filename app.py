@@ -37,6 +37,7 @@ from dash_improve_my_llms import (
     RobotsConfig,
     __version__ as DIMLL_VERSION,
     add_llms_routes,
+    configure_seo,
     configure_bulletin,
     mark_hidden,
     register_network,
@@ -217,6 +218,35 @@ app._robots_config = RobotsConfig(
 # BEFORE add_llms_routes so the missing-prose startup warning doesn't name a
 # page that is deliberately hidden.
 mark_hidden("/admin")
+
+# Site-level identity for the CRAWLER document (2.5.0). Until this release the
+# generated crawler HTML carried the page's content signals and none of its
+# identity: no icon links, no og:image, no twitter card. Browsers got all of
+# them from index_string, so search engines resolved no favicon for this host —
+# or any other host running this package — and showed the generic globe.
+# Declaring it here closes that gap, and it also claims /favicon.ico (Google's
+# fallback), which Dash's page catch-all was answering with the app shell.
+configure_seo(
+    icons=[
+        "/assets/favicon/favicon.ico",
+        {"href": "/assets/favicon/favicon-32x32.png", "sizes": "32x32"},
+        {"href": "/assets/favicon/favicon-16x16.png", "sizes": "16x16"},
+        {"href": "/assets/favicon/favicon-96x96.png", "sizes": "96x96"},
+        {"href": "/assets/favicon/android-chrome-192x192.png", "sizes": "192x192"},
+        {"href": "/assets/favicon/android-chrome-512x512.png", "sizes": "512x512"},
+        {"href": "/assets/favicon/apple-touch-icon.png",
+         "rel": "apple-touch-icon", "sizes": "180x180"},
+    ],
+    social_image=OG_IMAGE_URL,
+    social_image_alt=OG_IMAGE_ALT,
+    social_image_width=OG_IMAGE_WIDTH,
+    social_image_height=OG_IMAGE_HEIGHT,
+    publisher="Pip Install Python LLC",
+    same_as=[
+        "https://pypi.org/project/dash-improve-my-llms/",
+        "https://github.com/pip-install-python/dash-hook-my-ai",
+    ],
+)
 
 # Declare the cross-host directory. Sitemaps are scoped to one origin, so a
 # network spread across hosts has no crawl graph between them; this is what

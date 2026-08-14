@@ -93,7 +93,57 @@ class TestGenerateStaticPageHtml:
         )
         assert "About" in html
         assert "About this thing" in html
-        assert "<title>About</title>" in html
+        # 2.5.0 contract change: the crawler <title> carries the site name.
+        # It used to be the bare page name, so a docs page shipped as
+        # "pkg | Attribution" to a browser and "Attribution" to Google, which
+        # rendered a result indistinguishable from every other page on the web
+        # with that heading. The <h1> stays the bare page name.
+        assert "<title>About · Test App</title>" in html
+        assert "<h1>About</h1>" in html
+
+    def test_title_suffix_drops_the_site_tagline(self, all_pages):
+        """Site titles are conventionally "<name> — <tagline>". Appending the
+        whole thing to all 27 inner pages of a docs site spends the ~60
+        characters Google shows on a pitch nobody reads twice."""
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={"name": "About", "description": "d"},
+            all_pages=all_pages,
+            app_config={
+                "name": "dash-leaflet2 — Leaflet 2 maps for Dash",
+                "base_url": "https://example.com",
+            },
+        )
+        assert "<title>About · dash-leaflet2</title>" in html
+
+    def test_explicit_title_wins(self, app_config, all_pages):
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={"name": "About", "description": "d", "title": "Test App | About us"},
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert "<title>Test App | About us</title>" in html
+
+    def test_home_page_title_is_not_suffixed(self, app_config, all_pages):
+        """On the home page the site name IS the title; "Test App · Test App"
+        is what happens when nobody checks."""
+        html = generate_static_page_html(
+            page_path="/",
+            page_metadata={"name": "Test App", "description": "d"},
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert "<title>Test App</title>" in html
+
+    def test_title_not_double_suffixed_when_name_already_carries_it(self, app_config, all_pages):
+        html = generate_static_page_html(
+            page_path="/about",
+            page_metadata={"name": "Test App Guide", "description": "d"},
+            all_pages=all_pages,
+            app_config=app_config,
+        )
+        assert "<title>Test App Guide</title>" in html
 
     def test_includes_navigation(self, app_config, all_pages):
         html = generate_static_page_html(

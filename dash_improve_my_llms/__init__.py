@@ -37,7 +37,7 @@ or via register_page_metadata(path, llms_doc="..."):
 
 from __future__ import annotations
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 
 import logging
 import warnings
@@ -48,6 +48,7 @@ from .access import configure_access, configure_viewer_identity
 from .bulletin import configure_bulletin
 from .network import NetworkConfig, NetworkSite
 from .robots_generator import RobotsConfig
+from .seo import configure_seo
 
 logger = logging.getLogger(__name__)
 
@@ -167,8 +168,21 @@ def register_page_metadata(
         llms_doc: Optional prose body for /llms.txt and the prerendered page
             body. If omitted, the package looks for a module-level LLMS_DOC
             attribute on the page module.
-        **kwargs: Additional SEO fields (og_image, schema_type, etc.) — passed
-            through to html_generator for crawler-facing HTML.
+        **kwargs: Additional SEO fields passed through to html_generator for
+            the crawler-facing HTML. Consumed today:
+
+            title       the full ``<title>`` for this page. Without it the
+                        site name is appended to ``name`` — a crawler used to
+                        receive the bare page name while the browser got the
+                        application's own prefixed title.
+            og_image    this page's social card, overriding the site default
+                        from ``configure_seo(social_image=...)``. Advertised
+                        here since 2.0 and read by nothing until 2.5.0.
+            image_url   accepted as an alias, so a page that already passes
+                        it to ``dash.register_page`` can pass the same value.
+            schema_type schema.org ``@type`` (default ``WebPage``). Docs sites
+                        want ``TechArticle``; a package's home page wants
+                        ``SoftwareApplication``.
     """
     path = _normalize_path(path)
     entry = _state.page_metadata.setdefault(path, {})
@@ -525,6 +539,8 @@ __all__: List[str] = [
     # Per-request access control and viewer identity (see docs/ACCESS.md)
     "configure_access",
     "configure_viewer_identity",
+    # Site-level search identity for the crawler document (see docs/SEO.md)
+    "configure_seo",
     # Deprecated shims (kept for one release to not break 1.x users)
     "mark_important",
     "mark_component_hidden",

@@ -19,6 +19,7 @@ class RobotsConfig:
         crawl_delay: Optional[int] = None,
         custom_rules: Optional[List[str]] = None,
         disallowed_paths: Optional[List[str]] = None,
+        block_ai_training_docs: bool = False,
     ):
         """
         Initialize robots.txt configuration.
@@ -30,6 +31,18 @@ class RobotsConfig:
             crawl_delay: Crawl delay in seconds (rate limiting)
             custom_rules: Additional custom rules to include
             disallowed_paths: Paths to disallow for all bots
+            block_ai_training_docs: Extend `block_ai_training` to the corpus
+                routes themselves (`/llms.txt`, `/llms-small.txt`,
+                `/llms-full.txt`, and the per-page `/<page>/llms.txt`).
+                Defaults to False, which is the historical behaviour: those
+                documents exist to be read by machines, so blocking a
+                training bot from the app's PAGES while still serving it the
+                corpus is the deliberate default. Set True when the corpus
+                itself is the thing you are protecting. `/robots.txt` and
+                `/sitemap.xml` are never gated: robots.txt is where the
+                block is announced, and a bot that receives 403 for it
+                treats the site as having no rules at all (RFC 9309) — the
+                opposite of what blocking is for.
         """
         self.block_ai_training = block_ai_training
         self.allow_ai_search = allow_ai_search
@@ -37,6 +50,7 @@ class RobotsConfig:
         self.crawl_delay = crawl_delay
         self.custom_rules = custom_rules or []
         self.disallowed_paths = disallowed_paths or []
+        self.block_ai_training_docs = block_ai_training_docs
 
 
 def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -> str:

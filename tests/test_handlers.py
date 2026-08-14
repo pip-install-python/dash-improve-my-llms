@@ -549,6 +549,72 @@ class TestHandleBotRequest:
             )
             assert result is None, f"tier doc {path} should pass through to its route"
 
+    def test_docs_can_be_brought_under_the_training_block(self, fake_app, page_metadata_sample):
+        """The corpus is the asset worth protecting, and until 2.5 it was the
+        one surface `block_ai_training` could not reach: the middleware
+        exempted every documentation route before policy ran. `block_ai_
+        training_docs` is the opt-in, and the seam a per-vendor `meter`
+        policy slots into."""
+        fake_app._robots_config = RobotsConfig(block_ai_training=True, block_ai_training_docs=True)
+        for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
+            result = handle_bot_request(
+                path=path,
+                user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+            )
+            assert result is not None, f"{path} should be blocked when opted in"
+            assert result["status"] == 403
+
+    def test_policy_routes_stay_open_even_when_docs_are_blocked(
+        self, fake_app, page_metadata_sample
+    ):
+        """robots.txt is where the block is announced. RFC 9309 treats an
+        unreadable (4xx) robots.txt as no-rules-at-all, so 403ing it would
+        silence the very signal that asks the bot to stop requesting."""
+        fake_app._robots_config = RobotsConfig(block_ai_training=True, block_ai_training_docs=True)
+        for path in ("/robots.txt", "/sitemap.xml"):
+            result = handle_bot_request(
+                path=path,
+                user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+            )
+            assert result is None, f"{path} must pass through to its own handler"
+
+    def test_opting_docs_in_never_touches_other_bot_classes(self, fake_app, page_metadata_sample):
+        """Only TRAINING bots are affected. A search bot or a browser still
+        reads the corpus — the lane prices anonymous bulk, not identity."""
+        fake_app._robots_config = RobotsConfig(block_ai_training=True, block_ai_training_docs=True)
+        for ua in (
+            "Mozilla/5.0 (compatible; ChatGPT-User/1.0)",
+            "Mozilla/5.0 (compatible; Googlebot/2.1)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+        ):
+            result = handle_bot_request(
+                path="/llms-full.txt",
+                user_agent=ua,
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+            )
+            assert result is None, f"{ua} should still reach the corpus"
+
+    def test_assets_bypass_policy_entirely(self, fake_app, page_metadata_sample):
+        """Assets are not documents. Splitting the old combined guard must not
+        drag them into the policy branch."""
+        fake_app._robots_config = RobotsConfig(block_ai_training=True, block_ai_training_docs=True)
+        result = handle_bot_request(
+            path="/assets/favicon/favicon.ico",
+            user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert result is None
+
     def test_blocks_training_bot_with_403(self, fake_app, page_metadata_sample):
         fake_app._robots_config = RobotsConfig(block_ai_training=True)
         result = handle_bot_request(
