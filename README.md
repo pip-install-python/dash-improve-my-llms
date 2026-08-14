@@ -16,7 +16,13 @@ Universal prerender · crawler-ready static HTML · `/llms.txt` on every page ·
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/WEnZR35mrK)
 [![YouTube](https://img.shields.io/badge/YouTube-%402plotai-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ)
 
-**[Documentation](https://llms.2plot.dev)** · [Discord](https://discord.gg/WEnZR35mrK) · [YouTube](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ) · [GitHub](https://github.com/pip-install-python/dash-improve-my-ai)
+**[Documentation](https://llms.2plot.dev)** · [Discord](https://discord.gg/WEnZR35mrK) · [YouTube](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ) · [GitHub](https://github.com/pip-install-python/dash-improve-my-llms)
+
+<br/>
+
+<a href="https://youtu.be/sC4IDScKlTA"><img src="https://img.youtube.com/vi/sC4IDScKlTA/maxresdefault.jpg" alt="Video demo — dash-improve-my-llms" width="640"></a>
+
+**[▶ Watch the video demo](https://youtu.be/sC4IDScKlTA)**
 
 <br/>
 

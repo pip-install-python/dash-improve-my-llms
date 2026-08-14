@@ -32,6 +32,8 @@ LLMS_DOC = """\
 
 > Crawler / SEO companion for Dash apps, with a thin MCP bridge.
 
+Video demo: https://youtu.be/sC4IDScKlTA
+
 ## What this package is
 
 A small set of HTTP routes and middleware that make a Dash application
@@ -262,6 +264,41 @@ def layout():
                     ),
                 ],
                 style={"marginBottom": "32px"},
+            ),
+            # ---------- Video demo ----------
+            html.Section(
+                html.Div(
+                    html.Iframe(
+                        src="https://www.youtube.com/embed/sC4IDScKlTA",
+                        title="dash-improve-my-llms — video demo",
+                        allow=(
+                            "accelerometer; autoplay; clipboard-write; encrypted-media; "
+                            "gyroscope; picture-in-picture; web-share"
+                        ),
+                        style={
+                            "position": "absolute",
+                            "top": "0",
+                            "left": "0",
+                            "width": "100%",
+                            "height": "100%",
+                            "border": "0",
+                            "borderRadius": "8px",
+                        },
+                    ),
+                    # 16:9 letterbox: the iframe fills an aspect-ratio box so the
+                    # player scales with the column instead of a fixed height.
+                    style={
+                        "position": "relative",
+                        "paddingBottom": "56.25%",
+                        "height": "0",
+                        "borderRadius": "8px",
+                        "boxShadow": "0 2px 4px rgba(0,0,0,0.08)",
+                        "border": "1px solid #eee",
+                        "overflow": "hidden",
+                        "background": "#000",
+                    },
+                ),
+                style={"marginBottom": "8px"},
             ),
             # ---------- Three audiences ----------
             html.Section(
