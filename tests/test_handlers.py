@@ -9,6 +9,7 @@ which makes them the cheapest possible tests to write.
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -199,6 +200,28 @@ class TestBuildLlmsSmall:
         assert "Page index: https://example.com/llms.txt" in body
         assert "Full corpus: https://example.com/llms-full.txt" in body
 
+    def test_pointers_are_list_items_not_one_run_on_paragraph(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        """Regression: consecutive lines are ONE paragraph in Markdown.
+
+        The three pointers were emitted as bare adjacent lines, so every
+        renderer collapsed them into "Page index: … Full corpus: … Network
+        hub: …" — one run-on sentence, in the document whose entire job is
+        to be read quickly.
+        """
+        from dash_improve_my_llms.markdown_renderer import render_markdown
+
+        body = build_llms_small(fake_app, page_metadata_sample, hidden_paths=set())
+        assert "\n- Page index: " in body
+        assert "\n- Full corpus: " in body
+
+        html = render_markdown(body)
+        assert "<li>Page index:" in html
+        assert "<li>Full corpus:" in html
+        # The two pointers must not share a paragraph with each other.
+        assert not re.search(r"<p>[^<]*Page index:.*?Full corpus:", html, re.S)
+
     def test_registered_llms_doc_is_served_verbatim(
         self, fake_app, fake_page_registry, page_metadata_sample
     ):
@@ -361,6 +384,17 @@ class TestIndexTierAdvertisement:
             "every page's prose in one document (3 pages)." in body
         )
         assert body.index("/llms-small.txt") < body.index("## Pages")
+
+    def test_advertisement_sits_under_its_own_heading(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        """Regression: an unlabelled list appended to the home page's prose
+        reads as a continuation of whatever list that prose ended with."""
+        body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        heading = "## Other sizes of this document"
+        assert heading in body
+        assert body.index(heading) < body.index("- [/llms-small.txt]")
+        assert body.index("- [/llms-full.txt]") < body.index("## Pages")
 
     def test_advertised_urls_are_decorated(
         self, fake_app, fake_page_registry, page_metadata_sample

@@ -343,7 +343,11 @@ def build_llms_index(
             f"- [{full_path}]({url}): every page's prose in one document " f"({len(pages)} pages)."
         )
     if tier_lines:
-        lines += tier_lines + [""]
+        # Under its own heading: the home page's prose ends with whatever the
+        # author wrote — often a bullet list — and an unlabelled list appended
+        # straight onto it reads as more of the author's list, not as this
+        # document offered at two other sizes.
+        lines += ["## Other sizes of this document", ""] + tier_lines + [""]
 
     if pages:
         lines += [
@@ -520,16 +524,21 @@ def build_llms_small(
     full_url = access.decorate(
         f"{base_url}{TIER_DOC_PATHS['full']}" if base_url else TIER_DOC_PATHS["full"]
     )
+    # A list, not three loose lines: consecutive lines with no blank line
+    # between them are one paragraph in Markdown, so the pointers rendered
+    # as a single run-on sentence — in the one document whose whole job is
+    # to be read quickly.
+    lines += ["## Other documents", ""]
     lines += [
-        f"Page index: {index_url}",
-        f"Full corpus: {full_url}",
+        f"- Page index: {index_url}",
+        f"- Full corpus: {full_url}",
     ]
 
     network = getattr(state, "network", None) if state is not None else None
     if network is not None and not network.is_empty:
         hub = (network.hub_url or "").rstrip("/")
         if hub:
-            lines.append(f"Network hub: {hub}/llms.txt — {network.name or 'the wider network'}.")
+            lines.append(f"- Network hub: {hub}/llms.txt — {network.name or 'the wider network'}.")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -695,6 +704,16 @@ def build_llms_tier_doc(
         build_llms_full(app, page_metadata, hidden_paths, state, max_bytes=full_max_bytes),
         200,
     )
+
+
+# Every other document renders in the browser exactly as an agent receives
+# it, and the viewer chrome says so. The full tier is the one exception —
+# the browser gets the card above, the agent gets the corpus — so it must
+# say something else, or the chrome states a falsehood on the one surface
+# whose whole promise is that machines and humans are reading the same bytes.
+LLMS_FULL_VIEWER_NOTE = (
+    "agents fetching this URL receive the full corpus itself, not the summary rendered below."
+)
 
 
 def build_llms_full_summary(app: Any, corpus: str) -> str:
@@ -886,12 +905,15 @@ def build_llms_viewer_html(
     state: Any = None,
     raw_url: Optional[str] = None,
     page_name: Optional[str] = None,
+    source_note: str = "",
 ) -> Optional[str]:
     """Render the browser-facing view of an llms.txt document.
 
     ``raw_url`` and ``page_name`` override the computed values for documents
     that are not page documents — the tier docs live at ``/llms-small.txt``,
     not ``/<page>/llms.txt``, so the derived raw link would point nowhere.
+    ``source_note`` overrides the chrome's description of what an agent gets
+    from this URL; only /llms-full.txt needs it (see LLMS_FULL_VIEWER_NOTE).
     """
     try:
         from .bulletin import get_bulletin
@@ -924,6 +946,7 @@ def build_llms_viewer_html(
                 getattr(app, "title", None) or "Documentation",
             ),
             raw_url=raw_url,
+            source_note=source_note,
             site_llms_url=f"{base_url}/llms.txt" if base_url else "/llms.txt",
             network_name=getattr(network, "name", "") or "" if network else "",
             network_url=hub,

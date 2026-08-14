@@ -507,6 +507,43 @@ def test_browser_on_full_gets_a_summary_card_not_the_corpus(client):
     assert "step one" in agent_body
 
 
+def test_full_tier_chrome_does_not_describe_the_card_as_what_agents_get(client):
+    """Regression: the viewer's raw-source line promises that agents receive
+    "the Markdown below". On /llms-full.txt they receive the corpus instead,
+    so the default sentence was a falsehood — on the one surface whose whole
+    promise is that humans and machines are reading the same bytes."""
+    _, html, _ = client.get_full("/llms-full.txt", ua=BROWSER, accept=BROWSER_ACCEPT)
+    assert "receive the Markdown below" not in html
+    assert "receive the full corpus itself" in html
+
+    # The other two tiers do serve exactly what they render, and still say so.
+    for path in ("/llms.txt", "/llms-small.txt"):
+        _, other, _ = client.get_full(path, ua=BROWSER, accept=BROWSER_ACCEPT)
+        assert "receive the Markdown below" in other, path
+
+
+def test_every_tier_renders_the_same_chrome_in_the_same_order(client):
+    """No test pinned the viewer's block order, which is how a reported
+    "the tiers render inconsistent chrome" claim went unchecked."""
+    for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
+        _, html, _ = client.get_full(path, ua=BROWSER, accept=BROWSER_ACCEPT)
+        positions = [
+            html.index('class="dv-banner"'),
+            html.index('class="dv-raw"'),
+            html.index('class="dv-doc"'),
+            html.index('class="dv-foot"'),
+        ]
+        assert positions == sorted(positions), f"{path} chrome out of order"
+
+
+def test_agents_receive_byte_identical_output_to_raw_on_every_tier(client):
+    """The contract every tier does keep: ?raw=1 and an agent UA agree."""
+    for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
+        _, agent_body = client.get(path, ua=GPTBOT)
+        _, raw_body = client.get(f"{path}?raw=1", ua=BROWSER, accept=BROWSER_ACCEPT)
+        assert agent_body == raw_body, path
+
+
 def test_full_tier_is_noindex(client):
     _, _, headers = client.get_full("/llms-full.txt")
     assert "noindex" in headers.get("x-robots-tag", "").lower()

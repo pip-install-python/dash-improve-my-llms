@@ -57,6 +57,33 @@ protections as the existing patterns. `build_llms_tier_doc` is
 deliberately a single pure verdict→response mapping: it is the seam where
 a future release maps a `priced` verdict to HTTP 402.
 
+### Fixed — how the tier documents read
+
+Three defects found by reading the rendered documents rather than the
+tests, all in surfaces this release introduces:
+
+- The viewer's raw-source line promises that agents fetching the URL
+  receive "the Markdown below". That is true of every document except
+  `/llms-full.txt`, where a browser deliberately gets a summary card and
+  an agent gets the corpus — so the one surface whose whole promise is
+  that humans and machines read the same bytes was stating a falsehood
+  about itself. `render_llms_viewer` takes a `source_note` override and
+  the full tier supplies one.
+- `/llms-small.txt`'s three closing pointers (page index, full corpus,
+  network hub) were emitted as bare adjacent lines. Consecutive lines are
+  one paragraph in Markdown, so every renderer collapsed them into a
+  single run-on sentence — in the document whose entire purpose is to be
+  read quickly. They are now a list under "Other documents".
+- The tier advertisement in `/llms.txt` was an unlabelled list appended
+  directly to the home page's prose, so it read as a continuation of
+  whatever list that prose happened to end with. It now sits under its
+  own "Other sizes of this document" heading.
+
+The viewer's block order (banner → raw source → article → footer) and the
+equivalence between an agent's bytes and `?raw=1`'s bytes are now pinned
+by tests on all three tiers; neither was covered before, which is how the
+first defect survived review.
+
 ### Docs site only — llms.2plot.dev network-standard pass
 
 Everything in this section is the demo/docs app (`app.py`, `pages/`, the

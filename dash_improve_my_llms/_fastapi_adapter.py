@@ -19,6 +19,7 @@ from typing import Any
 
 from . import access
 from .handlers import (
+    LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
     TIER_DOC_PATHS,
     apply_prerender,
@@ -203,11 +204,15 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                     query=dict(request.query_params),
                 ):
                     markdown_body = body
+                    source_note = ""
                     if tier == "full":
                         # Never render the multi-megabyte corpus to HTML — a
                         # browser gets a card describing it. The same URL with
                         # ?raw=1, or any agent UA, gets the corpus itself.
+                        # The chrome has to say so, or it describes the card
+                        # as the thing agents receive.
                         markdown_body = build_llms_full_summary(app, body)
+                        source_note = LLMS_FULL_VIEWER_NOTE
                     html = build_llms_viewer_html(
                         app=app,
                         page_path=tier_path,
@@ -215,6 +220,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                         page_metadata=state.page_metadata,
                         state=state,
                         raw_url=tier_path,
+                        source_note=source_note,
                         page_name=(state.page_metadata.get(tier_path) or {}).get("name")
                         or TIER_DOC_META[tier]["name"],
                     )

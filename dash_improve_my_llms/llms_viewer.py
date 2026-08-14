@@ -319,6 +319,7 @@ def render_llms_viewer(
     page_name: str,
     app_name: str,
     raw_url: str,
+    source_note: str = "",
     site_llms_url: str = "/llms.txt",
     network_name: str = "",
     network_url: str = "",
@@ -332,7 +333,13 @@ def render_llms_viewer(
     ``markdown_body`` is rendered as-is; the caller has already assembled it,
     so what a reader sees here is exactly what an agent receives from the
     same URL.
+
+    ``source_note`` is the one caller-overridable sentence in the chrome,
+    because exactly one document breaks that equivalence: a browser asking
+    for /llms-full.txt gets a summary card instead of the corpus, and the
+    default sentence would then describe the card as what agents receive.
     """
+    source_note = source_note or "agents fetching this URL receive the Markdown below, unwrapped."
     banner = _render_banner(
         page_name=page_name,
         app_name=app_name,
@@ -366,7 +373,7 @@ def render_llms_viewer(
 <div class="dv-raw">
   <span>Machine-readable source:</span>
   <a href="{_esc(raw_url)}?raw=1">{_esc(raw_url)}</a>
-  <span>— agents fetching this URL receive the Markdown below, unwrapped.</span>
+  <span>— {_esc(source_note)}</span>
 </div>
 <article class="dv-doc">
 {document}
