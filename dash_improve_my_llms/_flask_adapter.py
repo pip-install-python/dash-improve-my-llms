@@ -25,6 +25,7 @@ from .handlers import (
     should_prerender,
     wants_html_viewer,
 )
+from .seo import ROOT_ICON_PATHS, root_icon_target
 
 
 def _doc_headers() -> Dict[str, str]:
@@ -49,7 +50,7 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
         config: LLMSConfig.
         state: Shared module-level state (page_metadata, hidden_pages).
     """
-    from flask import Response, request
+    from flask import Response, abort, redirect, request
 
     server = app.server
 
@@ -213,3 +214,33 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
             hidden_paths=state.hidden_pages,
         )
         return Response(body, mimetype="application/xml")
+
+    # Well-known root icons. Dash's page catch-all answers these with the app
+    # shell (200 text/html), so a search engine that falls back to
+    # /favicon.ico — which is what it does when the page it CRAWLED declared
+    # no icon — receives markup where an image should be. Redirect rather than
+    # serve: the package has no business reading an application's asset folder,
+    # and every consumer of these paths follows a redirect.
+    #
+    # An application that registered its own route for one of these paths
+    # before improve() keeps it — werkzeug happens to match the earlier of
+    # two identical rules, but relying on that would leave a dead duplicate
+    # in the map. A route registered AFTER improve() cannot be honoured;
+    # register such routes first, or pass configure_seo(root_icons=False).
+    _claimed = {rule.rule for rule in server.url_map.iter_rules()}
+    for _root_path in ROOT_ICON_PATHS:
+        if _root_path in _claimed:
+            continue
+
+        def _root_icon(_path=_root_path):
+            target = root_icon_target(_path)
+            if not target:
+                abort(404)
+            return redirect(target, code=302)
+
+        server.add_url_rule(
+            _root_path,
+            endpoint=f"_dimll_icon{_root_path.replace('/', '_').replace('.', '_')}",
+            view_func=_root_icon,
+            methods=["GET", "HEAD"],
+        )

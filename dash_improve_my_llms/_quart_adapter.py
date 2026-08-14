@@ -25,6 +25,7 @@ from .handlers import (
     should_prerender,
     wants_html_viewer,
 )
+from .seo import ROOT_ICON_PATHS, root_icon_target
 
 
 def _doc_headers():
@@ -50,7 +51,7 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
         state: Shared module-level state (page_metadata, hidden_pages).
     """
     try:
-        from quart import Response, request
+        from quart import Response, abort, redirect, request
     except ImportError as exc:
         raise RuntimeError(
             "Quart backend detected but `quart` is not installed. "
@@ -216,3 +217,26 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
             hidden_paths=state.hidden_pages,
         )
         return Response(body, mimetype="application/xml")
+
+    # Well-known root icons — see the note in _flask_adapter. Dash's page
+    # catch-all answers these with the app shell, so a search engine falling
+    # back to /favicon.ico receives markup where an image should be. A route
+    # the application registered for one of these paths before improve()
+    # keeps precedence; the package only claims paths nobody else has.
+    _claimed = {rule.rule for rule in server.url_map.iter_rules()}
+    for _root_path in ROOT_ICON_PATHS:
+        if _root_path in _claimed:
+            continue
+
+        async def _root_icon(_path=_root_path):
+            target = root_icon_target(_path)
+            if not target:
+                abort(404)
+            return redirect(target, code=302)
+
+        server.add_url_rule(
+            _root_path,
+            endpoint=f"_dimll_icon{_root_path.replace('/', '_').replace('.', '_')}",
+            view_func=_root_icon,
+            methods=["GET", "HEAD"],
+        )

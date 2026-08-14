@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import html as _stdlib_html
 import json
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from .markdown_renderer import markdown_to_text, render_markdown
+from .seo import get_seo, icon_link_tags
 
 # Kept as the historical name for this module's renderer. The implementation
 # moved to markdown_renderer.py when it grew link, fence, image and table
@@ -41,6 +42,100 @@ def _json_ld(data: Dict) -> str:
     )
 
 
+# Site titles are conventionally written "<name> — <tagline>" ("pkg | what it
+# does", "Site: the pitch"). The tagline belongs on the home page, not appended
+# to all 27 inner-page titles — Google truncates around 60 characters, and a
+# suffix that eats 45 of them buys nothing. Take the name and leave the pitch.
+_TITLE_SEPARATORS = (" — ", " – ", " | ", " · ", " :: ", ": ")
+
+
+def _short_site_name(site_name: str) -> str:
+    for separator in _TITLE_SEPARATORS:
+        head, found, _ = site_name.partition(separator)
+        if found and head.strip():
+            return head.strip()
+    return site_name.strip()
+
+
+def _breadcrumb_list(page_path: str, name: str, base_url: str, site_name: str) -> Dict:
+    """A BreadcrumbList for a non-home page, or {} when there is no trail.
+
+    Built from the URL path rather than a registry, because the path is the
+    only structure guaranteed to exist on every host.
+    """
+    if page_path == "/" or not site_name:
+        return {}
+
+    items = [
+        {
+            "@type": "ListItem",
+            "position": 1,
+            "name": site_name,
+            "item": base_url or "/",
+        }
+    ]
+    segments = [s for s in page_path.strip("/").split("/") if s]
+    trail = ""
+    for index, segment in enumerate(segments, start=2):
+        trail = f"{trail}/{segment}"
+        label = name if index == len(segments) + 1 else segment.replace("-", " ").title()
+        items.append(
+            {
+                "@type": "ListItem",
+                "position": index,
+                "name": label,
+                "item": f"{base_url}{trail}",
+            }
+        )
+
+    return {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": items,
+    }
+
+
+def _social_tags(*, social_image: str, seo: Any, head_title: str, description: str) -> str:
+    """og:image + the twitter:* set, or "" when no card is declared.
+
+    Twitter reads `name=`, not `property=` — declaring these with `property`
+    makes them invisible to it, which is a common and silent mistake.
+    """
+    if not social_image:
+        return ""
+
+    esc = _stdlib_html.escape
+    image = esc(social_image, quote=True)
+    # `head_title` and `description` arrive ALREADY escaped — escaping them
+    # again ships "Draw &amp;amp; Edit" as the alt text. Only the raw config
+    # value needs escaping here.
+    alt = esc(seo.social_image_alt, quote=True) if seo.social_image_alt else head_title
+
+    lines = [
+        f'    <meta property="og:image" content="{image}">',
+        f'    <meta property="og:image:secure_url" content="{image}">',
+        f'    <meta property="og:image:alt" content="{alt}">',
+    ]
+    if seo.social_image_width and seo.social_image_height:
+        lines.append(
+            f'    <meta property="og:image:width" content="{esc(seo.social_image_width, quote=True)}">'
+        )
+        lines.append(
+            f'    <meta property="og:image:height" content="{esc(seo.social_image_height, quote=True)}">'
+        )
+    lines.append("")
+    lines.append(f'    <meta name="twitter:card" content="{esc(seo.twitter_card, quote=True)}">')
+    if seo.twitter_site:
+        lines.append(
+            f'    <meta name="twitter:site" content="{esc(seo.twitter_site, quote=True)}">'
+        )
+    lines.append(f'    <meta name="twitter:title" content="{head_title}">')
+    lines.append(f'    <meta name="twitter:description" content="{description}">')
+    lines.append(f'    <meta name="twitter:image" content="{image}">')
+    lines.append(f'    <meta name="twitter:image:alt" content="{alt}">')
+    return "\n".join(lines)
+
+
 def generate_static_page_html(
     page_path: str,
     page_metadata: Dict,
@@ -60,9 +155,29 @@ def generate_static_page_html(
     Returns:
         Complete HTML document as a string.
     """
-    title = _stdlib_html.escape(str(page_metadata.get("name") or "Page"))
+    name = str(page_metadata.get("name") or "Page")
     llms_doc = page_metadata.get("llms_doc")
     base_url = str(app_config.get("base_url", "")).rstrip("/")
+    site_name = str(app_config.get("name") or "")
+
+    # The <title> a crawler sees used to be the bare page name, while the
+    # browser got the application's own prefixed title — so a docs page shipped
+    # as "dash-leaflet2 | Attribution" to a human and "Attribution" to Google,
+    # which then rendered a result indistinguishable from every other page on
+    # the web with that heading. An explicit `title` wins; otherwise the site
+    # name is appended, except on the home page (where it IS the title) and
+    # where the page name already carries it.
+    explicit_title = str(page_metadata.get("title") or "").strip()
+    short_site = _short_site_name(site_name)
+    if explicit_title:
+        heading_title = explicit_title
+    elif short_site and page_path != "/" and short_site.lower() not in name.lower():
+        heading_title = f"{name} · {short_site}"
+    else:
+        heading_title = name
+
+    title = _stdlib_html.escape(name)
+    head_title = _stdlib_html.escape(heading_title)
 
     # A page whose author never wrote a description still deserves a real one.
     # Falling back to the first prose of its own body beats repeating a generic
@@ -77,6 +192,15 @@ def generate_static_page_html(
         cls = ' class="current"' if p_path == page_path else ""
         nav_items.append(f'<li{cls}><a href="{p_path}">{p_name}</a></li>')
 
+    seo = get_seo()
+
+    # Per-page card wins over the site default. `og_image` has been an
+    # advertised `register_page_metadata` kwarg since 2.0 — documented as
+    # "passed through to html_generator" — and was read by nothing until now.
+    social_image = str(
+        page_metadata.get("og_image") or page_metadata.get("image_url") or seo.social_image or ""
+    ).strip()
+
     structured_data = {
         "@context": "https://schema.org",
         "@type": page_metadata.get("schema_type") or "WebPage",
@@ -89,6 +213,23 @@ def generate_static_page_html(
             "url": base_url or "/",
         },
     }
+    if seo.publisher:
+        structured_data["publisher"] = {
+            "@type": "Organization",
+            "name": seo.publisher,
+        }
+    if seo.same_as:
+        # The other properties that are the same entity — sibling domains,
+        # the GitHub repo, the PyPI project. For a family of domains this is
+        # how they say "we are one thing" rather than N unrelated sites.
+        structured_data["sameAs"] = list(seo.same_as)
+    if social_image:
+        structured_data["image"] = social_image
+
+    # Breadcrumbs, but only where there is a trail to describe: emitting a
+    # one-item BreadcrumbList for the home page is noise, and Google ignores
+    # it anyway.
+    breadcrumb = _breadcrumb_list(page_path, name, base_url, site_name)
 
     if llms_doc:
         body_html = render_markdown(llms_doc)
@@ -96,6 +237,28 @@ def generate_static_page_html(
         body_html = "<p>This page contains interactive content that requires JavaScript.</p>"
 
     llms_link = f"{page_path.rstrip('/')}/llms.txt" if page_path != "/" else "/llms.txt"
+
+    # Each of these renders to "" when nothing is configured, and each carries
+    # its OWN leading newline when it does not — so an unconfigured head keeps
+    # exactly the blank lines 2.4.0 had.
+    _icons = icon_link_tags()
+    icon_links = f"\n{_icons}" if _icons else ""
+
+    _social = _social_tags(
+        social_image=social_image,
+        seo=seo,
+        head_title=head_title,
+        description=description,
+    )
+    social_tags = f"\n{_social}" if _social else ""
+
+    site_name_esc = _stdlib_html.escape(site_name or app_config.get("name", ""))
+
+    breadcrumb_block = (
+        f'\n\n    <script type="application/ld+json">\n' f"{_json_ld(breadcrumb)}\n    </script>"
+        if breadcrumb
+        else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -108,17 +271,18 @@ def generate_static_page_html(
     <link rel="canonical" href="{base_url}{page_path}">
     <link rel="alternate" type="text/markdown" href="{llms_link}" title="LLM-friendly documentation">
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
-
+{icon_links}
     <meta property="og:type" content="website">
-    <meta property="og:title" content="{title}">
+    <meta property="og:title" content="{head_title}">
     <meta property="og:description" content="{description}">
     <meta property="og:url" content="{base_url}{page_path}">
-
-    <title>{title}</title>
+    <meta property="og:site_name" content="{site_name_esc}">
+{social_tags}
+    <title>{head_title}</title>
 
     <script type="application/ld+json">
 {_json_ld(structured_data)}
-    </script>
+    </script>{breadcrumb_block}
 
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

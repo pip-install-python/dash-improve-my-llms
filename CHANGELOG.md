@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-08-14
+
+### Fixed — the crawler sees what the browser sees
+
+This package serves crawlers a generated document instead of the application's
+own HTML. That document carried every *content* signal — title, description,
+canonical, JSON-LD — and none of the *identity* signals: no `<link rel="icon">`,
+no `og:image`, no `twitter:*`. Measured across a live 18-host network: browsers
+received four to seven icon links, **Googlebot received zero on every host**,
+and search results showed the generic globe. The two comparison sites that
+served crawlers the byte-identical document a browser gets showed their real
+marks. The rule this release enforces:
+
+> Content may differ between the crawler document and the browser document.
+> Identity may not.
+
+- **`configure_seo()`** declares site-level identity once — `icons`,
+  `social_image` (+ alt/width/height), `twitter_site`, `twitter_card`,
+  `publisher`, `same_as`. It follows `configure_access` / `describe_network`:
+  module-level, read at render time, and **entirely opt-in — an application
+  that never calls it emits no icon, image or card tags at all**, so upgrading
+  cannot invent an identity for a site that never declared one.
+- **`og_image` on `register_page_metadata` finally does something.** It has
+  been advertised in the docstring since 2.0 as "passed through to
+  html_generator" and was read by nothing. A per-page card now overrides the
+  site default; `image_url` is accepted as an alias so a page can pass the
+  same value it already gives `dash.register_page`.
+- **The crawler `<title>` keeps the site's name.** It was the bare page name,
+  so a docs page shipped as `pkg | Attribution` to a browser and `Attribution`
+  to Google — a result indistinguishable from every other page on the web with
+  that heading. Inner pages are now `<page> · <site>`; the home page is
+  untouched, a `title` field overrides, a name that already carries the site is
+  left alone, and the suffix uses only the part of the site title before its
+  tagline separator so it does not spend the ~60 characters Google shows on a
+  pitch. The `<h1>` is still the page's own name.
+- **`/favicon.ico` and the apple-touch paths** are answered by the package,
+  redirecting to a declared icon. Google falls back to `<origin>/favicon.ico`
+  when the page it crawled declares no icon, and Dash's page catch-all was
+  answering all three with the app shell — 200 `text/html` where an image
+  belongs, a poisoned fallback rather than a missing one. Inert unless `icons`
+  is declared — with no configuration the paths answer 404, which a crawler
+  reads correctly as "no icon" where the app shell read as a broken one.
+  `configure_seo(root_icons=False)` opts out, and a route the application
+  registered for one of these paths before `improve()` keeps precedence: the
+  package only claims paths nobody else has.
+- **Structured data grew a graph.** `publisher` and `sameAs` from
+  `configure_seo` (`sameAs` is how a family of domains tells a search engine it
+  is one entity rather than N unrelated sites), the page's card as `image`, and
+  a `BreadcrumbList` on every non-home page. `schema_type` already worked and
+  remains the way a docs page declares `TechArticle` or a package home declares
+  `SoftwareApplication`.
+- `og:site_name` is now emitted.
+
+### Changed — documentation routes obey bot policy
+
+`handle_bot_request` exempted every documentation route *before* policy ran, so
+`block_ai_training=True` protected an application's pages while leaving
+`/llms.txt`, `/llms-small.txt` and `/llms-full.txt` open — the one surface built
+to be read by machines, and the only one worth metering, was the only one no
+configuration could reach.
+
+Documentation routes are now evaluated like anything else, and
+**the default is unchanged**: `RobotsConfig(block_ai_training_docs=False)` keeps
+serving them, because the documents exist to get the packages used. Set it True
+when the corpus itself is what you are protecting. Only training-class bots are
+affected — search bots, browsers and agents holding a key read the corpus
+exactly as before. This is also the seam a future release's per-vendor `meter`
+policy slots into.
+
+The gate covers the corpus only. `/robots.txt` and `/sitemap.xml` are never
+blocked, even for a blocked bot: robots.txt is where the block is announced,
+and RFC 9309 treats an unreadable (4xx) robots.txt as no-rules-at-all — a bot
+that cannot read `Disallow: /` concludes the opposite and keeps crawling.
+
 ## [2.4.0] - 2026-08-13
 
 ### Added — tiered corpus documents: /llms-small.txt and /llms-full.txt

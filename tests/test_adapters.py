@@ -113,11 +113,17 @@ class _Client:
         return status, body
 
     def get_full(self, path: str, ua: str = BROWSER, accept: str = "*/*"):
-        """(status, body, headers) — headers matter for content negotiation."""
+        """(status, body, headers) — headers matter for content negotiation.
+
+        Redirects are never followed: Starlette's client follows them by
+        default and Flask's does not, so a test asserting on a 302 would pass
+        on one backend and fail on another for reasons unrelated to the code
+        under test.
+        """
         headers = {"User-Agent": ua, "Accept": accept}
 
         if self.backend == "fastapi":
-            response = self._client.get(path, headers=headers)
+            response = self._client.get(path, headers=headers, follow_redirects=False)
             return response.status_code, response.text, _lower(response.headers)
 
         if self.backend == "quart":
@@ -601,3 +607,197 @@ def test_network_directory_reaches_llms_txt_and_html(backend):
     assert 'rel="related" href="https://sibling.example"' in page
     # Third-party links must not pass ranking signal.
     assert 'rel="nofollow noopener"' in page
+
+
+# ---------------------------------------------------------------------------
+# 2.5.0 — the crawler document must carry the same IDENTITY as the browser one
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_seo():
+    """configure_seo is process-global; leaking it across tests would make the
+    unconfigured no-op assertions pass for the wrong reason."""
+    from dash_improve_my_llms import seo
+
+    seo.reset()
+    yield
+    seo.reset()
+
+
+ICONS = [
+    "/assets/favicon/favicon.ico",
+    {"href": "/assets/favicon/icon-192.png", "sizes": "192x192"},
+    {"href": "/assets/favicon/apple-touch-icon.png", "rel": "apple-touch-icon", "sizes": "180x180"},
+]
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_crawler_and_browser_agree_on_identity(backend):
+    """The assertion the network was missing.
+
+    Every SEO defect measured across the live fleet in August 2026 was one
+    bug: the crawler document had drifted from the browser document. Browsers
+    got 4-7 icon links and an og:image; Googlebot got zero of either, on every
+    host, so search showed the generic globe. Content may differ between the
+    two documents — that is what the prerender is for. Identity may not.
+    """
+    app = _build_app(backend)
+    pkg.configure_seo(icons=ICONS, social_image="https://cdn.example/card.png")
+    client = _Client(app, backend)
+
+    _, crawler = client.get("/guide", ua=GOOGLEBOT)
+
+    assert 'rel="icon"' in crawler
+    assert 'sizes="192x192"' in crawler
+    assert 'rel="apple-touch-icon"' in crawler
+    assert 'property="og:image"' in crawler
+    assert 'name="twitter:card"' in crawler
+    # twitter:* must use name=, not property= — Twitter ignores property=.
+    assert 'property="twitter:' not in crawler
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_crawler_title_keeps_the_site_name(backend):
+    """A page shipped as "The Guide" to Google while the browser saw the app's
+    own prefixed title, so the result was indistinguishable from every other
+    page on the web with that heading."""
+    app = _build_app(backend)
+    client = _Client(app, backend)
+
+    _, crawler = client.get("/guide", ua=GOOGLEBOT)
+    assert "<title>The Guide · Test App</title>" in crawler
+    # The H1 stays the page's own name — only the document title is qualified.
+    assert "<h1>The Guide</h1>" in crawler
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_unconfigured_seo_adds_no_identity_tags(backend):
+    """configure_seo is opt-in: an upgrade must not invent an icon or a card
+    for a site that never declared one."""
+    app = _build_app(backend)
+    client = _Client(app, backend)
+
+    _, crawler = client.get("/guide", ua=GOOGLEBOT)
+    assert 'rel="icon"' not in crawler
+    assert "og:image" not in crawler
+    assert "twitter:" not in crawler
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_root_icon_paths_redirect_to_a_declared_icon(backend):
+    """Google falls back to <origin>/favicon.ico when the page it crawled
+    declares no icon. Dash's page catch-all answered all three well-known
+    paths with the app shell (200 text/html) — a poisoned fallback, not a
+    missing one."""
+    app = _build_app(backend)
+    pkg.configure_seo(icons=ICONS)
+    client = _Client(app, backend)
+
+    expected = {
+        "/favicon.ico": "/assets/favicon/favicon.ico",
+        "/apple-touch-icon.png": "/assets/favicon/apple-touch-icon.png",
+        "/apple-touch-icon-precomposed.png": "/assets/favicon/apple-touch-icon.png",
+    }
+    for path, target in expected.items():
+        status, _, headers = client.get_full(path)
+        assert status == 302, f"{path} returned {status}"
+        assert headers["location"].endswith(target), f"{path} -> {headers['location']}"
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_root_icon_paths_are_inert_without_configuration(backend):
+    """No icons declared: the paths answer 404 rather than the app shell —
+    a crawler that gets 404 correctly concludes "no icon" instead of parsing
+    HTML where an image belongs."""
+    app = _build_app(backend)
+    client = _Client(app, backend)
+
+    status, _, _ = client.get_full("/favicon.ico")
+    assert status == 404
+
+
+def test_app_registered_favicon_route_keeps_precedence():
+    """An application that claimed /favicon.ico before improve() keeps it —
+    the adapter skips paths that already have a route rather than stacking a
+    duplicate rule and leaning on werkzeug's match order."""
+    import dash
+    from dash import Dash, html
+
+    _reset_package_state()
+    if hasattr(dash, "page_registry"):
+        dash.page_registry.clear()
+    if hasattr(dash, "_pages") and hasattr(dash._pages, "PAGE_REGISTRY"):
+        dash._pages.PAGE_REGISTRY.clear()
+
+    app = Dash(__name__, use_pages=True, pages_folder="")
+    app.title = "Test App"
+    dash.register_page("home", path="/", name="Home", layout=html.Div("home"))
+    app.layout = html.Div([dash.page_container])
+
+    app.server.add_url_rule("/favicon.ico", endpoint="user_favicon", view_func=lambda: "user-bytes")
+    pkg.add_llms_routes(app, pkg.LLMSConfig(warn_missing_llms_doc=False))
+    # Even with icons declared, the app's own route answers.
+    pkg.configure_seo(icons=ICONS)
+
+    response = app.server.test_client().get("/favicon.ico")
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "user-bytes"
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_schema_type_and_publisher_reach_the_crawler(backend):
+    """schema_type has been supported since 2.0 and set by nobody; sameAs is
+    how a family of domains says it is one entity rather than N sites."""
+    app = _build_app(backend)
+    pkg.configure_seo(
+        publisher="Example LLC",
+        same_as=["https://pypi.org/project/example", "https://github.com/e/x"],
+    )
+    pkg.register_page_metadata("/guide", schema_type="TechArticle")
+    client = _Client(app, backend)
+
+    _, crawler = client.get("/guide", ua=GOOGLEBOT)
+    assert '"@type": "TechArticle"' in crawler
+    assert '"publisher"' in crawler
+    assert "https://pypi.org/project/example" in crawler
+    assert '"@type": "BreadcrumbList"' in crawler
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_per_page_card_overrides_the_site_default(backend):
+    app = _build_app(backend)
+    pkg.configure_seo(social_image="https://cdn.example/site.png")
+    pkg.register_page_metadata("/guide", og_image="https://cdn.example/guide.png")
+    client = _Client(app, backend)
+
+    _, crawler = client.get("/guide", ua=GOOGLEBOT)
+    assert "https://cdn.example/guide.png" in crawler
+    assert "https://cdn.example/site.png" not in crawler
+
+
+@pytest.mark.parametrize("backend", _backends())
+def test_corpus_can_be_brought_under_the_training_block(backend):
+    """P6 end to end: until 2.5 the documentation routes short-circuited
+    before policy ran, so block_ai_training protected every surface EXCEPT
+    the corpus — the one worth metering."""
+    app = _build_app(backend)
+    app._robots_config = pkg.RobotsConfig(block_ai_training=True, block_ai_training_docs=True)
+    client = _Client(app, backend)
+
+    for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
+        status, _ = client.get(path, ua=GPTBOT)
+        assert status == 403, f"{path} returned {status}"
+
+    # The policy channel is never gated: robots.txt is where the block is
+    # announced, and a bot that receives 403 for it treats the site as
+    # having no rules at all (RFC 9309).
+    for path in ("/robots.txt", "/sitemap.xml"):
+        status, _ = client.get(path, ua=GPTBOT)
+        assert status == 200, f"{path} returned {status}"
+
+    # Default posture is unchanged: the documents still serve.
+    app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+    for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
+        status, _ = client.get(path, ua=GPTBOT)
+        assert status == 200, f"{path} returned {status}"
