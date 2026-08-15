@@ -1,14 +1,14 @@
 """
-Landing page for the dash-improve-my-llms 2.0 demo app.
+Landing page for the dash-improve-my-llms demo app.
 
-Demonstrates the canonical v2.0 pattern: a module-level LLMS_DOC string
+Demonstrates the canonical pattern: a module-level LLMS_DOC string
 is the canonical prose for this page, served verbatim at /llms.txt and
 also registered with dash.mcp as a resource when Dash 4.3+ is detected.
 """
 
 from dash import dcc, html, register_page
 
-from dash_improve_my_llms import register_page_metadata
+from dash_improve_my_llms import __version__ as DIMLL_VERSION, register_page_metadata
 from lib.constants import OG_IMAGE_URL, SITE_BRAND, SITE_DESCRIPTION
 
 register_page(
@@ -49,7 +49,7 @@ package no longer tries to compete on that surface.
 
 ## The three audiences
 
-| Audience              | How they talk to your app       | What 2.0 gives them                          |
+| Audience              | How they talk to your app       | What the package gives them                  |
 |-----------------------|---------------------------------|----------------------------------------------|
 | MCP clients           | JSON-RPC over Streamable HTTP   | `LLMS_DOC` registered as `dash.mcp` resource |
 | Web crawlers          | Plain HTTPS, no JavaScript      | `/robots.txt`, `/sitemap.xml`, static HTML   |
@@ -57,14 +57,19 @@ package no longer tries to compete on that surface.
 
 ## What it serves
 
-- `/llms.txt` and `/<page>/llms.txt` — prose markdown, from `LLMS_DOC`
+- `/llms.txt` — the site index: home prose, every page, the network directory
+- `/llms-small.txt` — compact briefing for a small context window (2.4.0+)
+- `/llms-full.txt` — the full corpus, every page's prose in one document (2.4.0+)
+- `/<page>/llms.txt` — that page's `LLMS_DOC`, verbatim
 - `/robots.txt` — bot-class access policies via `RobotsConfig`
 - `/sitemap.xml` — generated from `dash.page_registry`
+- `/favicon.ico` + apple-touch paths — 302 to a `configure_seo()` icon (2.5.0+)
 - Static HTML prerender — served to crawlers that hit a normal page URL
 
-That is the entire HTTP surface. There are no `/page.json`,
-`/architecture.txt`, or `/llms.toon` endpoints in 2.0 — component-tree
-introspection lives in Dash 4.3 MCP.
+Every llms document content-negotiates: agents get raw Markdown, browsers get
+the same Markdown rendered (`?raw=1` forces raw). There are no `/page.json`,
+`/architecture.txt`, or `/llms.toon` endpoints — 2.0 removed them, and
+component-tree introspection lives in Dash 4.3 MCP.
 
 ## The LLMS_DOC pattern
 
@@ -241,7 +246,10 @@ def layout():
             html.Header(
                 [
                     html.Div(
-                        "v2.0",
+                        # Derived, never written: this badge said "v2.0" while
+                        # the site served 2.5.x. Version claims on any public
+                        # surface come from the installed package.
+                        f"v{DIMLL_VERSION}",
                         style={
                             "display": "inline-block",
                             "background": _BRAND,

@@ -57,11 +57,18 @@ non-JavaScript consumer will look:
 | The page's own HTML | The prose, rendered into the initial response, before React mounts |
 | `/<page>/llms.txt` | The same prose as Markdown, with links back to the site and network indexes |
 | `/llms.txt` | An index of every page, plus the cross-host directory |
+| `/llms-small.txt` | A compact briefing of the whole site, sized for a small context window |
+| `/llms-full.txt` | The full corpus — every page's prose in one document |
 | `/sitemap.xml` | Every non-hidden page |
 | `/robots.txt` | Per-bot-class access policy |
 | `dash.mcp` | The same prose as an MCP resource (Dash 4.3+) |
 
-One source of truth, six surfaces, and the interactive app is untouched.
+One source of truth, eight surfaces, and the interactive app is untouched.
+Every llms document content-negotiates: agents and crawlers get the raw
+Markdown byte-for-byte, browsers get the same Markdown rendered (`?raw=1`
+forces the raw side). `configure_seo()` additionally answers `/favicon.ico`
+and the apple-touch paths with a redirect to a declared icon, so Google's
+fallback path stops receiving the app shell.
 
 ## Installation
 
