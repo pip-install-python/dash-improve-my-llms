@@ -15,3 +15,9 @@ gunicorn>=23
 # Demo app UI and the /analytics page.
 dash-mantine-components>=2.3.0
 numpy>=1.24
+
+# The satellite analytics trio (lib/analytics_tracker + satellite_reporter):
+# the geolocation fallback and the signed rollup POST to 2plot.ai. dash pulls
+# requests transitively, but the trio depends on it directly — a transitive
+# dep is one dash release away from vanishing.
+requests>=2.31

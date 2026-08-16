@@ -27,8 +27,6 @@ dispatches to Flask / FastAPI / Quart adapters at add_llms_routes().
 
 import json
 import os
-from datetime import datetime
-from pathlib import Path
 
 import dash_mantine_components as dmc
 from dash import Dash, dcc, html, page_container
@@ -42,16 +40,15 @@ from dash_improve_my_llms import (
     mark_hidden,
     register_network,
 )
-from dash_improve_my_llms.bot_detection import get_bot_type, is_any_bot
 from lib.constants import (
     BASE_URL,
-    INTERNAL_UA_TOKEN,
     OG_IMAGE_ALT,
     OG_IMAGE_HEIGHT,
     OG_IMAGE_TYPE,
     OG_IMAGE_URL,
     OG_IMAGE_WIDTH,
     SITE_BRAND,
+    require_owned_base_url,
 )
 
 # -----------------------------------------------------------------------------
@@ -200,7 +197,11 @@ app.index_string = (
 # stale value here points every canonical at the wrong host and asks search
 # engines to deindex this deployment, so lib/constants.py reads it from the
 # environment (APP_BASE_URL) with the real production host as the default
-# rather than a placeholder.
+# rather than a placeholder. On a hosting platform the env var is REQUIRED
+# (require_owned_base_url refuses to boot without it) so a preview or
+# staging copy of this repo can never publish canonicals claiming to be
+# the flagship.
+require_owned_base_url()
 app._base_url = BASE_URL
 
 # Configure bot-class access policies. RobotsConfig is the package's only
@@ -334,6 +335,20 @@ if os.environ.get("NETWORK_BULLETIN_URL"):
         app_id="llms",
     )
 
+# Tiered corpus documents (dash-improve-my-llms >= 2.4.0) — the boilerplate's
+# tier registration, ported per run.py:476-481 there. Pseudo-paths: they never
+# enter dash.page_registry, so they cannot leak into listings. Registering
+# them lets this host tier its compact briefing and full corpus via env
+# (LLMS_SMALL_TIER / LLMS_FULL_TIER; unset = the default tier, i.e. public),
+# and the hub can tighten either network-wide through its page-tier ceilings
+# with no redeploy here. Recorded BEFORE add_llms_routes so a gate can never
+# be applied later than the content it is meant to gate. Instrumentation
+# only — nothing in this app enforces tiers today.
+from lib import page_tiers as _page_tiers  # noqa: E402
+
+_page_tiers.register("/llms-small.txt", os.environ.get("LLMS_SMALL_TIER"))
+_page_tiers.register("/llms-full.txt", os.environ.get("LLMS_FULL_TIER"))
+
 # Wire up /llms.txt, /robots.txt, /sitemap.xml, the prerender hook, the bot
 # middleware, and the MCP bridge. add_llms_routes detects the backend
 # (Flask here) and dispatches.
@@ -359,30 +374,46 @@ def healthz():
 
 
 # -----------------------------------------------------------------------------
-# Visitor tracking (example-only — powers the /admin dashboard)
+# Visitor tracking — the network-standard ledger (lib/analytics_tracker)
 # -----------------------------------------------------------------------------
 
-# Env-overridable so the test suite (and any ephemeral runner) can point the
-# ledger at a temp dir instead of appending its own hits to the checked-out
-# file, which otherwise shows up in `git status` after every local run.
-ANALYTICS_FILE = Path(
-    os.environ.get("VISITOR_ANALYTICS_FILE") or Path(__file__).parent / "visitor_analytics.json"
-)
-_ASSET_MARKERS = (".css", ".js", ".png", ".jpg", ".ico", "_dash", "_reload-hash")
+# This replaced the example-only tracker that used to live here. One ledger
+# now serves BOTH consumers: the /admin demo dashboard reads it locally, and
+# lib/satellite_reporter ships its hourly rollup to the 2plot.ai hub — where
+# a crawler fetch of /llms.txt or /llms-full.txt on this host becomes a
+# bot_hits row on the 402 board. The write-time rules (INTERNAL_UA_TOKEN and
+# /healthz dropped before classification) live inside the tracker.
 
-# Paths that are machinery, not visits. /healthz is probed by Render's health
-# check and the hub's hourly sweep — counting it would swamp the demo data.
-_NON_VISIT_PATHS = ("/healthz",)
+# Legacy env name: this site documented VISITOR_ANALYTICS_FILE before it
+# adopted the network-standard tracker, whose env is TRAFFIC_ANALYTICS_FILE.
+# Honor the old name when only it is set, so existing runners keep working.
+if os.environ.get("VISITOR_ANALYTICS_FILE") and not os.environ.get("TRAFFIC_ANALYTICS_FILE"):
+    os.environ["TRAFFIC_ANALYTICS_FILE"] = os.environ["VISITOR_ANALYTICS_FILE"]
+
+from lib.analytics_tracker import tracker  # noqa: E402
+
+# Read-time cosmetic filter for the demo dashboard only — the tracker already
+# refuses these at write time; this keeps ledgers written by older builds
+# rendering cleanly.
+_ASSET_MARKERS = (".css", ".js", ".png", ".jpg", ".ico", "_dash", "_reload-hash")
 
 
 def load_analytics():
-    if not ANALYTICS_FILE.exists():
+    """The ledger, as the /admin demo dashboard and the site tests read it.
+
+    Flushes the tracker's write buffer first so the numbers include the
+    current minute — the same rule the satellite reporter applies before
+    building a rollup.
+    """
+    tracker.flush()
+    path = tracker.data_file
+    if not path.exists():
         return {
             "visits": [],
             "stats": {k: 0 for k in ("desktop", "mobile", "tablet", "bot", "total")},
         }
 
-    with open(ANALYTICS_FILE, "r") as f:
+    with open(path, "r") as f:
         data = json.load(f)
 
     clean_visits = [
@@ -397,66 +428,25 @@ def load_analytics():
     return {"visits": clean_visits, "stats": stats}
 
 
-def save_analytics(data):
-    with open(ANALYTICS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+@app.server.before_request
+def _before_request():
+    """Record one hit per request on the standard tracker (Flask-specific).
 
-
-def detect_device_type(user_agent: str) -> str:
-    ua = user_agent.lower()
-    if is_any_bot(user_agent):
-        return "bot"
-    if any(m in ua for m in ("mobile", "android", "iphone", "ipod")):
-        return "mobile"
-    if any(m in ua for m in ("tablet", "ipad")):
-        return "tablet"
-    return "desktop"
-
-
-def track_visit():
-    """Append one visit record to visitor_analytics.json. Flask-specific."""
+    Headers are passed so the tracker can read the REAL client IP and
+    country from the proxy/CDN — behind Render or Cloudflare, remote_addr
+    is the proxy, and every visitor would collapse into one address.
+    """
     from flask import request
 
     try:
-        path = request.path
-        if any(m in path for m in _ASSET_MARKERS) or path in _NON_VISIT_PATHS:
-            return
-
-        user_agent = request.headers.get("User-Agent", "Unknown")
-
-        # The network's internal-traffic contract: hub sweeps, smoke batteries
-        # and sibling satellites identify themselves with this token, and the
-        # drop happens AT WRITE TIME — before bot classification — so internal
-        # probes never reach the ledger under any category.
-        if INTERNAL_UA_TOKEN in user_agent:
-            return
-
-        device_type = detect_device_type(user_agent)
-
-        analytics = load_analytics()
-        analytics["visits"].append(
-            {
-                "timestamp": datetime.now().isoformat(),
-                "path": path,
-                "device_type": device_type,
-                "bot_type": get_bot_type(user_agent) if device_type == "bot" else None,
-                "user_agent": user_agent[:200],
-            }
+        tracker.track_visit(
+            request.path,
+            request.headers.get("User-Agent", ""),
+            request.remote_addr,
+            headers=dict(request.headers),
         )
-        analytics["stats"][device_type] += 1
-        analytics["stats"]["total"] += 1
-
-        if len(analytics["visits"]) > 1000:
-            analytics["visits"] = analytics["visits"][-1000:]
-
-        save_analytics(analytics)
-    except Exception as exc:
-        print(f"visitor tracking error: {exc}")
-
-
-@app.server.before_request
-def _before_request():
-    track_visit()
+    except Exception:
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -638,6 +628,19 @@ app.layout = dmc.MantineProvider(
         style={"fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"},
     )
 )
+
+
+# -----------------------------------------------------------------------------
+# Network analytics — hourly signed rollup POSTed to 2plot.ai so the hub's
+# owner-only /traffic dashboard (and its 402 board) can chart this app
+# alongside the network. Contract: 2plotai/docs/network/satellite-analytics.md.
+# No-op unless CROSS_APP_WEBHOOK_SECRET is set — locally the "disabled" line
+# it prints is correct behavior, not a failure.
+# -----------------------------------------------------------------------------
+
+from lib.satellite_reporter import start_reporter  # noqa: E402
+
+start_reporter()
 
 
 if __name__ == "__main__":

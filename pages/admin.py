@@ -23,7 +23,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import json
-from pathlib import Path
 from collections import Counter
 
 _DESCRIPTION = (
@@ -53,14 +52,20 @@ register_page_metadata(
 # Hide this page from crawlers, sitemaps, and MCP resource registration.
 mark_hidden("/admin")
 
-# Path to analytics data
-ANALYTICS_FILE = Path(__file__).parent.parent / "visitor_analytics.json"
+# The ledger is the network-standard tracker's file (TRAFFIC_ANALYTICS_FILE
+# env, else the repo root). The old hardcoded repo-root path silently read a
+# DIFFERENT file from the one being written whenever the env pointed the
+# tracker at mounted storage — an empty dashboard on exactly the deployments
+# that persist their data.
+from lib.analytics_tracker import tracker as _tracker
 
 
 def load_analytics():
-    """Load analytics data from JSON file."""
-    if ANALYTICS_FILE.exists():
-        with open(ANALYTICS_FILE, "r") as f:
+    """Load analytics data from the tracker's ledger (buffered hits included)."""
+    _tracker.flush()
+    ledger = _tracker.data_file
+    if ledger.exists():
+        with open(ledger, "r") as f:
             data = json.load(f)
 
             # Clean up any _reload-hash or internal Dash paths from existing data

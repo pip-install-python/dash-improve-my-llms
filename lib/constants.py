@@ -96,3 +96,45 @@ def internal_ua(caller: str = "") -> str:
     so the far side can apply the same write-time drop rule.
     """
     return f"{INTERNAL_UA} {caller}" if caller else INTERNAL_UA
+
+
+def require_owned_base_url(base_url: str = BASE_URL) -> None:
+    """Fail fast in production when BASE_URL isn't this app's real origin.
+
+    Ported from the boilerplate's lib/constants.py (the network standard).
+    Only enforced when a hosting platform is detected (Render sets ``RENDER``;
+    ``APP_ENV=production`` works anywhere else), so local development and the
+    test suite are unaffected.
+
+    Two failures are caught:
+
+    1. **APP_BASE_URL unset in production.** Unlike a fork of the
+       boilerplate, this repo's default IS the production origin — but an
+       explicit env var is still required on a platform, so a second
+       deployment of this repo (a preview, a staging copy) cannot silently
+       publish canonicals claiming to be llms.2plot.dev.
+    2. **A platform-generated hostname.** ``*.onrender.com`` still resolves
+       after the custom domain is attached, so canonicals pointing there
+       split link equity across two hostnames for as long as nobody notices.
+    """
+    in_production = bool(os.environ.get("RENDER") or os.environ.get("APP_ENV") == "production")
+    if not in_production:
+        return
+
+    if not os.environ.get("APP_BASE_URL"):
+        raise RuntimeError(
+            "APP_BASE_URL is not set. This app would serve "
+            f"<link rel='canonical' href='{DEFAULT_BASE_URL}'> on every page, "
+            "claiming to be the production llms.2plot.dev. Set APP_BASE_URL "
+            "to this deployment's real origin (https://llms.2plot.dev for "
+            "the flagship; the preview's own domain for anything else)."
+        )
+
+    for platform_host in ("onrender.com", "herokuapp.com", "railway.app", "fly.dev"):
+        if platform_host in base_url:
+            raise RuntimeError(
+                f"APP_BASE_URL={base_url!r} is a platform-generated hostname. "
+                "Canonical tags, sitemap.xml and llms.txt would all point at it "
+                "instead of the custom domain, splitting link equity across two "
+                "hosts. Set APP_BASE_URL to the public domain."
+            )
