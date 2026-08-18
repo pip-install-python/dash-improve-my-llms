@@ -106,3 +106,18 @@ services:
         value: public
       - key: LLMS_FULL_TIER
         value: public
+
+      # ----------------------------------------------------------------
+      # /admin access
+      # ----------------------------------------------------------------
+
+      # The /admin dashboard reads the visitor ledger, which on this disk is
+      # real and persistent. mark_hidden("/admin") only DELISTS the page —
+      # robots.txt even publishes the path — so the layout is gated on this
+      # token (lib/admin_gate.py). Dashboard-set, like the webhook secret.
+      # Unset means locked: the page renders an "authentication required"
+      # placeholder and never opens the ledger. Present it once as
+      # https://llms.2plot.dev/admin?token=<value>; a derived cookie keeps
+      # the browser unlocked for 12 hours.
+      - key: ADMIN_DASH_TOKEN
+        sync: false

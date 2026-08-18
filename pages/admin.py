@@ -10,6 +10,12 @@ Because this page calls mark_hidden("/admin"), the package:
 - Returns 404 for any crawler request that lands on /admin.
 - Skips /admin when registering MCP resources on Dash 4.3+.
 
+What mark_hidden() does NOT do is control access: every item above is
+about who is TOLD the page exists. Since this host joined the x402
+dataset the ledger is real and persistent, so the dashboard sits behind
+a fail-closed token gate as well (lib/admin_gate.py) — delisting and
+authentication are two different jobs.
+
 Everything else here — Plotly charts, device-type breakdowns, bot-type
 tracking — is plain example-app code. The analytics file is populated
 by the visitor tracker in the project's app.py.
@@ -58,6 +64,7 @@ mark_hidden("/admin")
 # tracker at mounted storage — an empty dashboard on exactly the deployments
 # that persist their data.
 from lib.analytics_tracker import tracker as _tracker
+from lib.admin_gate import is_unlocked
 
 
 def load_analytics():
@@ -141,7 +148,69 @@ def get_top_pages(visits, limit=10):
     return page_counts.most_common(limit)
 
 
-def layout():
+def _locked_layout():
+    """What an unauthenticated visitor gets: a door, and nothing behind it.
+
+    Deliberately built from constants only. No call to load_analytics(), no
+    counts, no charts, no ledger rows — the locked branch must not so much as
+    OPEN the ledger, because a component added later can only render data
+    that a layout put in scope.
+    """
+    return dmc.Container(
+        [
+            dmc.Stack(
+                [
+                    dmc.Title("Admin Dashboard", order=1, c="gray.9"),
+                    dmc.Alert(
+                        children=dmc.Text(
+                            "Authentication required. This dashboard reads the site's "
+                            "visitor ledger and is not public.",
+                            size="sm",
+                        ),
+                        title="🔒 Locked",
+                        color="gray",
+                        variant="light",
+                        radius="md",
+                    ),
+                    dmc.Text(
+                        [
+                            "The page is also delisted by ",
+                            dmc.Code("mark_hidden()"),
+                            " — absent from sitemap.xml, disallowed in robots.txt, and "
+                            "404 for crawlers. Delisting is not access control, which is "
+                            "why this gate exists as well.",
+                        ],
+                        size="sm",
+                        c="dimmed",
+                    ),
+                ],
+                gap="lg",
+            )
+        ],
+        size="sm",
+        py="xl",
+    )
+
+
+def layout(**kwargs):
+    """The page's only render path — therefore where the gate belongs.
+
+    Dash calls this with the query string as keyword arguments, on the direct
+    load AND on every client-side navigation (both arrive as the pages-router
+    POST to /_dash-update-component, which is why a path-based
+    ``before_request`` hook would not see them). ``**kwargs`` also keeps an
+    unrelated query parameter from raising TypeError here — before the gate,
+    any ``?anything=`` on /admin was a 500.
+
+    Fails closed: unset ADMIN_DASH_TOKEN, wrong token, or no token at all
+    all land on the locked placeholder.
+    """
+    if not is_unlocked(**kwargs):
+        return _locked_layout()
+    return _dashboard_layout()
+
+
+def _dashboard_layout():
     analytics = load_analytics()
     visits = analytics["visits"]
     stats = analytics["stats"]
@@ -731,7 +800,13 @@ def create_top_pages_chart(top_pages):
 
 
 def create_bot_visits_table(bot_visits):
-    """Create a table showing recent bot visits."""
+    """Create a table showing recent bot visits.
+
+    PII FLOOR — ledger fields stay out of the DOM. The tracker records
+    ``ip_address`` and ``location`` for the hourly satellite rollup; neither
+    is ever rendered, here or on any other page, gate or no gate. Columns are
+    timestamp / bot type / path / user agent, and that list is the ceiling.
+    """
     if not bot_visits:
         return dmc.Text("No bot visits recorded yet.", c="dimmed", fs="italic")
 
