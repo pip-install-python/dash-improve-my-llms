@@ -23,6 +23,7 @@ Remember the OTHER half of identity: assets/favicon/site.webmanifest's
 name/short_name/description are per-app text — this script deliberately
 does not touch them.
 """
+
 from __future__ import annotations
 
 import sys
