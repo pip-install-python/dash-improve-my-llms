@@ -1008,6 +1008,9 @@ def build_sitemap_xml(
                 "path": path,
                 "name": meta.get("name") or entry.get("name", "Page"),
                 "description": meta.get("description", ""),
+                # register_page_metadata(lastmod="YYYY-MM-DD") — omitted from
+                # the XML entirely when the app never said. Truth or silence.
+                "lastmod": str(meta.get("lastmod") or ""),
                 "hidden": False,
             }
         )

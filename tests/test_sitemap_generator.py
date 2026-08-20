@@ -36,7 +36,10 @@ def test_sitemap_entry_to_xml():
     assert "<loc>https://example.com/test</loc>" in xml
     assert "<changefreq>weekly</changefreq>" in xml
     assert "<priority>0.7</priority>" in xml
-    assert "<lastmod>" in xml  # Should have automatic lastmod
+    # No lastmod given -> no lastmod tag. The old behaviour invented "today",
+    # which meant every URL claimed to change every day — a lie that teaches
+    # Google to ignore the one field that gets a changed page recrawled.
+    assert "<lastmod>" not in xml
 
 
 def test_sitemap_entry_minimal():
@@ -45,7 +48,7 @@ def test_sitemap_entry_minimal():
     xml = entry.to_xml()
 
     assert "<loc>https://example.com/minimal</loc>" in xml
-    assert "<lastmod>" in xml
+    assert "<lastmod>" not in xml  # truth or silence, never invented
     # Default values should be used
     assert "<changefreq>weekly</changefreq>" in xml
     assert "<priority>0.5</priority>" in xml
@@ -301,10 +304,31 @@ def test_sitemap_entry_none_values():
     entry = SitemapEntry(loc="https://example.com/test", changefreq=None, priority=None)
     xml = entry.to_xml()
 
-    # Should still have loc and lastmod
+    # Should still have loc; lastmod stays absent when never given
     assert "<loc>https://example.com/test</loc>" in xml
-    assert "<lastmod>" in xml
+    assert "<lastmod>" not in xml
 
     # None values should not appear in the XML
     assert "<changefreq>" not in xml
     assert "<priority>" not in xml
+
+
+def test_lastmod_is_emitted_only_when_truthfully_known():
+    """A declared date appears verbatim; an undeclared one is OMITTED, not
+    invented. Google and Bing both say lastmod is used only when it is
+    consistently accurate — a sitemap that stamps today on every URL every
+    day is discarded wholesale, taking the honest entries with it."""
+    xml = generate_sitemap_xml(
+        pages=[
+            {"path": "/", "name": "Home", "lastmod": "2026-08-01"},
+            {"path": "/docs", "name": "Docs", "lastmod": ""},
+        ],
+        base_url="https://example.com",
+    )
+    assert "<lastmod>2026-08-01</lastmod>" in xml
+    assert xml.count("<lastmod>") == 1
+
+
+def test_blank_lastmod_is_treated_as_absent():
+    entry = SitemapEntry(loc="https://example.com/x", lastmod="   ")
+    assert "<lastmod>" not in entry.to_xml()

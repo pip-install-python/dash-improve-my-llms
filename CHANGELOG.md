@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — proposed 2.6.0
+
+### Added — the favicon finds itself
+
+Measured across the 25 repos depending on this package in August 2026: four
+called `configure_seo()`, twenty-one did not — and **all twenty-one had a
+perfectly good favicon in `assets/`**. The package is why it went missing (it
+serves crawlers a generated head instead of the app's own), and an opt-in fix
+to a silent problem demonstrably does not reach a fleet. So the package now
+carries the identity forward itself:
+
+- `discover_icons(app)` reads the app's own assets folder: `favicon/`,
+  `favicons/`, `favicon_io/`, `icons/`, `img/`, then the root — first
+  directory with icons wins, so a curated set beats a stale loose copy (the
+  duplicate-`rel="icon"` defect). Glob matching finds real-world names like
+  `favicon_areachart.ico` that an exact-name list missed. `rel`/`sizes`/
+  `type` inferred from the filename; hrefs via `app.get_asset_url()` so
+  path prefixes are honoured; `.ico` first, biggest square next.
+- `autoconfigure_icons(app)` runs inside `add_llms_routes` and adopts the
+  discovered set **only when no icons were declared**. Explicit
+  `configure_seo(icons=[...])` always wins; explicit `icons=[]` opts out.
+  It **warns** when it finds nothing — silence is what let a blank identity
+  run for months across a whole network.
+- The `icon-` glob is digit-anchored (`icon-[0-9]*.png`): `assets/icons/`
+  holds UI sprites too, and `icon-arrow.png` must never become the site's
+  search-result icon. `favicon*.svg` is matched — two real fleet apps ship
+  ONLY an SVG favicon, and Google parses them.
+- A discovered set survives a later `configure_seo()` call that configures
+  unrelated fields; only an explicit `icons=` argument replaces it.
+  (Explicitly declared config keeps the pre-2.6 wholesale-assignment
+  semantics.)
+
+### Added — JSON-LD `publisher.logo`
+
+Google's Organization guidance wants a logo, and a publisher without one
+forfeits the branded result. New `configure_seo(logo=...)`, falling back to
+the largest declared/discovered raster icon ≥112×112 (Google's floor; `.ico`
+excluded — not a supported logo format). Emitted absolute or not at all.
+
+### Fixed — the sitemap stops lying about `lastmod`
+
+Every `<lastmod>` was invented as "today", every day, for every URL. Google
+and Bing both state they use `lastmod` only when it is consistently truthful;
+a sitemap of daily-changing lies is discarded wholesale, taking the honest
+entries with it. Now: `register_page_metadata(lastmod="YYYY-MM-DD")` is
+emitted verbatim, and an unset one **omits the tag** — truth or silence.
+`SitemapEntry(lastmod=None)` likewise no longer stamps the current date.
+
 ## [2.5.1] - 2026-08-14
 
 ### Fixed — the prerender stops fighting the application's own head

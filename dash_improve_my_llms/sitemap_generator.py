@@ -5,7 +5,6 @@ This module provides functionality to automatically generate sitemaps
 from Dash page registry with intelligent priority and frequency inference.
 """
 
-from datetime import datetime
 from typing import Dict, List, Optional
 
 
@@ -24,12 +23,18 @@ class SitemapEntry:
 
         Args:
             loc: Full URL of the page
-            lastmod: Last modification date (YYYY-MM-DD)
+            lastmod: Last modification date (YYYY-MM-DD), or None to omit
+                the tag. Omission is deliberate default behaviour: this
+                field used to be invented as "today", which meant every URL
+                claimed to change every day. Google and Bing both say they
+                use lastmod only when it is consistently truthful — a
+                sitemap of daily-changing lies teaches them to ignore the
+                one field that can actually get a changed page recrawled.
             changefreq: How frequently the page changes
             priority: Priority relative to other pages (0.0-1.0)
         """
         self.loc = loc
-        self.lastmod = lastmod or datetime.now().strftime("%Y-%m-%d")
+        self.lastmod = (lastmod or "").strip() or None
         self.changefreq = changefreq
         self.priority = priority
 
@@ -43,8 +48,11 @@ class SitemapEntry:
         xml = [
             "  <url>",
             f"    <loc>{self.loc}</loc>",
-            f"    <lastmod>{self.lastmod}</lastmod>",
         ]
+
+        # Only when truthfully known — see __init__.
+        if self.lastmod is not None:
+            xml.append(f"    <lastmod>{self.lastmod}</lastmod>")
 
         # Only add changefreq if it's set and not None
         if self.changefreq is not None:
@@ -168,6 +176,7 @@ def generate_sitemap_xml(
 
         entry = SitemapEntry(
             loc=f"{base_url}{path}",
+            lastmod=page.get("lastmod"),
             priority=infer_page_priority(path, page),
             changefreq=infer_change_frequency(path, page),
         )

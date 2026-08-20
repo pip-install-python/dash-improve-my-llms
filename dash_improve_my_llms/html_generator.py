@@ -15,7 +15,7 @@ import json
 from typing import Any, Dict, List
 
 from .markdown_renderer import markdown_to_text, render_markdown
-from .seo import get_seo, icon_link_tags
+from .seo import get_seo, icon_link_tags, publisher_logo
 
 # Kept as the historical name for this module's renderer. The implementation
 # moved to markdown_renderer.py when it grew link, fence, image and table
@@ -231,10 +231,18 @@ def generate_static_page_html(
         },
     }
     if seo.publisher:
-        structured_data["publisher"] = {
+        publisher_obj: Dict[str, Any] = {
             "@type": "Organization",
             "name": seo.publisher,
         }
+        # Google's Organization guidance wants a logo, and a publisher
+        # without one forfeits the branded result. The URL must be absolute
+        # to be crawlable — publisher_logo() returns "" rather than emit a
+        # relative one.
+        _logo = publisher_logo(base_url)
+        if _logo:
+            publisher_obj["logo"] = {"@type": "ImageObject", "url": _logo}
+        structured_data["publisher"] = publisher_obj
     if seo.same_as:
         # The other properties that are the same entity — sibling domains,
         # the GitHub repo, the PyPI project. For a family of domains this is

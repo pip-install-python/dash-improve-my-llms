@@ -59,9 +59,14 @@ configure_seo(
 )
 ```
 
-Call it once, anywhere before `add_llms_routes`. **Entirely opt-in**: an app
-that never calls it emits no icon, image or card tags — upgrading cannot invent
-an identity for a site that never declared one.
+Call it once, anywhere before `add_llms_routes`.
+
+**Icons find themselves since 2.6.0.** An app that never calls
+`configure_seo()` no longer loses its favicon: `add_llms_routes` reads the
+app's own assets folder and adopts what it finds (see "Auto-discovery"
+below). Everything else — card, publisher, `same_as` — stays declared-only:
+the package cannot infer a CDN card URL or an organisation's identity graph,
+and does not guess.
 
 ### `icons`
 
@@ -74,6 +79,38 @@ it is what an installable app needs. Note it is a preference, not a
 requirement — sites shipping only 16/32/180 still resolve a favicon, because
 what actually decides it is whether the crawler can *see* a declaration at all.
 
+### Auto-discovery of icons (2.6.0)
+
+Measured across a 25-app network in August 2026: four apps called
+`configure_seo()`, twenty-one did not — and every one of the twenty-one had a
+perfectly good favicon sitting in `assets/`. The package was the reason it
+went missing (it serves crawlers a generated head instead of the app's own),
+so the package now carries the identity forward instead of asking each app to
+declare it a second time.
+
+When **no icons are declared**, `add_llms_routes(app)`:
+
+- searches `assets/favicon/`, `favicons/`, `favicon_io/`, `icons/`, `img/`,
+  then the assets root — **first directory with icons wins** (a curated
+  `favicon/` set beats a stale loose `favicon.ico`);
+- matches by glob (`favicon*.ico`, `apple-touch-icon*.png`,
+  `android-chrome-*.png`, `icon-[0-9]*.png`, …) so real-world names like
+  `favicon_areachart.ico` are found. The `icon-` pattern is digit-anchored
+  on purpose: `assets/icons/` holds UI sprites too, and `icon-arrow.png`
+  must never become the site's search-result icon;
+- infers `rel`/`sizes`/`type` from filename and extension, emits hrefs via
+  `app.get_asset_url()` so path prefixes are honoured, and orders `.ico`
+  first, then the biggest square;
+- **warns** when it finds nothing — a silent blank identity is exactly the
+  failure this exists to end.
+
+An explicit `configure_seo(icons=[...])` always wins, and an explicit
+`icons=[]` opts out entirely. A discovered set also survives a later
+`configure_seo()` call that configures *other* fields — only an explicit
+`icons=` argument replaces it. `discover_icons(app)` and
+`autoconfigure_icons(app)` are public if you want to inspect or trigger it
+yourself.
+
 ### `social_image`
 
 Host it **off the app**, on a CDN. An app-served card races a cold container at
@@ -83,6 +120,15 @@ declaration is worse than none.
 
 Twitter tags are emitted with `name=`, not `property=`. Declaring them with
 `property=` makes them invisible to Twitter; it is a common, silent mistake.
+
+### `publisher` / `logo`
+
+`publisher` names the organisation in JSON-LD. Since 2.6.0 it also carries a
+`logo` — what Google shows beside the site in branded results. Declare one
+with `configure_seo(logo=...)`, or let the largest declared/discovered raster
+icon of at least **112×112** (Google's floor; `.ico` excluded) stand in. The
+URL must end up absolute to be crawlable, so a root-relative candidate is
+joined onto the app's base URL — and dropped when there is none.
 
 ### `same_as`
 
@@ -102,7 +148,9 @@ that path with the **app shell**, 200 `text/html`, ~100 KB of markup where an
 image belongs. That is a poisoned fallback, not a missing one, and it was true
 of every host measured. The package redirects rather than serving bytes: it has
 no business reading an application's asset folder, and every consumer of these
-paths follows a redirect.
+paths follows a redirect. (Discovery *reads* the assets folder to learn what
+the app ships; it still never serves the bytes — the hrefs it emits are
+Dash's own asset routes.)
 
 With no icons declared the paths answer 404 — a deliberate change from the
 app shell: a crawler that gets 404 correctly concludes "no icon" instead of
@@ -123,6 +171,7 @@ On `register_page_metadata`:
 | `og_image` | This page's card, overriding `social_image`. |
 | `image_url` | Alias for `og_image`, so a page can pass what it already gives `dash.register_page`. |
 | `schema_type` | schema.org `@type`, default `WebPage`. |
+| `lastmod` | `YYYY-MM-DD` for the sitemap. When absent, `<lastmod>` is **omitted** — it used to be invented as "today", and a date that always says today is one search engines learn to ignore (2.6.0). |
 
 ### Titles
 

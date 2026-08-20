@@ -48,7 +48,7 @@ from .access import configure_access, configure_viewer_identity
 from .bulletin import configure_bulletin
 from .network import NetworkConfig, NetworkSite
 from .robots_generator import RobotsConfig
-from .seo import configure_seo
+from .seo import autoconfigure_icons, configure_seo, discover_icons
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +183,11 @@ def register_page_metadata(
             schema_type schema.org ``@type`` (default ``WebPage``). Docs sites
                         want ``TechArticle``; a package's home page wants
                         ``SoftwareApplication``.
+            lastmod     ``YYYY-MM-DD`` for this page's sitemap entry. When
+                        absent the sitemap omits ``<lastmod>`` entirely —
+                        it used to be invented as "today", and a field that
+                        always says today is a field search engines learn
+                        to ignore.
     """
     path = _normalize_path(path)
     entry = _state.page_metadata.setdefault(path, {})
@@ -383,6 +388,12 @@ def add_llms_routes(app: Any, config: Optional[LLMSConfig] = None) -> None:
     if config.llms_tiers:
         _seed_tier_metadata()
 
+    # Identity for the crawler document. This package serves crawlers a
+    # GENERATED head instead of the app's own, so an app that declared its
+    # favicon perfectly well still had it dropped on the way out. Adopt what
+    # the app already ships unless it declared icons explicitly.
+    autoconfigure_icons(app)
+
     backend = _detect_backend(app)
 
     from ._compat import warn_on_known_issues
@@ -540,7 +551,9 @@ __all__: List[str] = [
     "configure_access",
     "configure_viewer_identity",
     # Site-level search identity for the crawler document (see docs/SEO.md)
+    "autoconfigure_icons",
     "configure_seo",
+    "discover_icons",
     # Deprecated shims (kept for one release to not break 1.x users)
     "mark_important",
     "mark_component_hidden",
