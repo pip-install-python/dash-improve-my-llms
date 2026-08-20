@@ -44,6 +44,14 @@ forfeits the branded result. New `configure_seo(logo=...)`, falling back to
 the largest declared/discovered raster icon ≥112×112 (Google's floor; `.ico`
 excluded — not a supported logo format). Emitted absolute or not at all.
 
+### Fixed — the llms.txt viewer banner stops repeating the brand
+
+On every satellite's root `/llms.txt` the page name IS the site name (the
+network rule puts the brand in the home page's registered name), so the
+banner opened with the same string twice — once as the brand chip, once as
+the page line. The page line is now suppressed when it would repeat the
+chip; inner pages keep theirs.
+
 ### Fixed — the sitemap stops lying about `lastmod`
 
 Every `<lastmod>` was invented as "today", every day, for every URL. Google

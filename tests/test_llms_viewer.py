@@ -562,3 +562,23 @@ class TestWordmarkAlignment:
         # testing the number formatting rather than that nothing is cropped.
         assert min_y <= highest - _VPAD + 1
         assert min_y + height >= lowest + _VPAD - 1
+
+
+def test_the_banner_never_repeats_the_brand_as_the_page_line():
+    """On the root /llms.txt the page name IS the site name (the network
+    rule puts the brand in the home page's registered name), and the banner
+    used to open with the same string twice — once as the brand chip, once
+    as the page line. Same name -> one line; a real page name still shows."""
+    from dash_improve_my_llms.llms_viewer import render_llms_viewer
+
+    brand = "pkg — tagline of the site"
+    doubled = render_llms_viewer(
+        markdown_body="# Hi", page_name=brand, app_name=brand, raw_url="/llms.txt"
+    )
+    assert 'class="dv-app"' in doubled, "the brand chip must survive"
+    assert 'class="dv-page"' not in doubled, "the page line repeated the brand chip"
+
+    inner = render_llms_viewer(
+        markdown_body="# Hi", page_name="Analytics", app_name=brand, raw_url="/a/llms.txt"
+    )
+    assert "dv-page" in inner and "Analytics" in inner

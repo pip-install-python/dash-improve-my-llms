@@ -38,8 +38,8 @@ from dash_improve_my_llms import (
     configure_seo,
     configure_bulletin,
     mark_hidden,
-    register_network,
 )
+from lib import network_directory
 from lib.constants import (
     BASE_URL,
     OG_IMAGE_ALT,
@@ -235,8 +235,11 @@ configure_seo(
         {"href": "/assets/favicon/favicon-96x96.png", "sizes": "96x96"},
         {"href": "/assets/favicon/android-chrome-192x192.png", "sizes": "192x192"},
         {"href": "/assets/favicon/android-chrome-512x512.png", "sizes": "512x512"},
-        {"href": "/assets/favicon/apple-touch-icon.png",
-         "rel": "apple-touch-icon", "sizes": "180x180"},
+        {
+            "href": "/assets/favicon/apple-touch-icon.png",
+            "rel": "apple-touch-icon",
+            "sizes": "180x180",
+        },
     ],
     social_image=OG_IMAGE_URL,
     social_image_alt=OG_IMAGE_ALT,
@@ -249,76 +252,15 @@ configure_seo(
     ],
 )
 
-# Declare the cross-host directory. Sitemaps are scoped to one origin, so a
-# network spread across hosts has no crawl graph between them; this is what
-# supplies one. The three tiers stay separate on purpose — see
-# docs/NETWORKS.md and the /networks page.
-register_network(
-    name="The 2plot network",
-    description=(
-        "Open-source Dash component libraries and the applications built on "
-        "them. Every site serves its own /llms.txt in this format."
-    ),
-    # The hub chain is deliberately one hop, not a jump to the root.
-    #
-    #   llms.2plot.dev  ->  2plot.dev  ->  2plot.ai
-    #
-    # This app is a *.2plot.dev subdomain, so its network index is 2plot.dev
-    # (the package/subdomain index). 2plot.dev in turn names 2plot.ai as its
-    # own hub_url, which is the network root. Each llms.txt therefore has
-    # exactly one unambiguous "up" link, and an agent walks the chain instead
-    # of having to guess which of two indexes is authoritative.
-    hub_url="https://2plot.dev",
-    # Drawn in the llms.txt viewer banner: "2" + morse("plot") + ".ai", which
-    # renders 2.--. .-.. --- -.ai as a graphic. Supplied as data because the
-    # package itself ships no branding.
-    wordmark={
-        "morse": "plot",
-        "prefix": "2",
-        # No period glyph: the morse block already separates the two halves,
-        # and a floating dot between them reads as a fifth morse symbol. The
-        # accessible label below keeps the real domain for screen readers and
-        # for the SVG <title>.
-        "suffix": "ai",
-        "label": "2plot.ai",
-    },
-    peers=[
-        {
-            "name": "2plot.ai",
-            "url": "https://2plot.ai",
-            "description": "Network root: account origin and the heartbeat.",
-        },
-        {
-            "name": "2plot.dev",
-            "url": "https://2plot.dev",
-            "description": "Index of every open-source component in the network.",
-        },
-        {
-            "name": "Documentation boilerplate",
-            "url": "https://boilerplate.2plot.dev",
-            "description": "The markdown-driven docs template these sites use.",
-        },
-    ],
-    affiliated=[
-        {
-            "name": "Pip Install Python",
-            "url": "https://pip-install-python.com",
-            "description": "Open-source Dash components, on its own domain.",
-        },
-    ],
-    external=[
-        {
-            "name": "Dash Mantine Components",
-            "url": "https://www.dash-mantine-components.com",
-            "description": "The UI component layer this demo app is built with.",
-        },
-        {
-            "name": "Plotly Dash documentation",
-            "url": "https://dash.plotly.com",
-            "description": "Upstream framework documentation.",
-        },
-    ],
-)
+# Declare the cross-host directory — the canonical definition, copied
+# verbatim from the boilerplate's lib/network_directory.py (the fleet syncs
+# FROM that copy). This replaced a hand-rolled register_network() call that
+# had drifted to a 3-peer list while the network grew to twelve: exactly the
+# disagreement the one-definition rule exists to kill. Sitemaps are scoped
+# to one origin, so a network spread across hosts has no crawl graph between
+# them; this is what supplies one. The hub chain stays one hop
+# (llms.2plot.dev -> 2plot.dev -> 2plot.ai) — HUB_URL in the module.
+network_directory.apply(BASE_URL)
 
 # Opt in to the network bulletin: the tips and announcements panel in the
 # llms.txt viewer header, published once by the hub and rendered by every

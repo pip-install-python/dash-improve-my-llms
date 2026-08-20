@@ -115,7 +115,13 @@ def _render_banner(
     network_llms_url: str,
     wordmark_spec: Any = None,
 ) -> str:
-    """The full-width terminal-style header block."""
+    """The full-width terminal-style header block.
+
+    The page line is suppressed when it would repeat the brand chip: the
+    root /llms.txt's page name IS the site name on every satellite (the
+    network rule puts the brand in the home page's registered name), so
+    without the guard the banner opened with the same string twice.
+    """
     info = (bulletin or {}).get("network") or {}
 
     name = info.get("name") or network_name or app_name
@@ -156,7 +162,7 @@ def _render_banner(
       {wordmark}
       <div class="dv-identity-meta">
         <div class="dv-app">{_esc(app_name)}<span class="dv-cursor"></span></div>
-        <div class="dv-page">{_esc(page_name)}</div>
+        {f'<div class="dv-page">{_esc(page_name)}</div>' if page_name and page_name != app_name else ""}
         {f'<div class="dv-tagline">{_esc(tagline)}</div>' if tagline else ""}
         {signed_in}
         {f'<div class="dv-links">{links_html}</div>' if links_html else ""}
