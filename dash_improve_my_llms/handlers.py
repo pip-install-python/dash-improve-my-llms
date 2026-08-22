@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from . import access
+from . import geo
 from ._paths import normalize_path as _normalize_page_path
 from .bot_detection import get_bot_type, is_any_bot
 from .markdown_renderer import strip_directive_lines
@@ -1076,6 +1077,7 @@ def handle_bot_request(
     app: Any,
     page_metadata: Dict[str, Dict[str, Any]],
     hidden_paths: set,
+    headers: Optional[Mapping[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Decide whether to short-circuit a request.
@@ -1090,6 +1092,16 @@ def handle_bot_request(
                 "headers": dict,
             }
     """
+    # The geo guardrail runs before EVERYTHING — the asset short-circuit
+    # below (which would wave through /assets/* and the
+    # /_dash-update-component POSTs that carry client-side navigation)
+    # and the is_any_bot gate (which would exempt humans). "451 on all
+    # surfaces" is one enforcement point with nothing to drift; when geo
+    # is unconfigured this is a single None-check.
+    geo_response = geo.gate(path=path, headers=headers)
+    if geo_response is not None:
+        return geo_response
+
     if _is_asset_path(path):
         return None
 

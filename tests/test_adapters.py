@@ -108,11 +108,13 @@ class _Client:
             self._client = TestClient(app.server)
             self._client.__enter__()
 
-    def get(self, path: str, ua: str = BROWSER, accept: str = "*/*"):
-        status, body, _ = self.get_full(path, ua=ua, accept=accept)
+    def get(self, path: str, ua: str = BROWSER, accept: str = "*/*", extra_headers: dict = None):
+        status, body, _ = self.get_full(path, ua=ua, accept=accept, extra_headers=extra_headers)
         return status, body
 
-    def get_full(self, path: str, ua: str = BROWSER, accept: str = "*/*"):
+    def get_full(
+        self, path: str, ua: str = BROWSER, accept: str = "*/*", extra_headers: dict = None
+    ):
         """(status, body, headers) — headers matter for content negotiation.
 
         Redirects are never followed: Starlette's client follows them by
@@ -120,7 +122,7 @@ class _Client:
         on one backend and fail on another for reasons unrelated to the code
         under test.
         """
-        headers = {"User-Agent": ua, "Accept": accept}
+        headers = {"User-Agent": ua, "Accept": accept, **(extra_headers or {})}
 
         if self.backend == "fastapi":
             response = self._client.get(path, headers=headers, follow_redirects=False)
@@ -804,3 +806,76 @@ def test_corpus_can_be_brought_under_the_training_block(backend):
     for path in ("/llms.txt", "/llms-small.txt", "/llms-full.txt"):
         status, _ = client.get(path, ua=GPTBOT)
         assert status == 200, f"{path} returned {status}"
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/G1 — geo across all three backends
+# ---------------------------------------------------------------------------
+
+
+class TestGeoAcrossAdapters:
+    """The 451 must hold on every surface through every backend — the dict
+    return shape means the adapters need zero changes, and this class is
+    the proof."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_geo(self):
+        from dash_improve_my_llms import geo
+
+        geo.reset()
+        yield
+        geo.reset()
+
+    # Every surface class the package touches: page, doc family, policy
+    # files, root icon path, asset, pages-router POST target.
+    SWEEP = (
+        "/",
+        "/about",
+        "/llms.txt",
+        "/llms-small.txt",
+        "/llms-full.txt",
+        "/about/llms.txt",
+        "/robots.txt",
+        "/sitemap.xml",
+        "/favicon.ico",
+        "/assets/style.css",
+    )
+
+    def test_denied_country_gets_451_on_every_surface(self, backend):
+        from dash_improve_my_llms import geo
+
+        app = _build_app(backend)
+        geo.configure_geo(deny_countries=["KP"])
+        client = _Client(app, backend)
+
+        for path in self.SWEEP:
+            status, body, headers = client.get_full(path, extra_headers={"CF-IPCountry": "KP"})
+            assert status == 451, f"{path} returned {status} on {backend}"
+            assert "Unavailable For Legal Reasons" in body, path
+            assert headers.get("cache-control") == "no-store", path
+
+    def test_allowed_country_matches_unconfigured_statuses(self, backend):
+        """The other half of the sweep: an allowed country's statuses are
+        exactly what an unconfigured build serves."""
+        from dash_improve_my_llms import geo
+
+        app = _build_app(backend)
+        client = _Client(app, backend)
+        baseline = {p: client.get_full(p)[0] for p in self.SWEEP}
+
+        geo.configure_geo(deny_countries=["KP"])
+        for path in self.SWEEP:
+            status, _, _ = client.get_full(path, extra_headers={"CF-IPCountry": "US"})
+            assert status == baseline[path], f"{path} drifted on {backend}"
+
+    def test_geo_unset_is_byte_identical(self, backend):
+        """The standing release rule, asserted on bodies, not just
+        statuses: with geo unconfigured, a request carrying a country
+        header serves the same bytes as one without."""
+        app = _build_app(backend)
+        client = _Client(app, backend)
+
+        for path in ("/", "/llms.txt", "/robots.txt", "/sitemap.xml"):
+            _, plain, _ = client.get_full(path)
+            _, with_country = client.get(path, extra_headers={"CF-IPCountry": "KP"})
+            assert plain == with_country, f"{path} varied by country while unconfigured"

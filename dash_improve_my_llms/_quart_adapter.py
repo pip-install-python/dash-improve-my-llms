@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import access
+from ._headers import normalize_headers
 from .handlers import (
     LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
@@ -68,6 +69,7 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
             app=app,
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
+            headers=normalize_headers(request.headers),
         )
         if result is None:
             return None

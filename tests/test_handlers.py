@@ -713,3 +713,128 @@ class TestDirectiveStrippingOnMarkdownSurface:
         assert "Real prose." in body
         # A page documenting the directive keeps its fenced example.
         assert ".. exec::inside.a.fence" in body
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/G1 — geo enforcement ordering inside handle_bot_request
+# ---------------------------------------------------------------------------
+
+
+class TestGeoEnforcement:
+    """The gate's POSITION is the contract: before the asset short-circuit
+    (so /_dash-update-component and assets are covered) and before the bot
+    gate (so humans are covered). Each test pins one ordering."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_geo(self):
+        from dash_improve_my_llms import geo
+
+        geo.reset()
+        yield
+        geo.reset()
+
+    def _deny_ru(self):
+        from dash_improve_my_llms import geo
+
+        geo.configure_geo(deny_countries=["RU"])
+
+    def test_geo_beats_the_asset_short_circuit(self, fake_app, page_metadata_sample):
+        """Assets and the pages-router POST (client-side navigation) are
+        covered — a denied country cannot navigate a cached shell."""
+        self._deny_ru()
+        for path in ("/assets/app.css", "/_dash-update-component", "/_dash-layout"):
+            result = handle_bot_request(
+                path=path,
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+                headers={"cf-ipcountry": "RU"},
+            )
+            assert result is not None and result["status"] == 451, path
+
+    def test_geo_beats_the_bot_gate_humans_are_covered(self, fake_app, page_metadata_sample):
+        """A plain browser UA — which the bot gate would wave through —
+        still gets 451."""
+        self._deny_ru()
+        result = handle_bot_request(
+            path="/",
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Chrome/120.0 Safari/537.36",
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+            headers={"cf-ipcountry": "RU"},
+        )
+        assert result is not None and result["status"] == 451
+
+    def test_geo_beats_the_training_403(self, fake_app, page_metadata_sample):
+        """A denied training bot gets 451, not the 403 training block —
+        the country verdict precedes every policy branch."""
+        fake_app._robots_config = RobotsConfig(block_ai_training=True)
+        self._deny_ru()
+        result = handle_bot_request(
+            path="/",
+            user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+            headers={"cf-ipcountry": "RU"},
+        )
+        assert result["status"] == 451
+
+    def test_doc_routes_are_covered(self, fake_app, page_metadata_sample):
+        """451-on-everything includes the machine surfaces the package
+        otherwise keeps public — the owner-decided exception to the
+        discovery floor."""
+        self._deny_ru()
+        for path in ("/llms.txt", "/llms-full.txt", "/robots.txt", "/sitemap.xml"):
+            result = handle_bot_request(
+                path=path,
+                user_agent="curl/8.0",
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+                headers={"cf-ipcountry": "RU"},
+            )
+            assert result is not None and result["status"] == 451, path
+
+    def test_headers_omitted_is_pre27_behavior(self, fake_app, page_metadata_sample):
+        """Signature back-compat: a third-party caller that never passes
+        headers= gets exactly the old behaviour — even with geo configured
+        (no headers ⇒ unknown ⇒ default fail-open)."""
+        self._deny_ru()
+        result = handle_bot_request(
+            path="/",
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert result is None
+
+    def test_unconfigured_geo_changes_nothing(self, fake_app, page_metadata_sample):
+        """The byte-identical rule at the seam: same verdicts with and
+        without the headers kwarg when geo is unconfigured."""
+        for ua, path in [
+            ("Mozilla/5.0 (compatible; Googlebot/2.1)", "/"),
+            ("Mozilla/5.0 (Macintosh)", "/"),
+            ("Mozilla/5.0 (compatible; GPTBot/1.0)", "/llms.txt"),
+        ]:
+            with_headers = handle_bot_request(
+                path=path,
+                user_agent=ua,
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+                headers={"cf-ipcountry": "RU"},
+            )
+            without = handle_bot_request(
+                path=path,
+                user_agent=ua,
+                app=fake_app,
+                page_metadata=page_metadata_sample,
+                hidden_paths=set(),
+            )
+            assert type(with_headers) is type(without)
+            if isinstance(with_headers, dict):
+                assert with_headers == without

@@ -49,6 +49,7 @@ from .bulletin import configure_bulletin
 from .network import NetworkConfig, NetworkSite
 from .robots_generator import RobotsConfig
 from .seo import autoconfigure_icons, configure_seo, discover_icons
+from .geo import configure_geo
 
 logger = logging.getLogger(__name__)
 
@@ -550,6 +551,8 @@ __all__: List[str] = [
     # Per-request access control and viewer identity (see docs/ACCESS.md)
     "configure_access",
     "configure_viewer_identity",
+    # Country guardrail — opt-in 451 on every surface (see docs/GEO.md)
+    "configure_geo",
     # Site-level search identity for the crawler document (see docs/SEO.md)
     "autoconfigure_icons",
     "configure_seo",
