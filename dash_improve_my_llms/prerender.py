@@ -70,6 +70,10 @@ _HEAD_CLOSE_RE = re.compile(r"</head>", re.IGNORECASE)
 # duplicated content — which would look like keyword stuffing.
 _MARKER = "data-dimll-prerender"
 
+# What "already injected" actually looks like: the body div's opening tag.
+# The probe deliberately targets this, not _MARKER — see inject_prerender.
+_INJECTED_PROBE = '<div id="dimll-prerender"'
+
 
 def _esc(value: Any) -> str:
     return _stdlib_html.escape(str(value or ""), quote=True)
@@ -259,7 +263,16 @@ def inject_prerender(
     Returns the document unchanged if it doesn't look like a Dash index or
     has already been injected, so this is safe to call more than once.
     """
-    if not document or _MARKER in document:
+    # The already-injected probe matches the injected node's OPENING TAG,
+    # never the bare marker string. Through 2.6.x this was
+    # `_MARKER in document`, and the marker's NAME appearing anywhere —
+    # including an innocent index.html COMMENT — silently disabled the
+    # entire universal prerender. Two production hosts shipped exactly
+    # that (fleet finding, 2026-08-22): a comment mentioning
+    # data-dimll-prerender cost them every prerendered page. The rule for
+    # authors stands regardless (never spell the marker in served text),
+    # but the package no longer hands out that footgun.
+    if not document or _INJECTED_PROBE in document:
         return document
 
     match = _ENTRY_POINT_RE.search(document)

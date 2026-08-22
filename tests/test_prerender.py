@@ -210,3 +210,31 @@ class TestPrerenderVisibility:
         text = _visible_text(legacy)
         assert "The Guide" not in text
         assert "Loading..." in text
+
+
+class TestIdempotencyProbe:
+    """2.7.0 hardening: the already-injected check matches the injected
+    node's opening tag, never the bare marker string. The bare-substring
+    version silently disabled the ENTIRE prerender on two production
+    hosts whose index.html merely MENTIONED the marker in a comment."""
+
+    def test_marker_string_in_a_comment_still_gets_injected(self):
+        head = "<!-- our tests strip data-dimll-prerender tagged nodes -->"
+        out = inject_prerender(_document("Test App — a demo", head), _context())
+        assert '<div id="dimll-prerender"' in out, "a comment disabled the prerender"
+        assert "The Guide" in out
+
+    def test_marker_in_visible_prose_still_gets_injected(self):
+        """Same rule for a docs page ABOUT the package that names the
+        attribute in its own body text."""
+        doc = _document("Test App — a demo").replace(
+            "Loading...", "Loading... data-dimll-prerender is our marker"
+        )
+        out = inject_prerender(doc, _context())
+        assert '<div id="dimll-prerender"' in out
+
+    def test_an_actually_injected_document_is_not_double_injected(self):
+        once = inject_prerender(_document("Test App — a demo"), _context())
+        twice = inject_prerender(once, _context())
+        assert twice == once
+        assert twice.count('<div id="dimll-prerender"') == 1
