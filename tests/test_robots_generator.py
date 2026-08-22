@@ -312,3 +312,89 @@ def test_robots_txt_combined_config():
     assert "User-agent: SpecialBot" in robots_content
     assert "User-agent: GPTBot" in robots_content
     assert "Sitemap: https://example.com/sitemap.xml" in robots_content
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/W2 — per-vendor policy drives the robots.txt groups
+# ---------------------------------------------------------------------------
+
+
+class TestVendorPolicy:
+    def _render(self, config):
+        return generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+
+    def test_unset_reproduces_the_coarse_flags_byte_for_byte(self):
+        """The byte-identical rule: a config that never heard of W2 (an
+        old object without the attributes) renders the same bytes as the
+        2.7.0 defaults."""
+        from types import SimpleNamespace
+
+        old_shape = SimpleNamespace(
+            block_ai_training=True,
+            allow_ai_search=True,
+            allow_traditional=True,
+            crawl_delay=None,
+            custom_rules=[],
+            disallowed_paths=[],
+        )
+        assert self._render(old_shape) == self._render(RobotsConfig())
+
+    def test_override_moves_a_vendor_to_the_section_its_directive_matches(self):
+        """claudebot -> allow: its group leaves the Disallow block and
+        renders Allow — placement follows the effective directive."""
+        robots = self._render(RobotsConfig(vendor_policy={"claudebot": "allow"}))
+        assert "User-agent: ClaudeBot\nAllow: /" in robots
+        assert "User-agent: ClaudeBot\nDisallow: /" not in robots
+        # the rest of the training block is untouched
+        assert "User-agent: GPTBot\nDisallow: /" in robots
+
+    def test_a_blocked_search_vendor_renders_disallow(self):
+        robots = self._render(RobotsConfig(vendor_policy={"chatgpt-user": "block"}))
+        assert "User-agent: ChatGPT-User\nDisallow: /" in robots
+        assert "User-agent: ChatGPT-User\nAllow: /" not in robots
+        assert "User-agent: Claude-User\nAllow: /" in robots
+
+    def test_meter_renders_allow(self):
+        """A Disallow would kill the funnel metering exists for."""
+        robots = self._render(RobotsConfig(vendor_policy={"gptbot": "meter"}))
+        assert "User-agent: GPTBot\nAllow: /" in robots
+        assert "User-agent: GPTBot\nDisallow: /" not in robots
+
+    def test_callable_vendor_policy_is_read_at_render_time(self):
+        store = {"policy": {}}
+        config = RobotsConfig(vendor_policy=lambda: store["policy"])
+        assert "User-agent: GPTBot\nDisallow: /" in self._render(config)
+        store["policy"] = {"gptbot": "allow"}
+        assert "User-agent: GPTBot\nAllow: /" in self._render(config)
+
+    def test_raising_or_invalid_vendor_policy_falls_back_to_class_defaults(self):
+        def broken():
+            raise OSError("store gone")
+
+        robots = self._render(RobotsConfig(vendor_policy=broken))
+        assert robots == self._render(RobotsConfig())
+
+        robots = self._render(
+            RobotsConfig(vendor_policy={"gptbot": "maybe", "not-a-vendor": "block"})
+        )
+        assert robots == self._render(RobotsConfig())
+
+    def test_allow_ai_search_false_now_blocks_in_robots(self):
+        """Says==does (the W2 construction): the flag used to only delete
+        the Allow section, leaving search bots covered by `User-agent: *`
+        — the knob claimed to disallow and did nothing. Deliberate 2.7.0
+        contract change, same class as the P4 fix."""
+        robots = self._render(RobotsConfig(allow_ai_search=False))
+        assert "User-agent: ChatGPT-User\nDisallow: /" in robots
+        assert "User-agent: Claude-User\nDisallow: /" in robots
+
+    def test_default_unknown_ai_has_no_robots_rendering(self):
+        """robots.txt cannot address unnamed agents; the knob is
+        middleware-only."""
+        assert self._render(RobotsConfig(default_unknown_ai="block")) == self._render(
+            RobotsConfig()
+        )

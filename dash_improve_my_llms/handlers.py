@@ -1119,29 +1119,64 @@ def handle_bot_request(
     bot_type = get_bot_type(user_agent)
     robots_config: Optional[RobotsConfig] = getattr(app, "_robots_config", None)
 
-    if bot_type == "training" and robots_config and robots_config.block_ai_training:
-        # `block_ai_training_docs` is the opt-in, and the seam a future
-        # release's per-vendor `meter` policy slots into: the decision about
-        # who may read the corpus belongs here, not in a hard-coded exemption.
-        # It gates the CORPUS routes only — robots.txt and sitemap.xml stay
+    # W2: the SAME effective-policy fold robots.txt renders from decides
+    # what the middleware does — what the site says and what it does are
+    # one source, by construction. With vendor_policy unset the fold
+    # reproduces the coarse flags, so this block behaves exactly as the
+    # training-only branch it replaced.
+    effective = None
+    explicitly_policied = False
+    if robots_config is not None:
+        from .vendors import effective_policies, get_bot_vendor, vendor_overrides
+
+        vendor_key = get_bot_vendor(user_agent)
+        if vendor_key is not None:
+            effective = effective_policies(robots_config).get(vendor_key)
+            explicitly_policied = vendor_key in vendor_overrides(robots_config)
+        elif bot_type == "traditional":
+            # Generic-pattern bots with no vendor identity — the
+            # unenumerated-AI residue of P2. CLI tools are deliberately
+            # exempt: they are the paste-into-chat lane.
+            posture = getattr(robots_config, "default_unknown_ai", "allow")
+            ua_lower = user_agent.lower()
+            is_cli = any(t in ua_lower for t in ("curl", "wget", "python-requests"))
+            if posture in ("block", "meter") and not is_cli:
+                effective = posture
+
+    if effective == "block":
+        # `block_ai_training_docs` is the opt-in, and the seam the
+        # per-vendor `meter` policy slots into: the decision about who may
+        # read the corpus belongs here, not in a hard-coded exemption. It
+        # gates the CORPUS routes only — robots.txt and sitemap.xml stay
         # readable even by a blocked bot, because they are where the block
-        # itself is announced.
+        # itself is announced. The same carve-out applies to every blocked
+        # vendor, not only the training class: the documents exist to get
+        # the packages used, and an upgrade must not silently 403 them.
         docs_blocked = getattr(robots_config, "block_ai_training_docs", False)
         is_corpus_route = any(path.endswith(suffix) for suffix in _CORPUS_ROUTE_SUFFIXES)
         if not is_doc_route or (docs_blocked and is_corpus_route):
-            body = (
-                "403 Forbidden - AI training bots are not allowed to access this content.\n"
-                "This site blocks AI training bots to prevent unauthorized use of content "
-                "for model training.\n"
-                f"Bot detected: {user_agent[:100]}\n"
-                "For more information, see /robots.txt"
-            )
+            if bot_type == "training":
+                body = (
+                    "403 Forbidden - AI training bots are not allowed to access this content.\n"
+                    "This site blocks AI training bots to prevent unauthorized use of content "
+                    "for model training.\n"
+                    f"Bot detected: {user_agent[:100]}\n"
+                    "For more information, see /robots.txt"
+                )
+            else:
+                body = (
+                    "403 Forbidden - This crawler is not permitted to access this content.\n"
+                    f"Bot detected: {user_agent[:100]}\n"
+                    "For more information, see /robots.txt"
+                )
             return {
                 "status": 403,
                 "body": body,
                 "content_type": "text/plain",
                 "headers": {},
             }
+    # effective == "meter": fetchable under the rate contract. Enforced by
+    # the limiter once W4 lands; until then it behaves as allow.
 
     # A documentation route that survived policy is served by its own handler,
     # which runs the access verdict itself. Never fall through to the page
@@ -1149,7 +1184,13 @@ def handle_bot_request(
     if is_doc_route:
         return None
 
-    if bot_type in ("search", "traditional"):
+    # An EXPLICIT vendor_policy allow/meter serves the crawler branch —
+    # that is what "allow" means for a crawler. A vendor merely
+    # not-blocked by the coarse flags keeps its historical fall-through
+    # to the app (byte-identity for flag-only configs).
+    if bot_type in ("search", "traditional") or (
+        explicitly_policied and effective in ("allow", "meter")
+    ):
         page_path = _normalize_page_path(path)
 
         verdict = access.resolve(page_path, hidden_paths)

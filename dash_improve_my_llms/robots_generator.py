@@ -5,7 +5,7 @@ This module provides functionality to generate robots.txt files with
 fine-grained control over different types of bots (training, search, traditional).
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 class RobotsConfig:
@@ -20,6 +20,8 @@ class RobotsConfig:
         custom_rules: Optional[List[str]] = None,
         disallowed_paths: Optional[List[str]] = None,
         block_ai_training_docs: bool = False,
+        vendor_policy: Optional[Any] = None,
+        default_unknown_ai: str = "allow",
     ):
         """
         Initialize robots.txt configuration.
@@ -43,6 +45,27 @@ class RobotsConfig:
                 block is announced, and a bot that receives 403 for it
                 treats the site as having no rules at all (RFC 9309) — the
                 opposite of what blocking is for.
+            vendor_policy: Per-vendor overrides — a dict mapping a registry
+                vendor key (see ``vendors.VENDORS``) to ``allow`` | ``block``
+                | ``meter``, OR a zero-argument callable returning one (the
+                reloadable-settings convention: a writable control board
+                wires a persisted store through it and an edit takes effect
+                on the next request). The SAME map drives the robots.txt
+                groups and the middleware, so what the site says and what it
+                does are one source. ``meter`` renders as Allow in
+                robots.txt (a Disallow would kill the funnel metering
+                exists for) and is enforced by the rate limiter once W4
+                lands; until then it behaves as allow. Unset reproduces the
+                coarse flags exactly.
+            default_unknown_ai: Middleware-only posture for bots that match
+                only the GENERIC patterns (``bot``/``crawler``/``spider``/
+                ``scraper``) with no registry vendor identity — the
+                unenumerated-AI residue of defect P2. ``allow`` (default,
+                the historical behaviour) | ``block`` | ``meter``. CLI
+                tools (curl, wget, python-requests) are deliberately NOT
+                covered: they are the paste-into-chat lane. robots.txt
+                cannot address unnamed agents, so this knob has no robots
+                rendering.
         """
         self.block_ai_training = block_ai_training
         self.allow_ai_search = allow_ai_search
@@ -51,21 +74,21 @@ class RobotsConfig:
         self.custom_rules = custom_rules or []
         self.disallowed_paths = disallowed_paths or []
         self.block_ai_training_docs = block_ai_training_docs
+        self.vendor_policy = vendor_policy
+        self.default_unknown_ai = default_unknown_ai
 
 
-def _vendor_groups(cls: str, directive: str) -> list:
-    """User-agent groups for every registry vendor of one class.
+def _vendor_groups(vendors: list, directive: str) -> list:
+    """User-agent groups for the given vendors, one group per robots token.
 
-    One group per robots token, in registry order — which deliberately
-    keeps the pre-2.7.0 vendors first so existing hosts' robots.txt keeps
-    its familiar shape with 2.7.0's additions appended, never interleaved.
-    A vendor with no robots tokens (anthropic-legacy) emits nothing; that
-    absence is a hard-won rule and is regression-tested.
+    Registry order is preserved by the callers — pre-2.7.0 vendors first,
+    so existing hosts' robots.txt keeps its familiar shape with 2.7.0's
+    additions appended, never interleaved. A vendor with no robots tokens
+    (anthropic-legacy) emits nothing; that absence is a hard-won rule and
+    is regression-tested.
     """
-    from .vendors import vendors_of_class
-
     lines = []
-    for vendor in vendors_of_class(cls):
+    for vendor in vendors:
         for token in vendor.robots_tokens:
             lines.extend([f"User-agent: {token}", f"{directive}: /", ""])
     return lines
@@ -116,7 +139,24 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
     # blocking the deprecated names blocks the paste-into-Claude audience
     # while blocking no training — their registry record has no robots
     # tokens.
-    if config.block_ai_training:
+    # Placement follows the EFFECTIVE directive (W2): a vendor overridden
+    # by vendor_policy sits in the section whose directive matches it —
+    # the directives are the contract, the section headers are for
+    # humans. With vendor_policy unset, membership equals class
+    # membership and the output reproduces 2.6.x exactly.
+    from .vendors import VENDORS, effective_policies
+
+    policies = effective_policies(config)
+    blocked = [v for v in VENDORS if policies[v.key] == "block" and v.cls != "traditional"]
+    allowed_ai = [
+        v for v in VENDORS if v.cls == "search" and policies[v.key] in ("allow", "meter")
+    ] + [
+        v
+        for v in VENDORS
+        if v.cls == "training" and policies[v.key] in ("allow", "meter") and config.vendor_policy
+    ]
+
+    if blocked:
         lines.extend(
             [
                 "# ==========================================",
@@ -128,10 +168,14 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "",
             ]
         )
-        lines.extend(_vendor_groups("training", "Disallow"))
+        lines.extend(_vendor_groups(blocked, "Disallow"))
 
-    # Allow AI search/citation bots if configured
-    if config.allow_ai_search:
+    # Allow AI search/citation bots. Claude-User fetches when a person
+    # asks Claude to read a URL; Claude-SearchBot indexes for citation.
+    # The named-human fetchers are the audience llms.txt exists for —
+    # never in the training block. A training vendor overridden to
+    # allow/meter joins this section (its effective directive is Allow).
+    if allowed_ai:
         lines.extend(
             [
                 "# ==========================================",
@@ -142,11 +186,7 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "",
             ]
         )
-        # Claude-User fetches when a person asks Claude to read a URL;
-        # Claude-SearchBot indexes for citation. The named-human fetchers
-        # are the audience llms.txt exists for — never in the training
-        # block. Groups render from the registry's search class.
-        lines.extend(_vendor_groups("search", "Allow"))
+        lines.extend(_vendor_groups(allowed_ai, "Allow"))
 
     # Traditional search bots. With the default True the block stays
     # comments-only — the engines ride `User-agent: *` exactly as they
@@ -175,7 +215,12 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "",
             ]
         )
-        lines.extend(_vendor_groups("traditional", "Disallow"))
+        lines.extend(
+            _vendor_groups(
+                [v for v in VENDORS if v.cls == "traditional" and policies[v.key] == "block"],
+                "Disallow",
+            )
+        )
 
     # Add custom rules
     if config.custom_rules:

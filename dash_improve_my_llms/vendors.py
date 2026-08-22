@@ -390,6 +390,102 @@ def get_bot_vendor(user_agent: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# W2 — effective per-vendor policy. ONE fold both consumers call:
+# robots_generator renders groups from it, handle_bot_request enforces
+# from it, so what the site says and what it does are one source.
+# ---------------------------------------------------------------------------
+
+POLICY_ALLOW = "allow"
+POLICY_BLOCK = "block"
+POLICY_METER = "meter"
+
+_POLICIES = (POLICY_ALLOW, POLICY_BLOCK, POLICY_METER)
+
+# Warn-once registry for policy-map failures: a broken callable or a bad
+# entry logs once per process, never once per crawler per request.
+_policy_warned: set = set()
+
+
+def _warn_once(message: str) -> None:
+    if message not in _policy_warned:
+        _policy_warned.add(message)
+        import logging
+
+        logging.getLogger(__name__).warning("dash-improve-my-llms vendors: %s", message)
+
+
+def _overrides(robots_config) -> Dict[str, str]:
+    """The vendor_policy map, resolved and validated.
+
+    Accepts a dict OR a zero-arg callable returning one (the same
+    reloadable-settings convention as configure_geo's deny_countries — a
+    writable control board wires a persisted store through it, and an
+    edit takes effect on the next request). Failures degrade the safe
+    way: a raising callable or an invalid entry is logged once and
+    ignored, falling back to the class defaults.
+    """
+    raw = getattr(robots_config, "vendor_policy", None)
+    if raw is None:
+        return {}
+    if callable(raw):
+        try:
+            raw = raw()
+        except Exception:
+            _warn_once("vendor_policy callable raised; using class defaults (fail-open)")
+            return {}
+    if not isinstance(raw, dict):
+        _warn_once(f"vendor_policy must be a dict, got {type(raw).__name__}; ignored")
+        return {}
+    out: Dict[str, str] = {}
+    for key, value in raw.items():
+        policy = str(value).strip().lower()
+        if key not in _BY_KEY:
+            _warn_once(f"vendor_policy names unknown vendor {key!r}; entry ignored")
+        elif policy not in _POLICIES:
+            _warn_once(f"vendor_policy[{key!r}] = {value!r} is not one of {_POLICIES}; ignored")
+        else:
+            out[key] = policy
+    return out
+
+
+def vendor_overrides(robots_config) -> Dict[str, str]:
+    """The explicit vendor_policy entries, resolved and validated.
+
+    Public because the middleware needs to know which vendors were
+    EXPLICITLY configured: an override to allow/meter serves the crawler
+    branch, while a vendor that is merely not-blocked by the coarse flags
+    keeps its historical fall-through to the app (the byte-identical
+    rule protects flag-only configs)."""
+    return _overrides(robots_config)
+
+
+def effective_policies(robots_config) -> Dict[str, str]:
+    """vendor key → ``allow`` | ``block`` | ``meter`` for every vendor.
+
+    Class defaults come from the coarse flags (all read via getattr, so a
+    pre-2.7.0 config object is safe): training → ``block_ai_training``,
+    search → ``allow_ai_search``, traditional → ``allow_traditional``.
+    ``vendor_policy`` entries override per vendor. With no overrides the
+    result reproduces the coarse flags exactly — the byte-identical rule.
+
+    ``meter`` means "fetchable under the rate contract": robots.txt
+    renders it as Allow (a Disallow would kill the funnel the meter
+    exists for), and the middleware treats it as allow until W4's
+    limiter slots into the seam.
+    """
+    block_training = getattr(robots_config, "block_ai_training", True)
+    allow_search = getattr(robots_config, "allow_ai_search", True)
+    allow_traditional = getattr(robots_config, "allow_traditional", True)
+    defaults = {
+        TRAINING: POLICY_BLOCK if block_training else POLICY_ALLOW,
+        SEARCH: POLICY_ALLOW if allow_search else POLICY_BLOCK,
+        TRADITIONAL: POLICY_ALLOW if allow_traditional else POLICY_BLOCK,
+    }
+    overrides = _overrides(robots_config)
+    return {v.key: overrides.get(v.key, defaults[v.cls]) for v in VENDORS}
+
+
 def ua_tokens_of_class(cls: str) -> List[str]:
     """All UA tokens of one class — the back-compat list material."""
     out: List[str] = []

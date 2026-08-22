@@ -838,3 +838,76 @@ class TestGeoEnforcement:
             assert type(with_headers) is type(without)
             if isinstance(with_headers, dict):
                 assert with_headers == without
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/W2 — the middleware enforces the same fold robots.txt renders
+# ---------------------------------------------------------------------------
+
+
+class TestVendorPolicyEnforcement:
+    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)"
+
+    def _request(self, fake_app, page_metadata_sample, ua, path="/"):
+        return handle_bot_request(
+            path=path,
+            user_agent=ua,
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+
+    def test_an_allowed_training_vendor_gets_crawler_html(self, fake_app, page_metadata_sample):
+        fake_app._robots_config = RobotsConfig(vendor_policy={"claudebot": "allow"})
+        result = self._request(
+            fake_app, page_metadata_sample, "Mozilla/5.0 (compatible; ClaudeBot/1.0)"
+        )
+        assert result is not None and result["status"] == 200
+        assert result["content_type"] == "text/html"
+
+    def test_a_blocked_search_vendor_gets_403_on_pages_but_docs_survive(
+        self, fake_app, page_metadata_sample
+    ):
+        """The doc carve-out applies to EVERY blocked vendor, not only the
+        training class: the documents exist to get the packages used."""
+        fake_app._robots_config = RobotsConfig(vendor_policy={"chatgpt-user": "block"})
+        ua = "Mozilla/5.0 compatible; ChatGPT-User/1.0"
+        assert self._request(fake_app, page_metadata_sample, ua)["status"] == 403
+        assert self._request(fake_app, page_metadata_sample, ua, path="/llms.txt") is None
+        assert self._request(fake_app, page_metadata_sample, ua, path="/robots.txt") is None
+
+    def test_meter_behaves_as_allow_until_w4(self, fake_app, page_metadata_sample):
+        fake_app._robots_config = RobotsConfig(vendor_policy={"gptbot": "meter"})
+        result = self._request(
+            fake_app, page_metadata_sample, "Mozilla/5.0 (compatible; GPTBot/1.0)"
+        )
+        assert result is not None and result["status"] == 200
+
+    def test_callable_policy_is_read_per_request(self, fake_app, page_metadata_sample):
+        store = {"policy": {}}
+        fake_app._robots_config = RobotsConfig(vendor_policy=lambda: store["policy"])
+        ua = "Mozilla/5.0 (compatible; GPTBot/1.0)"
+        assert self._request(fake_app, page_metadata_sample, ua)["status"] == 403
+        store["policy"] = {"gptbot": "allow"}
+        assert self._request(fake_app, page_metadata_sample, ua)["status"] == 200
+
+    def test_default_unknown_ai_blocks_generic_bots_but_never_cli(
+        self, fake_app, page_metadata_sample
+    ):
+        fake_app._robots_config = RobotsConfig(default_unknown_ai="block")
+        blocked = self._request(fake_app, page_metadata_sample, "SomeRandomCrawler/1.0")
+        assert blocked is not None and blocked["status"] == 403
+        # CLI tools are the paste-into-chat lane — deliberately exempt.
+        curl = self._request(fake_app, page_metadata_sample, "curl/8.0")
+        assert curl is None or curl["status"] == 200
+        # a browser is untouched
+        assert self._request(fake_app, page_metadata_sample, self.BROWSER) is None
+
+    def test_allow_ai_search_false_now_403s_search_vendors(self, fake_app, page_metadata_sample):
+        """Says==does: robots renders Disallow for them (see the robots
+        suite), so the middleware must refuse them too."""
+        fake_app._robots_config = RobotsConfig(allow_ai_search=False)
+        result = self._request(
+            fake_app, page_metadata_sample, "Mozilla/5.0 compatible; ChatGPT-User/1.0"
+        )
+        assert result is not None and result["status"] == 403
