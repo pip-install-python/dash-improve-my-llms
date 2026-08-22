@@ -39,11 +39,18 @@ def test_detects_gptbot():
 
 
 def test_detects_claudebot():
-    """Test detection of Anthropic ClaudeBot."""
+    """ClaudeBot is Anthropic's TRAINING crawler — the 2.7.0 P1 fix.
+
+    Through 2.6.x this classified as 'search' while robots.txt disallowed
+    ClaudeBot in the training block: the site told it to go away and then
+    served it 200 HTML. robots.txt was the published promise, so the
+    classification moved to match it. The named-human fetchers
+    (Claude-User, Claude-SearchBot) are the search class — see below.
+    """
     ua = "Mozilla/5.0 (compatible; ClaudeBot/1.0)"
-    assert is_ai_search_bot(ua) is True
+    assert is_ai_training_bot(ua) is True
     assert is_any_bot(ua) is True
-    assert get_bot_type(ua) == "search"
+    assert get_bot_type(ua) == "training"
 
 
 def test_detects_googlebot():
@@ -120,7 +127,8 @@ def test_get_all_bot_lists():
     assert isinstance(bot_lists["traditional"], list)
 
     assert "gptbot" in bot_lists["training"]
-    assert "claudebot" in bot_lists["search"]
+    assert "claudebot" in bot_lists["training"]  # the 2.7.0 P1 fix
+    assert "claude-user" in bot_lists["search"]  # the 2.7.0 P3 fix
     assert "googlebot" in bot_lists["traditional"]
 
 
@@ -143,3 +151,103 @@ def test_empty_user_agent():
     ua = ""
     assert is_any_bot(ua) is False
     assert get_bot_type(ua) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0 — the vendor registry (W1)
+# ---------------------------------------------------------------------------
+
+from dash_improve_my_llms.vendors import (  # noqa: E402
+    VENDORS,
+    get_bot_vendor,
+    get_vendor,
+    vendors_of_class,
+)
+
+
+def test_registry_agreement_kills_p1_permanently():
+    """For every vendor, robots.txt's directive and get_bot_type()'s
+    classification must agree — the construction W1 exists for. This test
+    is what makes the ClaudeBot disagreement (P1) unrepresentable."""
+    from dash_improve_my_llms.robots_generator import RobotsConfig, generate_robots_txt
+
+    robots = generate_robots_txt(
+        config=RobotsConfig(block_ai_training=True, allow_ai_search=True),
+        sitemap_url="https://example.com/sitemap.xml",
+        base_url="https://example.com",
+    )
+    for vendor in VENDORS:
+        if not vendor.robots_tokens:
+            continue  # anthropic-legacy: deliberately never named
+        expected = {"training": "Disallow", "search": "Allow"}.get(vendor.cls)
+        if expected is None:
+            continue  # traditional rides `User-agent: *` when allowed
+        for token in vendor.robots_tokens:
+            block = f"User-agent: {token}\n{expected}: /"
+            assert block in robots, f"{vendor.key}: robots.txt disagrees with class {vendor.cls}"
+        ua = f"Mozilla/5.0 (compatible; {vendor.robots_tokens[0]}/1.0)"
+        assert get_bot_type(ua) == vendor.cls, f"{vendor.key}: classification disagrees"
+
+
+def test_new_ai_vendors_no_longer_fall_through_to_traditional():
+    """The P2 fix: these all used to match the generic `bot` token and
+    land in `traditional` — the branch that gets full static HTML."""
+    for ua, expected in [
+        ("Mozilla/5.0 (compatible; Amazonbot/0.1)", "training"),
+        ("Applebot-Extended/1.0", "training"),
+        ("meta-externalagent/1.1", "training"),
+        ("AI2Bot/1.0 (+https://allenai.org)", "training"),
+        ("Diffbot/4.0", "training"),
+        ("Timpibot/1.0", "training"),
+        ("ImagesiftBot/1.0", "training"),
+    ]:
+        assert get_bot_type(ua) == expected, ua
+
+
+def test_named_human_fetchers_classify_search():
+    """The P3 fix: these had NO tokens at all while robots.txt allowed
+    them — the two layers disagreed in both directions."""
+    for ua in ("Claude-User/1.0", "Claude-SearchBot/1.0", "Perplexity-User/1.0"):
+        assert is_ai_search_bot(ua) is True, ua
+        assert get_bot_type(ua) == "search", ua
+
+
+def test_get_bot_vendor_is_the_identity_primitive():
+    assert get_bot_vendor("Mozilla/5.0 (compatible; ClaudeBot/1.0)") == "claudebot"
+    assert get_bot_vendor("Claude-User/1.0") == "claude-user"
+    assert get_bot_vendor("Mozilla/5.0 (compatible; Googlebot/2.1)") == "googlebot"
+    assert get_bot_vendor("some-random-crawler/1.0") is None  # generic, no identity
+    assert get_bot_vendor("") is None
+    assert get_vendor("claudebot").cls == "training"
+
+
+def test_plain_applebot_is_not_the_extended_vendor():
+    """Applebot (search) must not match the Applebot-Extended (training)
+    record; it rides the generic fallback as before."""
+    assert get_bot_vendor("Mozilla/5.0 (compatible; Applebot/0.1)") is None
+    assert get_bot_type("Mozilla/5.0 (compatible; Applebot/0.1)") == "traditional"
+
+
+def test_legacy_anthropic_aliases_classify_but_never_reach_robots():
+    """UA classification only — their registry record has no robots
+    tokens, preserving the hard-won paste-into-Claude rule."""
+    assert get_bot_type("Anthropic-AI (https://www.anthropic.com)") == "training"
+    assert get_bot_type("Claude-Web/1.0") == "training"
+    legacy = get_vendor("anthropic-legacy")
+    assert legacy.robots_tokens == ()
+
+
+def test_registry_order_keeps_pre27_vendors_first():
+    """robots.txt byte-stability: existing hosts' groups keep their
+    familiar order, with 2.7.0 additions appended after."""
+    training = [v.key for v in vendors_of_class("training")]
+    assert training[:8] == [
+        "gptbot",
+        "claudebot",
+        "ccbot",
+        "google-extended",
+        "facebookbot",
+        "omgili",
+        "bytespider",
+        "anthropic-legacy",
+    ]

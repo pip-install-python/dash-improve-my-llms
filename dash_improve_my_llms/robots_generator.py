@@ -53,6 +53,24 @@ class RobotsConfig:
         self.block_ai_training_docs = block_ai_training_docs
 
 
+def _vendor_groups(cls: str, directive: str) -> list:
+    """User-agent groups for every registry vendor of one class.
+
+    One group per robots token, in registry order — which deliberately
+    keeps the pre-2.7.0 vendors first so existing hosts' robots.txt keeps
+    its familiar shape with 2.7.0's additions appended, never interleaved.
+    A vendor with no robots tokens (anthropic-legacy) emits nothing; that
+    absence is a hard-won rule and is regression-tested.
+    """
+    from .vendors import vendors_of_class
+
+    lines = []
+    for vendor in vendors_of_class(cls):
+        for token in vendor.robots_tokens:
+            lines.extend([f"User-agent: {token}", f"{directive}: /", ""])
+    return lines
+
+
 def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -> str:
     """
     Generate robots.txt content based on configuration.
@@ -74,20 +92,30 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
         "# Default policy - allow all standard crawlers",
         "User-agent: *",
         "Allow: /",
-        "",
     ]
 
-    # Add disallowed paths for all bots
+    # Disallowed paths and crawl delay belong INSIDE the `User-agent: *`
+    # group — through 2.6.x they were emitted after the blank line that
+    # closes it, leaving them orphaned from any group in strict RFC 9309
+    # parsers (defect P5). The group now closes after its last directive.
     if config.disallowed_paths:
         for path in config.disallowed_paths:
             lines.append(f"Disallow: {path}")
-        lines.append("")
 
-    # Add crawl delay if specified
     if config.crawl_delay:
-        lines.extend([f"Crawl-delay: {config.crawl_delay}", ""])
+        lines.append(f"Crawl-delay: {config.crawl_delay}")
 
-    # Block AI training bots if configured
+    lines.append("")
+
+    # Block AI training bots if configured. Groups render from the vendor
+    # registry (vendors.py) — the SAME source get_bot_type() classifies
+    # from, so what this file says and what the middleware does cannot
+    # drift (the construction that killed defects P1/P2/P3). The legacy
+    # aliases (anthropic-ai, Claude-Web) are deliberately NOT emitted:
+    # claude.ai's user-initiated fetcher honours a disallow on them, so
+    # blocking the deprecated names blocks the paste-into-Claude audience
+    # while blocking no training — their registry record has no robots
+    # tokens.
     if config.block_ai_training:
         lines.extend(
             [
@@ -98,37 +126,9 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "# Blocking them prevents your content from being",
                 "# used in training datasets without permission.",
                 "",
-                "User-agent: GPTBot",
-                "Disallow: /",
-                "",
-                # ClaudeBot is Anthropic's training crawler. The legacy
-                # aliases (anthropic-ai, Claude-Web) are deliberately NOT
-                # listed: claude.ai's user-initiated fetcher honours a
-                # disallow on them, so blocking the deprecated names blocks
-                # the paste-into-Claude audience while blocking no training.
-                "User-agent: ClaudeBot",
-                "Disallow: /",
-                "",
-                "User-agent: CCBot",
-                "Disallow: /",
-                "",
-                "User-agent: Google-Extended",
-                "Disallow: /",
-                "",
-                "User-agent: FacebookBot",
-                "Disallow: /",
-                "",
-                "User-agent: Omgilibot",
-                "Disallow: /",
-                "",
-                "User-agent: Omgili",
-                "Disallow: /",
-                "",
-                "User-agent: ByteSpider",
-                "Disallow: /",
-                "",
             ]
         )
+        lines.extend(_vendor_groups("training", "Disallow"))
 
     # Allow AI search/citation bots if configured
     if config.allow_ai_search:
@@ -140,28 +140,19 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "# These bots help users find your content through",
                 "# AI-powered search engines and assistants.",
                 "",
-                "User-agent: ChatGPT-User",
-                "Allow: /",
-                "",
-                # Claude-User fetches when a person asks Claude to read a
-                # URL; Claude-SearchBot indexes for citation. Both are the
-                # audience llms.txt exists for — never in the training block.
-                "User-agent: Claude-User",
-                "Allow: /",
-                "",
-                "User-agent: Claude-SearchBot",
-                "Allow: /",
-                "",
-                "User-agent: PerplexityBot",
-                "Allow: /",
-                "",
-                "User-agent: OAI-SearchBot",
-                "Allow: /",
-                "",
             ]
         )
+        # Claude-User fetches when a person asks Claude to read a URL;
+        # Claude-SearchBot indexes for citation. The named-human fetchers
+        # are the audience llms.txt exists for — never in the training
+        # block. Groups render from the registry's search class.
+        lines.extend(_vendor_groups("search", "Allow"))
 
-    # Allow traditional search bots (usually always allowed)
+    # Traditional search bots. With the default True the block stays
+    # comments-only — the engines ride `User-agent: *` exactly as they
+    # always have. With False the registry's traditional vendors get real
+    # Disallow groups: through 2.6.x the knob only deleted a comment and
+    # did nothing (defect P4).
     if config.allow_traditional:
         lines.extend(
             [
@@ -175,6 +166,16 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "",
             ]
         )
+    else:
+        lines.extend(
+            [
+                "# ==========================================",
+                "# Traditional Search Engines — blocked",
+                "# ==========================================",
+                "",
+            ]
+        )
+        lines.extend(_vendor_groups("traditional", "Disallow"))
 
     # Add custom rules
     if config.custom_rules:
