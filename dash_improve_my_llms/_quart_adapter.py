@@ -114,6 +114,7 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
             hidden_paths=state.hidden_pages,
             state=state,
             include_nav=getattr(config, "llms_nav", True),
+            user_agent=request.headers.get("User-Agent", ""),
         )
 
         if status == 200 and getattr(config, "llms_viewer", True):

@@ -987,3 +987,95 @@ class TestPolicyBlock:
         body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
         assert "/llms-full.txt" not in body
         assert "one bulk fetch" in body
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/W4 — the rate contract, enforced
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimit:
+    GPT = "Mozilla/5.0 (compatible; GPTBot/1.0)"
+    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)"
+
+    @pytest.fixture(autouse=True)
+    def _clean_limiter(self):
+        from dash_improve_my_llms import _rate_limit
+
+        _rate_limit.reset()
+        yield
+        _rate_limit.reset()
+
+    def _fetch(self, fake_app, page_metadata_sample, ua=GPT, path="/llms.txt", ip="1.2.3.4"):
+        return handle_bot_request(
+            path=path,
+            user_agent=ua,
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+            headers={"x-forwarded-for": ip},
+        )
+
+    def _arm(self, fake_app, ceiling=2):
+        from dash_improve_my_llms import LLMSConfig
+
+        fake_app._llms_config = LLMSConfig(rate_limit_per_minute=ceiling)
+
+    def test_over_ceiling_bot_gets_429_with_retry_after(self, fake_app, page_metadata_sample):
+        self._arm(fake_app, ceiling=2)
+        assert self._fetch(fake_app, page_metadata_sample) is None
+        assert self._fetch(fake_app, page_metadata_sample) is None
+        third = self._fetch(fake_app, page_metadata_sample)
+        assert third is not None and third["status"] == 429
+        assert int(third["headers"]["Retry-After"]) >= 1
+        assert third["headers"]["Cache-Control"] == "no-store"
+        assert "Access policy" in third["body"]
+
+    def test_policy_routes_are_never_limited(self, fake_app, page_metadata_sample):
+        """robots.txt is where the rules are announced; RFC 9309 reads an
+        unreadable robots.txt as no-rules-at-all."""
+        self._arm(fake_app, ceiling=1)
+        for _ in range(5):
+            assert self._fetch(fake_app, page_metadata_sample, path="/robots.txt") is None
+            assert self._fetch(fake_app, page_metadata_sample, path="/sitemap.xml") is None
+
+    def test_humans_are_never_limited(self, fake_app, page_metadata_sample):
+        self._arm(fake_app, ceiling=1)
+        for _ in range(5):
+            assert self._fetch(fake_app, page_metadata_sample, ua=self.BROWSER) is None
+
+    def test_buckets_are_per_client_ip(self, fake_app, page_metadata_sample):
+        self._arm(fake_app, ceiling=1)
+        assert self._fetch(fake_app, page_metadata_sample, ip="1.1.1.1") is None
+        assert self._fetch(fake_app, page_metadata_sample, ip="2.2.2.2") is None
+        assert self._fetch(fake_app, page_metadata_sample, ip="1.1.1.1")["status"] == 429
+
+    def test_unset_ceiling_is_byte_identical(self, fake_app, page_metadata_sample):
+        for _ in range(10):
+            assert self._fetch(fake_app, page_metadata_sample) is None
+
+    def test_limiter_errors_fail_open(self, fake_app, page_metadata_sample, monkeypatch):
+        """A limiter bug must never black-hole the corpus."""
+        from dash_improve_my_llms import _rate_limit
+
+        def boom(key, ceiling):
+            raise RuntimeError("limiter broke")
+
+        monkeypatch.setattr(_rate_limit, "check", boom)
+        self._arm(fake_app, ceiling=1)
+        for _ in range(3):
+            assert self._fetch(fake_app, page_metadata_sample) is None
+
+    def test_builders_accept_the_threaded_ua_harmlessly(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        """W4's other half: the UA parameter exists on every corpus builder
+        and changes nothing until W5 consumes it."""
+        plain = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        with_ua = build_llms_index(
+            fake_app, page_metadata_sample, hidden_paths=set(), user_agent=self.GPT
+        )
+        assert plain == with_ua
+        assert build_llms_small(
+            fake_app, page_metadata_sample, hidden_paths=set(), user_agent=self.GPT
+        ) == build_llms_small(fake_app, page_metadata_sample, hidden_paths=set())

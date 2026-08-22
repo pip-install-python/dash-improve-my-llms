@@ -387,6 +387,7 @@ def build_llms_index(
     page_metadata: Dict[str, Dict[str, Any]],
     hidden_paths: set,
     state: Any = None,
+    user_agent: str = "",
 ) -> str:
     """
     Build the root /llms.txt — the app's index, in llmstxt.org format.
@@ -583,6 +584,7 @@ def build_llms_small(
     page_metadata: Dict[str, Dict[str, Any]],
     hidden_paths: set,
     state: Any = None,
+    user_agent: str = "",
 ) -> str:
     """
     Build /llms-small.txt — the compact briefing.
@@ -699,6 +701,7 @@ def build_llms_full(
     hidden_paths: set,
     state: Any = None,
     max_bytes: int = 4_000_000,
+    user_agent: str = "",
 ) -> str:
     """
     Build /llms-full.txt — every page's prose in one document.
@@ -883,6 +886,7 @@ def build_llms_txt_for_page(
     hidden_paths: set,
     state: Any = None,
     include_nav: bool = True,
+    user_agent: str = "",
 ) -> Optional[Tuple[str, int]]:
     """
     Build the body of /llms.txt for one page.
@@ -890,6 +894,11 @@ def build_llms_txt_for_page(
     The root path returns the app index (see build_llms_index); every other
     path returns that page's prose, prefixed with a navigation block so the
     document isn't a dead end (see build_page_nav_block).
+
+    ``user_agent`` (W4): threaded from the adapters so W5's metering and
+    per-vendor DOCUMENT policy can differentiate readers. Unused until
+    then — passing it changes nothing, which is the point of landing the
+    threading before the consumers.
 
     Returns (body, status) — 200 on success, 200 with the gate document when
     the application gates this requester, 404 if the path is denied or
@@ -1294,6 +1303,43 @@ def handle_bot_request(
             }
     # effective == "meter": fetchable under the rate contract. Enforced by
     # the limiter once W4 lands; until then it behaves as allow.
+
+    # W4 — the rate contract, enforced. Bot traffic against the CORPUS
+    # routes only (policy routes are where the rules are announced and are
+    # never limited; humans are never limited — the stampede is an agent
+    # failure mode), keyed on the client IP the edge headers carry. FAIL
+    # OPEN on absolutely anything: a limiter bug must never black-hole the
+    # corpus — the one place the package's fail-closed instinct is wrong.
+    llms_config = getattr(app, "_llms_config", None)
+    ceiling = getattr(llms_config, "rate_limit_per_minute", None)
+    if ceiling and is_doc_route:
+        is_corpus = any(path.endswith(suffix) for suffix in _CORPUS_ROUTE_SUFFIXES)
+        if is_corpus:
+            try:
+                from . import _rate_limit
+                from ._headers import client_ip
+
+                key = client_ip(headers) or f"ua:{user_agent[:64]}"
+                retry_after = _rate_limit.check(key, int(ceiling))
+            except Exception:
+                retry_after = None  # fail open
+            if retry_after is not None:
+                return {
+                    "status": 429,
+                    "body": (
+                        "429 Too Many Requests - anonymous bulk fetching is "
+                        "rate-limited.\n"
+                        "Prefer ONE /llms-full.txt fetch over N per-page "
+                        "fetches, honour Retry-After, and back off "
+                        "exponentially. See the Access policy section of "
+                        "/llms.txt.\n"
+                    ),
+                    "content_type": "text/plain",
+                    "headers": {
+                        "Retry-After": str(retry_after),
+                        "Cache-Control": "no-store",
+                    },
+                }
 
     # A documentation route that survived policy is served by its own handler,
     # which runs the access verdict itself. Never fall through to the page

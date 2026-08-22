@@ -89,6 +89,7 @@ class LLMSConfig:
         llms_viewer: bool = True,
         llms_tiers: bool = True,
         llms_full_max_bytes: int = 4_000_000,
+        rate_limit_per_minute: Optional[int] = None,
     ) -> None:
         """
         Args:
@@ -118,6 +119,16 @@ class LLMSConfig:
             llms_full_max_bytes: Byte budget for /llms-full.txt. Pages past
                 the cap are listed as links under "Not included (size cap)"
                 instead of inlined. Compression is left to the proxy.
+            rate_limit_per_minute: W4's anonymous-bulk ceiling. When set,
+                bot traffic against the CORPUS routes (never /robots.txt
+                or /sitemap.xml, never humans) is limited per client IP
+                per worker; over-ceiling requests receive 429 with
+                Retry-After — the machine-readable half of the conduct
+                contract the documents publish. The limiter FAILS OPEN on
+                any error: refusing to serve documents is worse than
+                serving too many. None (default) disables it entirely —
+                byte-identical behaviour. NOTE: per-process, so gunicorn's
+                N workers give an effective ceiling of N x this value.
         """
         self.enabled = enabled
         self.warn_missing_llms_doc = warn_missing_llms_doc
@@ -127,6 +138,7 @@ class LLMSConfig:
         self.llms_viewer = llms_viewer
         self.llms_tiers = llms_tiers
         self.llms_full_max_bytes = llms_full_max_bytes
+        self.rate_limit_per_minute = rate_limit_per_minute
 
 
 # ---------------------------------------------------------------------------
