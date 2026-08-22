@@ -90,6 +90,7 @@ class LLMSConfig:
         llms_tiers: bool = True,
         llms_full_max_bytes: int = 4_000_000,
         rate_limit_per_minute: Optional[int] = None,
+        metering: bool = False,
     ) -> None:
         """
         Args:
@@ -129,6 +130,13 @@ class LLMSConfig:
                 serving too many. None (default) disables it entirely —
                 byte-identical behaviour. NOTE: per-process, so gunicorn's
                 N workers give an effective ceiling of N x this value.
+            metering: W5's 402 lane — WIRED, SHIPPED OFF. False (default)
+                degrades a "priced" access verdict to gated, so a check
+                returning it can neither publish prose nor charge; True
+                lets it serve the offer document at 402 with the
+                app-provided payment headers. Turning this on is gated on
+                the crawl-data decision and the x402 prototype — one host,
+                testnet — not on this release.
         """
         self.enabled = enabled
         self.warn_missing_llms_doc = warn_missing_llms_doc
@@ -139,6 +147,7 @@ class LLMSConfig:
         self.llms_tiers = llms_tiers
         self.llms_full_max_bytes = llms_full_max_bytes
         self.rate_limit_per_minute = rate_limit_per_minute
+        self.metering = metering
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +415,13 @@ def add_llms_routes(app: Any, config: Optional[LLMSConfig] = None) -> None:
     # favicon perfectly well still had it dropped on the way out. Adopt what
     # the app already ships unless it declared icons explicitly.
     autoconfigure_icons(app)
+
+    # W5: the 402 lane's master switch — access.resolve honours a "priced"
+    # verdict only when the app opted in; the default keeps it degrading
+    # to gated exactly as every release before it.
+    from . import access as _access
+
+    _access.set_metering(getattr(config, "metering", False))
 
     backend = _detect_backend(app)
 

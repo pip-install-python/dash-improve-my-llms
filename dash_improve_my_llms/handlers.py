@@ -761,7 +761,10 @@ def build_llms_full(
         doc_path = "/llms.txt" if path == "/" else f"{path}/llms.txt"
         doc_url = f"{base_url}{doc_path}" if base_url else doc_path
 
-        if page["verdict"] == access.GATED:
+        if page["verdict"] == access.PRICED:
+            offer = access.offer_document(path, page_metadata, state)
+            content = (offer or access.gate_document(path, page_metadata, state)).strip()
+        elif page["verdict"] == access.GATED:
             content = access.gate_document(path, page_metadata, state).strip()
         else:
             prose = _resolve_llms_doc(path, page_metadata, page["entry"])
@@ -815,6 +818,17 @@ def build_llms_tier_doc(
 
     if verdict == access.DENY:
         return ("Document not available", 404)
+
+    if verdict == access.PRICED:
+        # W5, live only with LLMSConfig(metering=True): the offer document
+        # at 402. Part 4's failure rule is centralized in offer_document —
+        # None means "something in the payment path failed", and the
+        # degradation is ALWAYS to gated: never allow (a billing bug must
+        # not publish), never a broken 402 (a billing bug must not charge).
+        offer = access.offer_document(tier_path, page_metadata, state)
+        if offer is not None:
+            return (offer, 402)
+        return (access.gate_document(tier_path, page_metadata, state), 200)
 
     if verdict == access.GATED:
         return (access.gate_document(tier_path, page_metadata, state), 200)
@@ -914,6 +928,14 @@ def build_llms_txt_for_page(
     # A gated page still gets its nav block: the point of serving 200 rather
     # than 404 is that the reader learns what this is and where to get access,
     # and the links are half of that.
+    if verdict == access.PRICED and page_path != "/":
+        offer = access.offer_document(page_path, page_metadata, state)
+        if offer is not None:
+            if include_nav:
+                offer = insert_nav_block(offer, build_page_nav_block(app, page_path, state))
+            return (offer, 402)
+        verdict = access.GATED  # payment path failed — degrade, never publish
+
     if verdict == access.GATED and page_path != "/":
         doc = access.gate_document(page_path, page_metadata, state)
         if include_nav:
@@ -1369,6 +1391,22 @@ def handle_bot_request(
         # here while gating the same content elsewhere would be cloaking, and
         # would make the gate pointless besides — the index would hold the
         # very text the gate withholds.
+        if verdict == access.PRICED:
+            # Part 4's crawler column: the payment doc, no prose. Served at
+            # 200 like the gate doc — the anti-cloaking rule (a crawler
+            # sees what an anonymous human sees) applies to the offer too;
+            # the 402 status belongs to the DOCUMENT routes. noindex rides
+            # along: an offer must not compete with the page in search.
+            offer = access.offer_document(page_path, page_metadata, None)
+            if offer is not None:
+                return {
+                    "status": 200,
+                    "body": offer,
+                    "content_type": "text/markdown; charset=utf-8",
+                    "headers": {"X-Robots-Tag": "noindex"},
+                }
+            verdict = access.GATED  # payment path failed — degrade
+
         if verdict == access.GATED:
             return {
                 "status": 200,
@@ -1522,6 +1560,13 @@ def apply_prerender(
     )
     if context is None:
         return document
+
+    if verdict == access.PRICED:
+        offer = access.offer_document(page_path, page_metadata, state)
+        if offer is not None:
+            context["page_metadata"] = {**context["page_metadata"], "llms_doc": offer}
+        else:
+            verdict = access.GATED  # payment path failed — degrade
 
     if verdict == access.GATED:
         # Swap the prose for the gate document but keep injecting. The head

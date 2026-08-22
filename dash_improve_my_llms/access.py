@@ -40,9 +40,12 @@ logger = logging.getLogger(__name__)
 ALLOW = "allow"
 GATED = "gated"
 DENY = "deny"
-# PRICED = "priced" is reserved for a future release — the HTTP-402 seam in
-# handlers.build_llms_tier_doc. Deliberately NOT in _VERDICTS yet: a check
-# returning it today degrades to GATED instead of publishing the prose.
+# The 402 seam (W5, 2.7.0) — WIRED, SHIPPED OFF. A check may return
+# "priced", but the verdict only takes effect when the application opts in
+# with LLMSConfig(metering=True); with metering off (the default) it
+# degrades to GATED exactly as it did when the constant was only a
+# comment — a check returning it can neither publish prose nor charge.
+PRICED = "priced"
 
 _VERDICTS = (ALLOW, GATED, DENY)
 
@@ -54,6 +57,28 @@ class _AccessConfig:
         self.check: Optional[Callable[[str], str]] = None
         self.gate_doc: Optional[Callable[[str], str]] = None
         self.link_suffix: Optional[Callable[[], str]] = None
+        # W5: the 402 body and the machine-payable headers. Both optional;
+        # both application-owned (the package never computes a price and
+        # never holds a pay-to address — see Part 4 of the access spec).
+        self.offer_doc: Optional[Callable[[str], str]] = None
+        self.payment_headers: Optional[Callable[[str], Dict[str, str]]] = None
+
+
+# Module-level metering switch, set by add_llms_routes from
+# LLMSConfig.metering. Deliberately not on _AccessConfig: configure_access
+# is the app's declaration of POLICY; whether the 402 lane is live is a
+# RELEASE posture that ships dark and flips per-host.
+_metering_enabled = False
+
+
+def set_metering(enabled: bool) -> None:
+    """Called by add_llms_routes; tests may call it directly."""
+    global _metering_enabled
+    _metering_enabled = bool(enabled)
+
+
+def metering_enabled() -> bool:
+    return _metering_enabled
 
 
 _config = _AccessConfig()
@@ -68,6 +93,8 @@ def configure_access(
     *,
     gate_doc: Optional[Callable[[str], str]] = None,
     link_suffix: Optional[Callable[[], str]] = None,
+    offer_doc: Optional[Callable[[str], str]] = None,
+    payment_headers: Optional[Callable[[str], Dict[str, str]]] = None,
 ) -> None:
     """
     Let the application decide, per request, who may read each document.
@@ -85,6 +112,20 @@ def configure_access(
             generates — the navigation block and the root index — so that an
             agent handed an authorised URL can follow the links inside it.
             Never appended to canonical tags, sitemap entries or peer links.
+        offer_doc: ``(path) -> markdown`` for the ``"priced"`` verdict (W5;
+            inert unless the app enables ``LLMSConfig(metering=True)``). The
+            gate-doc shape plus what the document costs and that a free
+            account also unlocks it — and it must carry NO prose from the
+            priced document. Falls back to a built-in offer stub. Any
+            failure in it degrades the verdict to gated: a billing bug can
+            neither publish nor charge.
+        payment_headers: ``(path) -> dict`` of machine-payable headers for
+            the 402 (the x402 fast path). Optional — an agent that has
+            never heard of x402 still gets a working funnel from the
+            Markdown alone, so a failure here degrades to a header-bare
+            402, warned once, never to a different verdict. The package
+            never computes a price and never holds a pay-to address; both
+            are the application's.
 
     Not configuring this leaves every behaviour exactly as it was; only
     ``mark_hidden()`` applies.
@@ -94,6 +135,8 @@ def configure_access(
     _config.check = check
     _config.gate_doc = gate_doc if callable(gate_doc) else None
     _config.link_suffix = link_suffix if callable(link_suffix) else None
+    _config.offer_doc = offer_doc if callable(offer_doc) else None
+    _config.payment_headers = payment_headers if callable(payment_headers) else None
     _warned.clear()
     logger.debug("dash-improve-my-llms: per-request access control configured")
 
@@ -133,6 +176,12 @@ def resolve(path: str, hidden_paths: Optional[Set[str]] = None) -> str:
     if verdict in _VERDICTS:
         return verdict
 
+    if verdict == PRICED:
+        # Wired, shipped off: the priced lane exists only for hosts that
+        # explicitly enabled metering. Off means GATED — a billing bug (or
+        # an early-returning check) can neither publish nor charge.
+        return PRICED if _metering_enabled else GATED
+
     if path not in _warned:
         _warned.add(path)
         logger.warning(
@@ -144,6 +193,77 @@ def resolve(path: str, hidden_paths: Optional[Set[str]] = None) -> str:
             GATED,
         )
     return GATED
+
+
+def offer_document(
+    path: str,
+    page_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    state: Any = None,
+) -> Optional[str]:
+    """The 402 body for a ``priced`` verdict, or None → treat as GATED.
+
+    Centralizes Part 4's failure rule: any exception in the payment path
+    resolves to None, and every caller maps None to the gated behaviour —
+    never to allow (a billing bug must not publish) and never to a bare
+    402 (a billing bug must not charge). The built-in stub carries the
+    gate-doc identity plus the free-account funnel; the price line is the
+    application's ``offer_doc`` to write — the package never computes one.
+    """
+    try:
+        provider = _config.offer_doc
+        if provider is not None:
+            body = provider(path)
+            if body and body.strip():
+                return body
+            return None  # an empty offer is a billing bug — degrade
+
+        meta = (page_metadata or {}).get(path) or {}
+        name = meta.get("name") or path
+        description = meta.get("description") or ""
+        lines = [f"# {name}", ""]
+        if description:
+            lines += [f"> {description}", ""]
+        lines += [
+            "This document is metered for anonymous bulk access.",
+            "",
+            "A free account also unlocks it.",
+            "",
+        ]
+        sign_in = _sign_in_url(state)
+        if sign_in:
+            lines += [f"Sign in or pay: {sign_in}", ""]
+        return "\n".join(lines)
+    except Exception:  # noqa: BLE001 - the failure rule, restated for money
+        logger.warning(
+            "dash-improve-my-llms: offer_doc failed for %s — serving the gate "
+            "document instead (a billing bug must neither publish nor charge).",
+            path,
+        )
+        return None
+
+
+def offer_headers(path: str) -> Dict[str, str]:
+    """Headers for a 402: private_headers plus the app's payment challenge.
+
+    A failing payment_headers provider degrades to a header-bare 402
+    (warned once) — the Markdown funnel must work for an agent that has
+    never heard of x402 anyway, so headers are enrichment, not the lane.
+    """
+    headers = dict(private_headers())
+    provider = _config.payment_headers
+    if provider is not None:
+        try:
+            extra = provider(path) or {}
+            headers.update({str(k): str(v) for k, v in extra.items()})
+        except Exception:  # noqa: BLE001
+            if "payment_headers" not in _warned:
+                _warned.add("payment_headers")
+                logger.warning(
+                    "dash-improve-my-llms: payment_headers raised for %s — "
+                    "serving the 402 without the machine-payable headers.",
+                    path,
+                )
+    return headers
 
 
 def is_listable(path: str, hidden_paths: Optional[Set[str]] = None) -> bool:
@@ -372,9 +492,12 @@ def private_headers() -> Dict[str, str]:
 
 def reset() -> None:
     """Clear configuration. For tests."""
-    global _identity_provider
+    global _identity_provider, _metering_enabled
     _config.check = None
     _config.gate_doc = None
     _config.link_suffix = None
+    _config.offer_doc = None
+    _config.payment_headers = None
     _identity_provider = None
+    _metering_enabled = False
     _warned.clear()

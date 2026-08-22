@@ -170,11 +170,19 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                         headers=_doc_headers(),
                     )
 
+        headers = _doc_headers()
+        if status == 402:
+            # W5: private/no-store + the app's payment challenge. Header
+            # failures inside offer_headers degrade to a header-bare 402,
+            # never a different verdict.
+            headers.update(
+                access.offer_headers("/llms.txt" if not page_path else f"/{page_path}/llms.txt")
+            )
         return Response(
             content=body,
             status_code=status,
             media_type="text/markdown",
-            headers=_doc_headers(),
+            headers=headers,
         )
 
     @router.get("/llms.txt")
@@ -196,6 +204,8 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             tier_path = TIER_DOC_PATHS[tier]
 
             headers = _doc_headers()
+            if status == 402:
+                headers.update(access.offer_headers(tier_path))
             if tier == "full":
                 # The corpus duplicates every page's content; indexed, it
                 # would compete with the real pages in search results.

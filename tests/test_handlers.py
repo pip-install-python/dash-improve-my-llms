@@ -858,7 +858,9 @@ class TestVendorPolicyEnforcement:
             hidden_paths=set(),
         )
 
-    def test_an_allowed_training_vendor_gets_crawler_html(self, fake_app, page_metadata_sample):
+    def test_an_allowed_training_vendor_gets_crawler_html(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         fake_app._robots_config = RobotsConfig(vendor_policy={"claudebot": "allow"})
         result = self._request(
             fake_app, page_metadata_sample, "Mozilla/5.0 (compatible; ClaudeBot/1.0)"
@@ -877,14 +879,18 @@ class TestVendorPolicyEnforcement:
         assert self._request(fake_app, page_metadata_sample, ua, path="/llms.txt") is None
         assert self._request(fake_app, page_metadata_sample, ua, path="/robots.txt") is None
 
-    def test_meter_behaves_as_allow_until_w4(self, fake_app, page_metadata_sample):
+    def test_meter_behaves_as_allow_until_w4(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         fake_app._robots_config = RobotsConfig(vendor_policy={"gptbot": "meter"})
         result = self._request(
             fake_app, page_metadata_sample, "Mozilla/5.0 (compatible; GPTBot/1.0)"
         )
         assert result is not None and result["status"] == 200
 
-    def test_callable_policy_is_read_per_request(self, fake_app, page_metadata_sample):
+    def test_callable_policy_is_read_per_request(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
         store = {"policy": {}}
         fake_app._robots_config = RobotsConfig(vendor_policy=lambda: store["policy"])
         ua = "Mozilla/5.0 (compatible; GPTBot/1.0)"
@@ -1079,3 +1085,140 @@ class TestRateLimit:
         assert build_llms_small(
             fake_app, page_metadata_sample, hidden_paths=set(), user_agent=self.GPT
         ) == build_llms_small(fake_app, page_metadata_sample, hidden_paths=set())
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/W5 — the 402 seam: wired, shipped OFF
+# ---------------------------------------------------------------------------
+
+
+class TestPricedVerdict:
+    PROSE = "The secret sauce paragraph that money is supposed to protect."
+
+    @pytest.fixture(autouse=True)
+    def _metering_off_after(self):
+        yield
+        access.set_metering(False)
+
+    def _price_about(self, page_metadata_sample):
+        page_metadata_sample["/about"] = {
+            **(page_metadata_sample.get("/about") or {}),
+            "name": "About",
+            "llms_doc": f"# About\n\n{self.PROSE}",
+        }
+        access.configure_access(lambda p: "priced" if p == "/about" else "allow")
+
+    def test_metering_off_degrades_priced_to_gated(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        """The dark-lane pin: without LLMSConfig(metering=True) a priced
+        verdict can neither publish nor charge — exactly the pre-2.7.0
+        degradation, now by design instead of by unknown-verdict."""
+        self._price_about(page_metadata_sample)
+        assert access.resolve("/about", set()) == access.GATED
+        body, status = build_llms_txt_for_page(
+            app=fake_app,
+            page_path="/about",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert status == 200
+        assert self.PROSE not in body
+
+    def test_metering_on_serves_the_offer_at_402(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        self._price_about(page_metadata_sample)
+        access.set_metering(True)
+        body, status = build_llms_txt_for_page(
+            app=fake_app,
+            page_path="/about",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert status == 402
+        # Part 4 point 9: the 402 body carries NO prose from the priced doc.
+        assert self.PROSE not in body
+        assert "free account" in body.lower()
+
+    def test_priced_page_stays_listed(self, fake_app, fake_page_registry, page_metadata_sample):
+        """The price is public knowledge; only the content is metered."""
+        self._price_about(page_metadata_sample)
+        access.set_metering(True)
+        assert access.is_listable("/about", set()) is True
+        index = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        assert "/about" in index
+
+    def test_crawler_html_gets_the_offer_never_the_prose(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        self._price_about(page_metadata_sample)
+        access.set_metering(True)
+        result = handle_bot_request(
+            path="/about",
+            user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)",
+            app=fake_app,
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert result["status"] == 200  # anti-cloaking: crawler column serves the doc
+        assert self.PROSE not in result["body"]
+        assert result["headers"].get("X-Robots-Tag") == "noindex"
+
+    def test_full_corpus_carries_the_offer_not_the_prose(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        self._price_about(page_metadata_sample)
+        access.set_metering(True)
+        corpus = build_llms_full(fake_app, page_metadata_sample, hidden_paths=set())
+        assert self.PROSE not in corpus
+
+    def test_offer_doc_failure_degrades_to_gated_never_publishes(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        """Part 4's failure rule, restated for money: an exception ANYWHERE
+        in the payment path yields the 200 gate doc — never prose, never a
+        charge."""
+
+        def broken_offer(path):
+            raise RuntimeError("pricing service down")
+
+        page_metadata_sample["/about"] = {"name": "About", "llms_doc": f"# A\n\n{self.PROSE}"}
+        access.configure_access(
+            lambda p: "priced" if p == "/about" else "allow", offer_doc=broken_offer
+        )
+        access.set_metering(True)
+        body, status = build_llms_txt_for_page(
+            app=fake_app,
+            page_path="/about",
+            page_metadata=page_metadata_sample,
+            hidden_paths=set(),
+        )
+        assert status == 200
+        assert self.PROSE not in body
+        assert "not publicly available" in body
+
+    def test_empty_offer_is_a_billing_bug_and_degrades(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        access.configure_access(lambda p: "priced", offer_doc=lambda p: "   ")
+        access.set_metering(True)
+        assert access.offer_document("/about") is None
+
+    def test_payment_headers_enrich_and_fail_soft(self):
+        access.configure_access(
+            lambda p: "priced",
+            payment_headers=lambda p: {"X-Payment": "x402 challenge"},
+        )
+        access.set_metering(True)
+        headers = access.offer_headers("/about")
+        assert headers["X-Payment"] == "x402 challenge"
+        assert headers["Cache-Control"] == "private, no-store"
+
+        def broken(path):
+            raise RuntimeError("wallet offline")
+
+        access.configure_access(lambda p: "priced", payment_headers=broken)
+        headers = access.offer_headers("/about")
+        assert "X-Payment" not in headers
+        assert headers["Cache-Control"] == "private, no-store"  # still private
