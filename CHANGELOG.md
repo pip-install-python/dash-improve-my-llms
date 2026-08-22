@@ -5,6 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2.7.0, "the agent toll gate"
+
+The release the 2026-08-13 agent-exchange design specified (W1–W6 + P6),
+plus the owner's 2026-08-20 scope additions (the geo guardrail G0/G1 and
+the read-only operator panel P1) and the 2026-08-22 fleet addendum's
+idempotency hardening. Standing rule kept throughout: every new knob
+unset ⇒ output byte-identical to 2.6.1 — except the deliberate,
+documented contract changes listed under each item.
+
+### Added — one vendor registry (W1)
+
+`vendors.py`: every bot identity defined once; `get_bot_vendor(ua)` is
+the new identity primitive. bot_detection classifies from it and
+robots_generator renders from it, so agreement holds by construction
+(the registry-agreement test makes drift unrepresentable). Deliberate
+contract changes: ClaudeBot classifies **training** (robots.txt was the
+published promise — P1); seven previously-unenumerated AI crawlers
+(Amazonbot, Applebot-Extended, meta-externalagent, AI2Bot, Diffbot,
+Timpibot, ImagesiftBot) stop falling through to `traditional` (P2);
+Claude-User / Claude-SearchBot / Perplexity-User gain tokens, class
+search (P3); `allow_traditional=False` emits real Disallow groups (P4);
+`disallowed_paths` and `Crawl-delay` sit inside the `User-agent: *`
+group (P5, RFC 9309 strict parsers).
+
+### Added — per-vendor policy (W2)
+
+`RobotsConfig(vendor_policy={...} | callable, default_unknown_ai=...)`.
+One fold (`vendors.effective_policies`) drives robots.txt AND the
+middleware. `meter` renders Allow and behaves as allow until the limiter
+consumes it. Callable maps are read per request — the reloadable seam a
+writable control board wires a persisted store through.
+
+### Added — the conduct contract in the documents (W3)
+
+`build_policy_block`: an "## Access policy" section in the index, the
+small tier's tail, and the full corpus's header — terms, `?key=`
+identity, the rate rule ("prefer ONE /llms-full.txt fetch"), one
+coordination point, and a crawler-policy summary rendered from the same
+fold robots.txt renders from. Identity-free by construction.
+
+### Added — the rate contract, enforced (W4)
+
+`LLMSConfig(rate_limit_per_minute=N)`: bot traffic on the corpus routes
+gets 429 + Retry-After over the ceiling, keyed on the edge-header client
+IP. Policy routes and humans are never limited. **Fails open on any
+error** — a limiter bug must never black-hole the corpus. Per-process
+(N workers ⇒ N× ceiling), documented. `user_agent=` threaded into all
+corpus builders for W5's consumers.
+
+### Added — the 402 seam, wired and OFF (W5)
+
+`access.PRICED` behind `LLMSConfig(metering=False)`: off (default), a
+"priced" verdict degrades to gated — a billing bug can neither publish
+nor charge. On: offer document at 402 (`configure_access(offer_doc=,
+payment_headers=)`) across every surface, priced pages stay listed, the
+crawler column serves the offer at 200 + noindex (anti-cloaking), and
+any payment-path exception degrades to gated. The package never computes
+a price and never holds a pay-to address.
+
+### Added — bulletin policy keys (W6)
+
+`network.crawler_policy` / `price_default` / `prices[]` / `rate_limit`,
+hard element caps. The hub may only TIGHTEN (most-restrictive overlay in
+the policy fold; min() on the ceiling). **A bulletin carrying anything
+shaped like a pay-to address is refused whole** — a fetched address is a
+payment-redirection target.
+
+### Added — the geo guardrail (G0/G1)
+
+`configure_geo(deny_countries=[...] | callable, unknown="allow", ...)`:
+opt-in **451 on every surface** for denied countries, humans and bots —
+a deliberate, owner-decided exception to the discovery-floor guardrail
+(compliance, not monetization). Header-based resolution only
+(CF-IPCountry first), no network lookups in the request path, exact-match
+health-path exemptions, fail-open unknown posture. Requires an
+edge-proxied host — see docs/GEO.md for the trust model and the per-host
+check. G0 threads normalized headers through the enforcement seam once,
+serving both geo and the limiter.
+
+### Added — the operator policy panel (P1)
+
+`LLMSConfig(panel=True, panel_token=...)`: a read-only, token-gated,
+404-silent page (default `/llms-policy`) showing live effective policy —
+the vendor table renders from the same fold robots.txt renders from and
+cannot drift from it. Unset token ⇒ 404 unconditionally. Absent from
+robots/sitemap/index by design. The writable layer above it is the
+site-side control board wired through the callable seams — docs/PANEL.md.
+
+### Fixed — the prerender idempotency probe (fleet addendum 2026-08-22)
+
+The already-injected check was a bare substring probe on the marker
+name; the marker appearing in an index.html COMMENT silently disabled
+the entire prerender on two production hosts. The probe now matches the
+injected node's opening tag.
+
 ## [2.6.1] - 2026-08-22
 
 ### Fixed — the universal prerender becomes VISIBLE to non-JS consumers

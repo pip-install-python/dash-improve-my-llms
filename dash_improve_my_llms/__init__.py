@@ -91,6 +91,9 @@ class LLMSConfig:
         llms_full_max_bytes: int = 4_000_000,
         rate_limit_per_minute: Optional[int] = None,
         metering: bool = False,
+        panel: bool = False,
+        panel_path: str = "/llms-policy",
+        panel_token: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -137,6 +140,15 @@ class LLMSConfig:
                 app-provided payment headers. Turning this on is gated on
                 the crawl-data decision and the x402 prototype — one host,
                 testnet — not on this release.
+            panel: Register the read-only operator policy panel (P1) at
+                ``panel_path``. False (default) registers nothing — the
+                path keeps falling through to the app exactly as before.
+            panel_path: Where the panel lives. Deliberately absent from
+                robots.txt, the sitemap and the llms index.
+            panel_token: The shared secret; falls back to the
+                DIMLL_PANEL_TOKEN env var, read per-request so rotation
+                needs no redeploy. Unset ⇒ the panel answers 404
+                unconditionally (fails closed). See docs/PANEL.md.
         """
         self.enabled = enabled
         self.warn_missing_llms_doc = warn_missing_llms_doc
@@ -148,6 +160,9 @@ class LLMSConfig:
         self.llms_full_max_bytes = llms_full_max_bytes
         self.rate_limit_per_minute = rate_limit_per_minute
         self.metering = metering
+        self.panel = panel
+        self.panel_path = panel_path
+        self.panel_token = panel_token
 
 
 # ---------------------------------------------------------------------------

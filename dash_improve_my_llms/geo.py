@@ -297,6 +297,35 @@ def gate(path: str, headers: Optional[Mapping[str, str]]) -> Optional[Dict[str, 
     }
 
 
+def explain_resolution(headers: Optional[Mapping[str, str]]) -> str:
+    """Human-readable resolution trace for the operator panel.
+
+    "DE (via cf-ipcountry)" / "JP (via resolver)" / "unknown". This line
+    is the per-host deployment check GEO.md mandates BEFORE trusting the
+    denylist: an edge-proxied request must show a real country here — if
+    it says unknown, the edge is not forwarding the header and the
+    feature is inert.
+    """
+    if headers is None:
+        return "unknown (no headers)"
+    if _config.resolver is not None:
+        try:
+            code = _config.resolver(headers)
+        except Exception:
+            code = None
+        if code is not None:
+            code = str(code).strip().upper()
+            if len(code) == 2 and code.isalpha() and code not in _SENTINELS:
+                return f"{code} (via resolver)"
+    for name in _COUNTRY_HEADERS:
+        raw = (headers.get(name) or "").strip().upper()
+        if raw in _SENTINELS:
+            continue
+        if len(raw) == 2 and raw.isalpha():
+            return f"{raw} (via {name})"
+    return "unknown"
+
+
 def effective_policy() -> Dict[str, Any]:
     """A read-only snapshot for the operator panel."""
     source = "static"

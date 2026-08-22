@@ -92,10 +92,17 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
 
         response = await call_next(request)
 
-        if not prerender_enabled or not should_prerender(
-            path=request.url.path,
-            status=response.status_code,
-            content_type=response.headers.get("content-type", ""),
+        is_panel = getattr(config, "panel", False) and request.url.path == getattr(
+            config, "panel_path", "/llms-policy"
+        )
+        if (
+            is_panel
+            or not prerender_enabled
+            or not should_prerender(
+                path=request.url.path,
+                status=response.status_code,
+                content_type=response.headers.get("content-type", ""),
+            )
         ):
             return response
 
@@ -268,6 +275,24 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
     @router.get("/robots.txt", response_class=PlainTextResponse)
     def _robots():
         return PlainTextResponse(build_robots_txt(app))
+
+    if getattr(config, "panel", False):
+        # P1: the read-only operator panel — see the Flask adapter's note.
+        @router.get(getattr(config, "panel_path", "/llms-policy"))
+        def _llms_panel(request: Request):
+            from . import panel as _panel
+
+            req_headers = normalize_headers(request.headers)
+            token = request.query_params.get("token", "")
+            if not _panel.authorized(config, req_headers, token):
+                return PlainTextResponse("404 Not Found", status_code=404)
+            return Response(
+                content=_panel.build_panel_html(
+                    app=app, config=config, state=state, request_headers=req_headers
+                ),
+                media_type="text/html",
+                headers=_panel.panel_response_headers(),
+            )
 
     @router.get("/sitemap.xml")
     def _sitemap():

@@ -287,3 +287,10 @@ contract.
 The shape of that is what convinced us the hook belongs in the package and the
 policy belongs in the app: nothing above needs the package to know what Clerk
 is, and none of it is expressible through `mark_hidden`.
+
+
+---
+
+See also: the read-only operator panel ([PANEL.md](PANEL.md))
+displays this module's configuration state — by callback name only; it
+never executes a request-scoped check outside its request.

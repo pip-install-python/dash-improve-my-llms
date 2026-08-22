@@ -84,6 +84,13 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
 
         @server.after_request
         async def _prerender(response):
+            # The policy panel is operator chrome, not a page: private/
+            # no-store, and never prerender-mutated (the context build
+            # would invoke the app's access check for a non-page path).
+            if getattr(config, "panel", False) and request.path == getattr(
+                config, "panel_path", "/llms-policy"
+            ):
+                return response
             if not should_prerender(
                 path=request.path,
                 status=response.status_code,
@@ -222,6 +229,23 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
     @server.route("/robots.txt")
     async def _robots():
         return Response(build_robots_txt(app), mimetype="text/plain")
+
+    if getattr(config, "panel", False):
+        # P1: the read-only operator panel — see the Flask adapter's note.
+        @server.route(getattr(config, "panel_path", "/llms-policy"))
+        async def _llms_panel():
+            from . import panel as _panel
+
+            req_headers = normalize_headers(request.headers)
+            if not _panel.authorized(config, req_headers, request.args.get("token", "")):
+                return Response("404 Not Found", status=404, mimetype="text/plain")
+            return Response(
+                _panel.build_panel_html(
+                    app=app, config=config, state=state, request_headers=req_headers
+                ),
+                mimetype="text/html",
+                headers=_panel.panel_response_headers(),
+            )
 
     @server.route("/sitemap.xml")
     async def _sitemap():
