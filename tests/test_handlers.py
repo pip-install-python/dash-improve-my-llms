@@ -25,6 +25,7 @@ from dash_improve_my_llms.handlers import (
     build_llms_txt_for_page,
     build_robots_txt,
     build_sitemap_xml,
+    build_policy_block,
     handle_bot_request,
     list_pages_missing_llms_doc,
     resolve_site_title,
@@ -911,3 +912,78 @@ class TestVendorPolicyEnforcement:
             fake_app, page_metadata_sample, "Mozilla/5.0 compatible; ChatGPT-User/1.0"
         )
         assert result is not None and result["status"] == 403
+
+
+# ---------------------------------------------------------------------------
+# 2.7.0/W3 — the conduct contract in the document body
+# ---------------------------------------------------------------------------
+
+
+class TestPolicyBlock:
+    def test_index_carries_the_block_between_tiers_and_pages(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        assert "## Access policy" in body
+        assert body.index("## Other sizes of this document") < body.index("## Access policy")
+        assert body.index("## Access policy") < body.index("## Pages")
+
+    def test_small_carries_the_block_at_the_tail(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        body = build_llms_small(fake_app, page_metadata_sample, hidden_paths=set())
+        assert "## Access policy" in body
+        assert body.index("## Other documents") < body.index("## Access policy")
+
+    def test_full_carries_the_block_in_the_header(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        body = build_llms_full(fake_app, page_metadata_sample, hidden_paths=set())
+        assert body.index("## Access policy") < len(body.split("\n\n", 3)[0]) + 400
+
+    def test_vendor_summary_agrees_with_robots(self, fake_app, page_metadata_sample):
+        """The anti-drift construction extended to the document: the
+        crawler-policy line renders from the same fold robots.txt does."""
+        fake_app._robots_config = RobotsConfig(vendor_policy={"claudebot": "allow"})
+        lines = "\n".join(build_policy_block(fake_app))
+        policy_line = [l for l in lines.split("\n") if "Crawler policy" in l][0]
+        allowed = policy_line.split("blocked:")[0]
+        assert "ClaudeBot" in allowed
+        assert "GPTBot" in policy_line.split("blocked:")[1]
+
+    def test_never_names_what_robots_never_names(self, fake_app, page_metadata_sample):
+        """anthropic-legacy has no robots tokens; the summary must not
+        resurrect the deprecated aliases either."""
+        fake_app._robots_config = RobotsConfig()
+        text = "\n".join(build_policy_block(fake_app))
+        assert "anthropic-ai" not in text
+        assert "Claude-Web" not in text
+
+    def test_degrades_line_by_line(self, page_metadata_sample):
+        """No robots config, no hub, no bulletin, no W4 ceiling — each
+        line drops out and the block stays truthful."""
+        from types import SimpleNamespace
+
+        bare = SimpleNamespace(title="Bare", _base_url="")
+        text = "\n".join(build_policy_block(bare))
+        assert "## Access policy" in text
+        assert "Crawler policy" not in text
+        assert "Coordination" not in text
+        assert "free to fetch" in text  # metering off => free terms
+        assert "requests/minute" not in text  # no W4 ceiling yet
+
+    def test_identity_free(self, fake_app, page_metadata_sample):
+        """Shared document bytes: nothing per-visitor may appear. The
+        builder takes no request data at all — pin the signature."""
+        import inspect
+
+        params = set(inspect.signature(build_policy_block).parameters)
+        assert params == {"app", "state", "hidden_paths"}
+
+    def test_denied_full_tier_is_not_named_by_the_rate_line(
+        self, fake_app, fake_page_registry, page_metadata_sample
+    ):
+        access.configure_access(lambda p: "deny" if p == "/llms-full.txt" else "allow")
+        body = build_llms_index(fake_app, page_metadata_sample, hidden_paths=set())
+        assert "/llms-full.txt" not in body
+        assert "one bulk fetch" in body

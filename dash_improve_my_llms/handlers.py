@@ -279,6 +279,109 @@ def resolve_site_title(home_name: Any, app_title: Any) -> str:
     return "Dash Application"
 
 
+def build_policy_block(
+    app: Any, state: Any = None, hidden_paths: Optional[set] = None
+) -> List[str]:
+    """The conduct contract, as document lines — W3 of the toll gate.
+
+    Why this exists (the 2026-08-13 multiagent findings, distilled): agents
+    are low-variance — one that finds a stated fetch discipline conforms to
+    it, and one that finds nothing invents a poll loop, identically to
+    every other agent. So the contract lives IN the document bytes: terms,
+    identity, the rate rule, one coordination point, and the vendor policy
+    summary rendered from the same registry robots.txt renders from, so
+    the two can never drift.
+
+    Hard constraint: these are SHARED document bytes and must stay
+    identity-free — per-visitor state belongs in configure_viewer_identity,
+    never here. This builder reads only config and state, no request data.
+
+    Every input degrades: no robots config, no bulletin, no hub, no W4
+    ceiling — each line simply drops out, and the section stays truthful
+    on every host.
+    """
+    lines: List[str] = ["## Access policy", ""]
+
+    llms_config = getattr(app, "_llms_config", None)
+    metering_on = bool(getattr(llms_config, "metering", False))
+    if metering_on:
+        lines.append(
+            "- Terms: documents marked free are free forever; a free account "
+            "unlocks gated documents; anonymous bulk fetching of priced "
+            "documents is metered."
+        )
+    else:
+        lines.append(
+            "- Terms: these documents are free to fetch. A free account "
+            "unlocks any gated document."
+        )
+
+    # Identity: how to present a key, and where to get one. The sign-in URL
+    # travels in the network bulletin so the whole network can move it with
+    # one hub edit.
+    sign_in_url = ""
+    try:
+        from .bulletin import get_bulletin
+
+        bulletin = get_bulletin() or {}
+        sign_in_url = str((bulletin.get("network") or {}).get("sign_in_url") or "")
+    except Exception:  # pragma: no cover - bulletin is optional by design
+        sign_in_url = ""
+    identity = (
+        "- Identity: agents may present a key by appending `?key=<value>` " "to any document URL."
+    )
+    if sign_in_url:
+        identity += f" Get one: {sign_in_url}"
+    lines.append(identity)
+
+    # Rate contract. The numeric ceiling is W4's knob and degrades to the
+    # behavioural rule alone until it lands. The bulk-fetch rule names
+    # /llms-full.txt only where that tier is actually reachable — a denied
+    # tier is not advertised anywhere, and the conduct contract does not
+    # get an exemption from that rule.
+    ceiling = getattr(llms_config, "rate_limit_per_minute", None)
+    full_reachable = access.resolve(TIER_DOC_PATHS["full"], hidden_paths or set()) != access.DENY
+    bulk = "ONE `/llms-full.txt` fetch" if full_reachable else "one bulk fetch"
+    rate = (
+        f"- Rate: prefer {bulk} over N per-page fetches. "
+        "On 429, honour `Retry-After` and back off exponentially."
+    )
+    if ceiling:
+        rate += f" Anonymous ceiling: {int(ceiling)} requests/minute."
+    lines.append(rate)
+
+    network = getattr(state, "network", None) if state is not None else None
+    hub_url = str(getattr(network, "hub_url", "") or "").rstrip("/")
+    if hub_url:
+        lines.append(
+            f"- Coordination: start at {hub_url}/llms.txt — one index "
+            "enumerates every site; do not rediscover the network by "
+            "crawling it."
+        )
+
+    robots_config = getattr(app, "_robots_config", None)
+    if robots_config is not None:
+        from .vendors import VENDORS, effective_policies
+
+        policies = effective_policies(robots_config)
+        by_policy: Dict[str, List[str]] = {"allow": [], "block": [], "meter": []}
+        for vendor in VENDORS:
+            if vendor.robots_tokens:  # never name what robots.txt never names
+                by_policy[policies[vendor.key]].append(vendor.display)
+        parts = []
+        if by_policy["allow"]:
+            parts.append("allowed: " + ", ".join(by_policy["allow"]))
+        if by_policy["meter"]:
+            parts.append("metered: " + ", ".join(by_policy["meter"]))
+        if by_policy["block"]:
+            parts.append("blocked: " + ", ".join(by_policy["block"]))
+        if parts:
+            lines.append("- Crawler policy (mirrors /robots.txt): " + "; ".join(parts) + ".")
+
+    lines.append("")
+    return lines
+
+
 def build_llms_index(
     app: Any,
     page_metadata: Dict[str, Dict[str, Any]],
@@ -349,6 +452,10 @@ def build_llms_index(
         # straight onto it reads as more of the author's list, not as this
         # document offered at two other sizes.
         lines += ["## Other sizes of this document", ""] + tier_lines + [""]
+
+    # The conduct contract sits after the size pointers and before the
+    # enumeration: an agent reads the terms before it starts fetching.
+    lines += build_policy_block(app, state, hidden_paths)
 
     if pages:
         lines += [
@@ -541,6 +648,11 @@ def build_llms_small(
         if hub:
             lines.append(f"- Network hub: {hub}/llms.txt — {network.name or 'the wider network'}.")
 
+    # The conduct contract closes the briefing (W3): the small tier is the
+    # document an agent with a tight budget reads INSTEAD of the index, so
+    # it must carry the same terms.
+    lines += [""] + build_policy_block(app, state, hidden_paths)
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -612,6 +724,11 @@ def build_llms_full(
     pages = _corpus_pages(page_metadata, hidden_paths)
 
     lines: List[str] = [f"# {site_title} — full corpus", ""]
+
+    # The conduct contract heads the corpus (W3): this is the single
+    # document the rate rule tells agents to prefer, so the terms travel
+    # with it.
+    lines += build_policy_block(app, state, hidden_paths)
     tagline = home_meta.get("description") or (home_entry or {}).get("description")
     if tagline:
         lines += [f"> {tagline}", ""]
