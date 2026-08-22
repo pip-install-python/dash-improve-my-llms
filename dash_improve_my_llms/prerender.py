@@ -211,12 +211,38 @@ def build_body_fragment(
         '<a href="/sitemap.xml">/sitemap.xml</a></p></footer>'
     )
 
-    # `hidden` keeps the block out of the painted page for JS visitors, so a
-    # slow hydration never flashes a second copy of the content over the app.
-    # It stays in the DOM and in the served bytes, so crawlers and text
-    # extractors read it normally — this is not display-based hiding of
-    # content that differs from what users get.
-    return f'<div id="dimll-prerender" {_MARKER}="1" hidden>' + "".join(sections) + "</div>"
+    # The div ships VISIBLE, and the inline script right after it hides it.
+    #
+    # It used to ship with a literal `hidden` attribute, on the theory that
+    # crawlers and text extractors read hidden DOM normally. An outside SEO
+    # audit (2026-08-22) proved the theory wrong the expensive way: every
+    # consumer that respects visibility — html-to-text extractors, audit
+    # tooling, and plausibly crawler content-weighting — saw only the Dash
+    # loader, and six production hosts read as 20 identical thin pages each.
+    # The prose was present and invisible, which is the worst of both.
+    #
+    # This shape gives each audience exactly what it needs:
+    #   - A non-JS consumer never executes the script, so it reads fully
+    #     visible prose. That is the entire fix.
+    #   - A JS browser executes it synchronously during parse, before first
+    #     paint of subsequent content, so the pre-mount flash the old
+    #     `hidden` existed to prevent stays prevented; React's mount then
+    #     wipes the whole block from the DOM exactly as before.
+    #   - NOT a <noscript> (search engines treat noscript as second-class
+    #     and it is a classic spam vector) and NOT a stylesheet class (an
+    #     extractor ignoring stylesheets is not guaranteed; the attribute
+    #     was this problem's own proof of what these tools respect).
+    #
+    # Both nodes carry the marker so exclusion logic that strips
+    # prerender-tagged nodes keeps matching the pair. CSP note: the inline
+    # script needs `unsafe-inline` or a nonce under a strict CSP — recorded
+    # in the changelog; no 2plot host ships a restrictive CSP today.
+    return (
+        f'<div id="dimll-prerender" {_MARKER}="1">' + "".join(sections) + "</div>"
+        f'<script {_MARKER}="1">'
+        'document.getElementById("dimll-prerender").hidden=true;'
+        "</script>"
+    )
 
 
 def inject_prerender(

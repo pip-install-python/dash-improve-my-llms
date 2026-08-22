@@ -103,3 +103,110 @@ class TestHeadDeduplication:
     def test_image_url_alias_reaches_og_image(self):
         out = inject_prerender(_document("t"), _context(image_url="https://cdn.example/card.png"))
         assert 'property="og:image" content="https://cdn.example/card.png"' in out
+
+
+# ---------------------------------------------------------------------------
+# 2.6.1 — the prerender is VISIBLE to non-JS consumers
+# ---------------------------------------------------------------------------
+
+
+def _visible_text(html_doc: str) -> str:
+    """Text extraction the way visibility-respecting tools do it.
+
+    An outside SEO audit (2026-08-22) read every 2plot host through exactly
+    this lens and found only "Loading...": the prerender div shipped with a
+    literal `hidden` attribute, so every extractor that respects visibility
+    skipped the prose. This helper IS that lens — subtrees under an element
+    carrying `hidden` contribute nothing — so these tests fail the moment
+    anyone puts the attribute back.
+    """
+    from html.parser import HTMLParser
+
+    class Extractor(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.depth = 0  # >0 while inside a hidden subtree
+            self.parts: list[str] = []
+            self._skip_tag_depth: list[str] = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style"):
+                self.depth += 1
+                self._skip_tag_depth.append(tag)
+            elif any(name == "hidden" for name, _ in attrs):
+                self.depth += 1
+                self._skip_tag_depth.append(tag)
+
+        def handle_endtag(self, tag):
+            if self._skip_tag_depth and self._skip_tag_depth[-1] == tag:
+                self._skip_tag_depth.pop()
+                self.depth -= 1
+
+        def handle_data(self, data):
+            if self.depth == 0 and data.strip():
+                self.parts.append(data.strip())
+
+    ex = Extractor()
+    ex.feed(html_doc)
+    return " ".join(ex.parts)
+
+
+class TestPrerenderVisibility:
+    def test_prose_survives_a_visibility_respecting_text_extraction(self):
+        """The whole 2.6.1 fix, stated as the audit would measure it: a
+        non-JS consumer that honours `hidden` must read the page's own name
+        and description, not just the Dash loader."""
+        out = inject_prerender(_document("Test App — a demo"), _context())
+        text = _visible_text(out)
+        assert "The Guide" in text
+        assert "How to use it." in text
+
+    def test_the_div_itself_carries_no_hidden_attribute(self):
+        """The regression pin. `hidden` on the div is what made six
+        production hosts read as N identical thin pages each."""
+        out = inject_prerender(_document("Test App — a demo"), _context())
+        import re
+
+        div = re.search(r'<div id="dimll-prerender"[^>]*>', out)
+        assert div, "prerender div missing entirely"
+        assert "hidden" not in div.group(0)
+
+    def test_a_synchronous_marked_script_hides_the_div_for_js_browsers(self):
+        """The flash guard `hidden` used to provide now lives in an inline
+        script IMMEDIATELY after the div (synchronous, so it runs before
+        first paint of subsequent content), and the script carries the
+        prerender marker so node-stripping logic matches the pair."""
+        out = inject_prerender(_document("Test App — a demo"), _context())
+        assert (
+            '</div><script data-dimll-prerender="1">'
+            'document.getElementById("dimll-prerender").hidden=true;'
+            "</script>" in out
+        )
+
+    def test_the_hide_script_sits_inside_react_entry_point(self):
+        """React's mount replaces the whole #react-entry-point subtree, so
+        the script must live inside it to be wiped along with the div —
+        nothing prerender-flavoured survives hydration."""
+        out = inject_prerender(_document("Test App — a demo"), _context())
+        entry = out.split('id="react-entry-point"', 1)[1]
+        body_after_entry = entry.split("</body>", 1)[0]
+        assert "dimll-prerender" in body_after_entry
+        # and nothing prerender-marked after the entry point's close
+        import re
+
+        tail = out.rsplit("</script>", 1)[1]
+        assert "dimll-prerender" not in tail
+
+    def test_the_old_hidden_shape_would_fail_the_extraction(self):
+        """Prove the lens actually discriminates: hand the extractor the
+        pre-2.6.1 shape and it must see nothing but the loader — otherwise
+        test_prose_survives... passes vacuously."""
+        legacy = _document("Test App — a demo").replace(
+            '<div id="react-entry-point">',
+            '<div id="react-entry-point">'
+            '<div id="dimll-prerender" data-dimll-prerender="1" hidden>'
+            "<main><h1>The Guide</h1><p>How to use it.</p></main></div>",
+        )
+        text = _visible_text(legacy)
+        assert "The Guide" not in text
+        assert "Loading..." in text

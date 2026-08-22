@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-08-22
+
+### Fixed — the universal prerender becomes VISIBLE to non-JS consumers
+
+An outside SEO audit read six production hosts through a
+visibility-respecting text extraction and found only "Loading..." on
+every URL. The audit's mechanism claims were wrong — the prerender was
+firing everywhere, not UA-gated, not off — but the effective finding was
+real: the injected block shipped with a literal `hidden` attribute, so
+every consumer that respects visibility (html-to-text extractors, audit
+tooling, plausibly crawler content-weighting) saw only the Dash loader.
+The prose was present and invisible, and a young host with no crawl
+budget read as N identical thin pages.
+
+The div now ships visible, and a synchronous inline script immediately
+after it sets `hidden` for JS browsers:
+
+- a non-JS consumer never executes the script and reads fully visible
+  prose — the entire fix;
+- a JS browser executes it during parse, before first paint of
+  subsequent content, so the pre-mount flash the old attribute existed
+  to prevent stays prevented;
+- React's mount wipes the whole block exactly as before (both nodes sit
+  inside `#react-entry-point` and both carry `data-dimll-prerender="1"`
+  so node-stripping logic keeps matching the pair).
+
+Deliberately NOT a `<noscript>` (second-class to search engines, classic
+spam vector) and NOT a stylesheet class (extractors that ignore
+stylesheets are not guaranteed; the attribute was this problem's own
+proof of what these tools respect).
+
+GATED pages behave the same way: the gate document — already the exact
+document the machine lane serves — is now visible to non-JS consumers
+too. Correct and deliberate.
+
+**CSP note:** the inline hide-script requires `unsafe-inline` or a nonce
+under a strict `script-src` CSP. No 2plot host ships a restrictive CSP
+today; a host that adds one must account for this script.
+
+Fleet propagation: the fleet floor is `>=2.6.0` and images resolve the
+newest release at build time — each host picks this up on its next
+deploy with no requirements edit anywhere.
+
 ## [2.6.0] - 2026-08-20
 
 Numbering note: the agent-exchange kickoff had earmarked 2.6.0 for the
