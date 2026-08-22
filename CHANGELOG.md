@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2.7.0, "the agent toll gate"
+## [2.7.0] - 2026-08-22 — "the agent toll gate"
 
 The release the 2026-08-13 agent-exchange design specified (W1–W6 + P6),
 plus the owner's 2026-08-20 scope additions (the geo guardrail G0/G1 and
