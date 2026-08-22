@@ -48,6 +48,40 @@ __all__ = ["configure_bulletin", "get_bulletin", "BulletinConfig"]
 _MAX_TITLE = 120
 _MAX_BODY = 400
 _MAX_ITEMS = 5
+
+# W6: policy payload caps — hard ELEMENT caps in the _MAX_ITEMS taste, not
+# just byte caps. The registry holds ~20 vendors; a hub bulletin that
+# needs more than 8 tightenings at once is doing something the bulletin
+# is not for.
+_MAX_POLICY_ITEMS = 8
+_MAX_PRICE_ITEMS = 8
+_MAX_RATE_LIMIT = 10_000
+
+# W6's hard refusal: price is a business setting, an ADDRESS is a key.
+# The bulletin is fetched over the network and TTL-cached, which makes a
+# fetched pay-to address a payment-redirection target — so any payload
+# that carries one is refused WHOLE, not sanitized. The address belongs
+# pinned per-repo in constants (the OG_IMAGE_URL precedent).
+_ADDRESS_KEY_TOKENS = ("pay_to", "payto", "pay-to", "wallet", "address", "recipient")
+
+
+class PayToAddressRefused(ValueError):
+    """Raised by _normalize when a bulletin tries to carry a pay-to key."""
+
+
+def _refuse_addresses(obj: Any, path: str = "") -> None:
+    """Recursively refuse any payload whose keys smell like an address."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            lowered = str(key).lower()
+            if any(token in lowered for token in _ADDRESS_KEY_TOKENS):
+                raise PayToAddressRefused(f"bulletin carries {path}{key!r} — refused whole")
+            _refuse_addresses(value, f"{path}{key}.")
+    elif isinstance(obj, list):
+        for entry in obj:
+            _refuse_addresses(entry, path)
+
+
 _MAX_WORDMARK_LINES = 12
 _MAX_WORDMARK_WIDTH = 120
 _MAX_RESPONSE_BYTES = 64 * 1024
@@ -291,8 +325,61 @@ def _ascii_wordmark(raw: Any) -> List[str]:
     return lines
 
 
+def _crawler_policy(raw: Any) -> List[Dict[str, str]]:
+    """Bounded {vendor, policy} list — hub tightenings for the W2 fold.
+
+    Only registry vendor keys and real policies survive; the hub may only
+    TIGHTEN local policy (vendors.effective_policies applies the overlay
+    most-restrictively), so a junk entry dropped here can never loosen
+    anything either.
+    """
+    if not isinstance(raw, list):
+        return []
+    from .vendors import get_vendor
+
+    out: List[Dict[str, str]] = []
+    for entry in raw[:_MAX_POLICY_ITEMS]:
+        if not isinstance(entry, dict):
+            continue
+        vendor = _clean(entry.get("vendor"), 40)
+        policy = _clean(entry.get("policy"), 10).lower()
+        if vendor and get_vendor(vendor) is not None and policy in ("allow", "block", "meter"):
+            out.append({"vendor": vendor, "policy": policy})
+    return out
+
+
+def _prices(raw: Any) -> List[Dict[str, str]]:
+    """Bounded {path, price} list. Price STRINGS only — never an address."""
+    if not isinstance(raw, list):
+        return []
+    out: List[Dict[str, str]] = []
+    for entry in raw[:_MAX_PRICE_ITEMS]:
+        if not isinstance(entry, dict):
+            continue
+        path = _clean(entry.get("path"), 120)
+        price = _clean(entry.get("price"), 40)
+        if path and price:
+            out.append({"path": path, "price": price})
+    return out
+
+
+def _rate_limit(raw: Any) -> Optional[int]:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if 1 <= value <= _MAX_RATE_LIMIT:
+        return value
+    return None
+
+
 def _normalize(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Reduce an arbitrary payload to the bounded shape the viewer renders."""
+    """Reduce an arbitrary payload to the bounded shape the viewer renders.
+
+    Raises PayToAddressRefused — refusing the WHOLE payload — if any key
+    anywhere smells like a payment address; see _refuse_addresses.
+    """
+    _refuse_addresses(payload)
     network = payload.get("network")
     if not isinstance(network, dict):
         network = {}
@@ -313,6 +400,15 @@ def _normalize(payload: Dict[str, Any]) -> Dict[str, Any]:
             "sign_in_url": _clean_url(network.get("sign_in_url")),
             "account_label": _clean(network.get("account_label"), _MAX_TITLE),
             "wordmark": _wordmark(network.get("wordmark")),
+            # W6 — the toll-gate policy keys. Consumed by
+            # vendors.effective_policies (crawler_policy, tighten-only) and
+            # the W4 limiter (rate_limit, tighten-only); the price fields
+            # are carried for the application's offer_doc and never
+            # interpreted by the package.
+            "crawler_policy": _crawler_policy(network.get("crawler_policy")),
+            "price_default": _clean(network.get("price_default"), 40),
+            "prices": _prices(network.get("prices")),
+            "rate_limit": _rate_limit(network.get("rate_limit")),
         },
         "tips": _items(payload.get("tips")),
         "whats_new": _items(payload.get("whats_new") or payload.get("whatsNew")),

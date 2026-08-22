@@ -483,7 +483,25 @@ def effective_policies(robots_config) -> Dict[str, str]:
         TRADITIONAL: POLICY_ALLOW if allow_traditional else POLICY_BLOCK,
     }
     overrides = _overrides(robots_config)
-    return {v.key: overrides.get(v.key, defaults[v.cls]) for v in VENDORS}
+    result = {v.key: overrides.get(v.key, defaults[v.cls]) for v in VENDORS}
+
+    # W6: hub tightenings from the network bulletin. The hub may only make
+    # a vendor MORE restrictive (allow < meter < block) — a compromised or
+    # misconfigured hub can refuse traffic, never open a host that chose
+    # to block. Bulletin failures change nothing (it is optional plumbing).
+    try:
+        from .bulletin import get_bulletin
+
+        hub_policy = ((get_bulletin() or {}).get("network") or {}).get("crawler_policy") or []
+        restrict = {POLICY_ALLOW: 0, POLICY_METER: 1, POLICY_BLOCK: 2}
+        for entry in hub_policy:
+            key = entry.get("vendor")
+            policy = entry.get("policy")
+            if key in result and restrict.get(policy, -1) > restrict[result[key]]:
+                result[key] = policy
+    except Exception:  # noqa: BLE001
+        pass
+    return result
 
 
 def ua_tokens_of_class(cls: str) -> List[str]:

@@ -1334,6 +1334,18 @@ def handle_bot_request(
     # corpus — the one place the package's fail-closed instinct is wrong.
     llms_config = getattr(app, "_llms_config", None)
     ceiling = getattr(llms_config, "rate_limit_per_minute", None)
+    # W6: the hub's bulletin rate_limit may only TIGHTEN — it applies when
+    # lower than the local ceiling, or when no local ceiling exists at all
+    # (a ceiling where none was is strictly tighter; that is the hub's
+    # network-wide brake). Bulletin failures change nothing.
+    try:
+        from .bulletin import get_bulletin
+
+        hub_ceiling = ((get_bulletin() or {}).get("network") or {}).get("rate_limit")
+        if hub_ceiling:
+            ceiling = min(int(ceiling), int(hub_ceiling)) if ceiling else int(hub_ceiling)
+    except Exception:  # noqa: BLE001
+        pass
     if ceiling and is_doc_route:
         is_corpus = any(path.endswith(suffix) for suffix in _CORPUS_ROUTE_SUFFIXES)
         if is_corpus:
