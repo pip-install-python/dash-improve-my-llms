@@ -302,3 +302,39 @@ class TestGenerateStaticPageHtml:
         )
         assert "<script>alert(1)</script>" not in html  # raw must not appear
         assert "&lt;script&gt;" in html or "&lt;script" in html
+
+
+class TestCrawlerDocumentH1Dedup:
+    """Re-soak finding #5 (2026-08-23): the prerender lane's H1 guard
+    existed while THIS lane — the one bots actually receive — still
+    emitted two h1s on every page. A prerender-side pin cannot guard
+    this lane (a crawler fetch never sees the prerender block), so the
+    mirror pins live here."""
+
+    def _render(self, llms_doc):
+        meta = {"name": "The Guide", "description": "How to use it."}
+        if llms_doc is not None:
+            meta["llms_doc"] = llms_doc
+        return generate_static_page_html(
+            page_path="/guide",
+            page_metadata=meta,
+            all_pages=[{"path": "/", "name": "Home"}],
+            app_config={"name": "Test App", "base_url": "https://example.com"},
+        )
+
+    def test_prose_with_its_own_h1_yields_exactly_one(self):
+        html = self._render("# The Guide\n\nHow to use it.")
+        assert html.count("<h1") == 1, "the crawler document has duplicate h1s again"
+        # the prose's h1 is the survivor; the header keeps the description
+        assert "<main>" in html and html.index("<h1") > html.index("<header>")
+        assert "How to use it." in html
+
+    def test_prose_without_an_h1_keeps_the_header_h1(self):
+        html = self._render("Just a paragraph, no heading.")
+        assert html.count("<h1") == 1
+        assert "<h1>The Guide</h1>" in html
+
+    def test_no_doc_at_all_keeps_the_header_h1(self):
+        html = self._render(None)
+        assert html.count("<h1") == 1
+        assert "<h1>The Guide</h1>" in html

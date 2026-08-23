@@ -261,6 +261,17 @@ def generate_static_page_html(
     else:
         body_html = "<p>This page contains interactive content that requires JavaScript.</p>"
 
+    # Re-soak finding #5 (2026-08-23): the H1-dedup guard the prerender
+    # lane got must exist HERE too — the package serves TWO documents, and
+    # this one is what Googlebot/ClaudeBot/GPTBot actually receive. When
+    # the prose opens with its own h1, the header contributes only the
+    # description; a doc-less or headless-prose page keeps the header h1.
+    # Exactly one h1 either way, mirrored on both lanes, pinned on both.
+    if body_html.lstrip().lower().startswith("<h1"):
+        header_html = f"<p>{description}</p>"
+    else:
+        header_html = f"<h1>{title}</h1>\n        <p>{description}</p>"
+
     llms_link = f"{page_path.rstrip('/')}/llms.txt" if page_path != "/" else "/llms.txt"
 
     # Each of these renders to "" when nothing is configured, and each carries
@@ -326,8 +337,7 @@ def generate_static_page_html(
 </head>
 <body>
     <header>
-        <h1>{title}</h1>
-        <p>{description}</p>
+        {header_html}
     </header>
 
     <nav aria-label="Main navigation">

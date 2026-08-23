@@ -124,6 +124,13 @@ the tag:
   a page without one keeps the header h1 — exactly one h1 either way.
 - **Home footer dedup**: the per-page llms link is skipped when it IS
   the root link ("… /llms.txt · /llms.txt …" is gone).
+- **Crawler-document H1 dedup** (re-soak finding #5): the same guard,
+  applied to the OTHER of the package's two document lanes — the static
+  crawler document Googlebot/ClaudeBot/GPTBot actually receive still
+  emitted `<header><h1>` before prose opening with its own h1 (11/11
+  pages, both backends; present since ≤2.6.1). Exactly one h1 on both
+  lanes now, with mirror pins on the crawler side and an end-to-end
+  crawler-UA fetch pin — a prerender-side test cannot see this lane.
 
 ### Fixed — the prerender idempotency probe (fleet addendum 2026-08-22)
 

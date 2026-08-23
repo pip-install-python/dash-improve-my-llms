@@ -879,3 +879,17 @@ class TestGeoAcrossAdapters:
             _, plain, _ = client.get_full(path)
             _, with_country = client.get(path, extra_headers={"CF-IPCountry": "KP"})
             assert plain == with_country, f"{path} varied by country while unconfigured"
+
+
+class TestCrawlerLaneH1:
+    """Re-soak #5's lane lesson: a crawler fetch never sees the prerender
+    block, so a prerender-side pin alone cannot guard the document bots
+    receive. This is the end-to-end pin on the CRAWLER lane."""
+
+    def test_the_served_crawler_document_has_exactly_one_h1(self, backend):
+        app = _build_app(backend)
+        client = _Client(app, backend)
+        # /guide's llms_doc opens with its own markdown H1 (see _build_app)
+        status, body = client.get("/guide", ua="Mozilla/5.0 (compatible; Googlebot/2.1)")
+        assert status == 200
+        assert body.count("<h1") == 1, "the crawler lane serves duplicate h1s"
