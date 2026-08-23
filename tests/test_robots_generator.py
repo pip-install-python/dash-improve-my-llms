@@ -398,3 +398,104 @@ class TestVendorPolicy:
         assert self._render(RobotsConfig(default_unknown_ai="block")) == self._render(
             RobotsConfig()
         )
+
+
+class TestTraditionalVendorPolicy:
+    """Soak finding #2: the per-vendor path on the traditional class."""
+
+    def _render(self, config):
+        return generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+
+    @pytest.mark.parametrize(
+        "key,token",
+        [
+            ("googlebot", "Googlebot"),
+            ("bingbot", "Bingbot"),
+            ("slurp", "Slurp"),
+            ("duckduckbot", "DuckDuckBot"),
+        ],
+    )
+    def test_a_traditional_vendor_block_is_published(self, key, token):
+        """The middleware 403s it, so robots.txt must say so — otherwise
+        the crawler keeps crawling because it was invited, collects 403s,
+        and Search Console fills with errors while the published promise
+        insists nothing is wrong."""
+        robots = self._render(RobotsConfig(vendor_policy={key: "block"}))
+        assert f"User-agent: {token}\nDisallow: /" in robots
+
+    def test_unblocked_traditional_vendors_still_ride_star(self):
+        robots = self._render(RobotsConfig(vendor_policy={"googlebot": "block"}))
+        assert "User-agent: Bingbot" not in robots
+        assert "# Googlebot, Bingbot, etc. - covered by *" in robots
+
+    def test_no_override_emits_no_traditional_groups(self):
+        """Byte-identity: the default output is unchanged."""
+        robots = self._render(RobotsConfig())
+        for token in ("Googlebot", "Bingbot", "Slurp", "DuckDuckBot"):
+            assert f"User-agent: {token}" not in robots
+
+
+def _robots_verdict_for(robots: str, token: str) -> str:
+    """Resolve a vendor's robots.txt verdict THROUGH the `*` fallback.
+
+    The soak's parsing note: a comparison that iterates User-agent groups
+    cannot see a missing group — a vendor with no group of its own is not
+    unregulated, it is governed by `*`. This helper is that resolution,
+    and the agreement test below uses it so the traditional-class gap
+    can never come back unseen.
+    """
+    groups: dict = {}
+    current: list = []
+    for line in robots.splitlines():
+        if line.startswith("User-agent: "):
+            current.append(line.split(": ", 1)[1])
+        elif line.startswith(("Allow:", "Disallow:")):
+            directive = line.split(":", 1)[0]
+            for agent in current:
+                groups.setdefault(agent, directive)
+        elif not line.strip():
+            current = []
+    return groups.get(token) or groups.get("*") or "Allow"
+
+
+class TestSaysEqualsDoes:
+    """The full says==does sweep, resolved through `*` — for every vendor
+    and a matrix of configs, robots.txt's effective verdict must agree
+    with the middleware's effective policy."""
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            RobotsConfig(),
+            RobotsConfig(vendor_policy={"googlebot": "block"}),
+            RobotsConfig(vendor_policy={"claudebot": "allow", "bingbot": "block"}),
+            RobotsConfig(allow_traditional=False),
+            RobotsConfig(allow_ai_search=False),
+            RobotsConfig(block_ai_training=False),
+        ],
+    )
+    def test_every_vendor_agrees(self, config):
+        from dash_improve_my_llms.vendors import VENDORS, effective_policies
+
+        robots = generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+        policies = effective_policies(config)
+        for vendor in VENDORS:
+            if not vendor.robots_tokens:
+                continue
+            expected = {"allow": "Allow", "meter": "Allow", "block": "Disallow"}[
+                policies[vendor.key]
+            ]
+            for token in vendor.robots_tokens:
+                got = _robots_verdict_for(robots, token)
+                assert got == expected, (
+                    f"{vendor.key} ({token}): robots.txt resolves {got}, "
+                    f"middleware enforces {policies[vendor.key]}"
+                )

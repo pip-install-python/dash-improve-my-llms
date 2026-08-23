@@ -206,6 +206,19 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
                 "",
             ]
         )
+        # Soak finding #2 (2026-08-22): a per-vendor override on a
+        # traditional crawler was ENFORCED by the middleware but never
+        # published here — the host 403'd Googlebot while its own
+        # robots.txt said Allow via `*`, filling Search Console with
+        # errors and pointing the operator at the wrong layer. A vendor
+        # with no group of its own is not unregulated, it is governed by
+        # `*` — so a blocked one must get a group. This branch now
+        # consults the same fold the else-branch always did.
+        blocked_traditional = [
+            v for v in VENDORS if v.cls == "traditional" and policies[v.key] == "block"
+        ]
+        if blocked_traditional:
+            lines.extend(_vendor_groups(blocked_traditional, "Disallow"))
     else:
         lines.extend(
             [

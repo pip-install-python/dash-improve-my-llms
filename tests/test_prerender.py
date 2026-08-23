@@ -238,3 +238,51 @@ class TestIdempotencyProbe:
         twice = inject_prerender(once, _context())
         assert twice == once
         assert twice.count('<div id="dimll-prerender"') == 1
+
+
+class TestH1AndFooterDedup:
+    """Soak/SEO-audit fixes #5 and #6 (2026-08-23)."""
+
+    def test_body_with_its_own_h1_gets_no_header_h1(self):
+        """Every host measured two identical h1s: the injected header's
+        plus the doc body's own opening markdown H1."""
+        out = inject_prerender(
+            _document("Test App — a demo"),
+            _context(llms_doc="# The Guide\n\nHow to use it."),
+        )
+        block = out.split('id="dimll-prerender"', 1)[1].split("</div>", 1)[0]
+        assert block.count("<h1") == 1, "duplicate h1s are back"
+        assert "<main><h1" in block.replace("\n", "")
+        # the description paragraph survives in the header
+        assert "<header><p>" in block
+
+    def test_body_without_an_h1_keeps_the_header_h1(self):
+        """A page with prose that starts mid-thought (or none at all)
+        still needs exactly one h1 — the header's."""
+        out = inject_prerender(
+            _document("Test App — a demo"),
+            _context(llms_doc="Just a paragraph, no heading."),
+        )
+        block = out.split('id="dimll-prerender"', 1)[1].split("</div>", 1)[0]
+        assert block.count("<h1") == 1
+        assert "<header><h1>" in block
+
+    def test_no_doc_at_all_keeps_the_header_h1(self):
+        ctx = _context()
+        ctx["page_metadata"] = {k: v for k, v in ctx["page_metadata"].items()}
+        out = inject_prerender(_document("Test App — a demo"), ctx)
+        block = out.split('id="dimll-prerender"', 1)[1].split("</div>", 1)[0]
+        assert block.count("<h1") == 1
+
+    def test_home_footer_does_not_repeat_the_root_llms_link(self):
+        ctx = _context(llms_doc="# Home\n\nWelcome.")
+        ctx["page_path"] = "/"
+        out = inject_prerender(_document("Test App — a demo"), ctx)
+        footer = out.split("<footer>", 1)[1].split("</footer>", 1)[0]
+        assert footer.count('href="/llms.txt"') == 1, "the doubled home llms link is back"
+
+    def test_inner_page_footer_keeps_both_links(self):
+        out = inject_prerender(_document("Test App — a demo"), _context(llms_doc="# G\n\nText."))
+        footer = out.split("<footer>", 1)[1].split("</footer>", 1)[0]
+        assert "/guide/llms.txt" in footer
+        assert footer.count('href="/llms.txt"') == 1

@@ -212,18 +212,25 @@ def _deny_set() -> Tuple[str, ...]:
     """The effective denylist for THIS request."""
     if _config.deny_callable is None:
         return _config.deny_static
+    # EVERYTHING from the call through the cache lookup sits inside the
+    # try: tuple() happily wraps a list containing a dict, and it was the
+    # HASH on the way into the cache that raised — an unhashable entry
+    # 500'd every request on every surface (soak finding #1, 2026-08-22),
+    # directly contradicting GEO.md's "it can never take down the request
+    # path". 2.8's bot×country matrix arrives through this exact seam
+    # during rolling deploys, so this containment is load-bearing.
     try:
         raw = tuple(_config.deny_callable())
+        cached = _callable_cache.get(raw)
+        if cached is None:
+            cached = _normalize_codes(raw, strict=False)
+            _callable_cache.clear()  # one live denylist at a time; no unbounded growth
+            _callable_cache[raw] = cached
+        return cached
     except Exception:
         _warn_once("deny_countries callable raised; treating denylist as empty (fail-open)")
         logger.debug("geo denylist callable failure", exc_info=True)
         return ()
-    cached = _callable_cache.get(raw)
-    if cached is None:
-        cached = _normalize_codes(raw, strict=False)
-        _callable_cache.clear()  # one live denylist at a time; no unbounded growth
-        _callable_cache[raw] = cached
-    return cached
 
 
 def resolve_country(headers: Optional[Mapping[str, str]]) -> Optional[str]:

@@ -67,6 +67,17 @@ app = Dash(
 )
 server = app.server
 
+# Trust X-Forwarded-Proto one hop above gunicorn, BEFORE anything can
+# serve (lib/proxy.py, boilerplate template file, copied verbatim).
+# Without it Dash builds twitter:url from the plaintext request behind
+# Render's proxy and every scraper reads http:// — the exact defect the
+# 2026-08-23 fix batch names. Interim until the llms-2plot-dev migration
+# retires this site; the boilerplate fork inherits this wiring natively.
+from lib import proxy as _proxy  # noqa: E402
+
+if _proxy.apply(app, "flask"):
+    print("[proxy] X-Forwarded-Proto trusted (one hop)")
+
 
 # The document head. TWO RULES, both learned the hard way on this network:
 #

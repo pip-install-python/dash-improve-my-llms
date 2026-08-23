@@ -195,8 +195,20 @@ def build_body_fragment(
 
     llms_link = "/llms.txt" if page_path == "/" else f"{page_path}/llms.txt"
 
+    # SEO-audit finding (2026-08-23, confirmed on every host): the header's
+    # h1 duplicated the doc body's own opening markdown H1 — two identical
+    # h1s on every prerendered page. When the prose opens with its own h1,
+    # the header contributes only the description; when it doesn't (a page
+    # with no LLMS_DOC, or prose that starts mid-thought), the header's h1
+    # is the page's only one and stays.
+    prose_opens_with_h1 = prose.lstrip().lower().startswith("<h1")
+    if prose_opens_with_h1:
+        header = f"<header><p>{description}</p></header>"
+    else:
+        header = f"<header><h1>{name}</h1><p>{description}</p></header>"
+
     sections = [
-        f"<header><h1>{name}</h1><p>{description}</p></header>",
+        header,
         f"<main>{prose}</main>",
     ]
 
@@ -208,11 +220,20 @@ def build_body_fragment(
     if extra_sections:
         sections.extend(extra_sections)
 
+    # On the home page the per-page document IS the root index — linking
+    # both rendered "…/llms.txt · /llms.txt · /sitemap.xml".
+    if llms_link == "/llms.txt":
+        footer_links = (
+            '<a href="/llms.txt">/llms.txt</a> · ' '<a href="/sitemap.xml">/sitemap.xml</a>'
+        )
+    else:
+        footer_links = (
+            f'<a href="{_esc(llms_link)}">{_esc(llms_link)}</a> · '
+            '<a href="/llms.txt">/llms.txt</a> · '
+            '<a href="/sitemap.xml">/sitemap.xml</a>'
+        )
     sections.append(
-        "<footer><p>Machine-readable version of this page: "
-        f'<a href="{_esc(llms_link)}">{_esc(llms_link)}</a> · '
-        '<a href="/llms.txt">/llms.txt</a> · '
-        '<a href="/sitemap.xml">/sitemap.xml</a></p></footer>'
+        "<footer><p>Machine-readable version of this page: " + footer_links + "</p></footer>"
     )
 
     # The div ships VISIBLE, and the inline script right after it hides it.

@@ -93,6 +93,38 @@ cannot drift from it. Unset token ⇒ 404 unconditionally. Absent from
 robots/sitemap/index by design. The writable layer above it is the
 site-side control board wired through the callable seams — docs/PANEL.md.
 
+### Fixed — the pre-tag soak batch (llms-2plot-dev soak, 2026-08-23)
+
+Six fixes from the boilerplate-fork soak (BUGS-2.7.0.md), landed before
+the tag:
+
+- **A `deny_countries` callable returning an unhashable entry 500'd
+  every request on every surface** — `tuple()` wraps a nested object
+  happily and the hash into the memo cache raised OUTSIDE the try,
+  escaping the seam. The whole call-through-cache path now sits inside
+  the containment; any such shape behaves as an empty denylist with one
+  warning, honouring GEO.md's "it can never take down the request
+  path". Load-bearing for 2.8's matrix, which arrives through this seam.
+- **A per-vendor block on a traditional crawler was enforced but never
+  published**: with the default `allow_traditional=True`,
+  `vendor_policy={"googlebot": "block"}` 403'd Googlebot while
+  robots.txt said Allow via `*` — the crawl-error/cloaking hazard. The
+  allow-branch now consults the same fold the else-branch always did.
+  The upstream agreement test now resolves every vendor's robots verdict
+  THROUGH the `*` fallback (a vendor with no group is not unregulated,
+  it is governed by `*`) so this class of gap cannot return unseen.
+- **GEO.md corrections**: a malformed entry is SKIPPED, not
+  list-voiding (the code's behaviour was the better one — the doc
+  moved); and a RAISING resolver falls back to header resolution while
+  a garbage-RETURNING resolver does not — two behaviours that shared
+  one sentence.
+- **Prerender H1 dedup** (SEO-audit, every host): the injected header's
+  `<h1>` duplicated the doc body's own opening markdown H1. When the
+  prose opens with an h1 the header contributes only the description;
+  a page without one keeps the header h1 — exactly one h1 either way.
+- **Home footer dedup**: the per-page llms link is skipped when it IS
+  the root link ("… /llms.txt · /llms.txt …" is gone).
+
 ### Fixed — the prerender idempotency probe (fleet addendum 2026-08-22)
 
 The already-injected check was a bare substring probe on the marker

@@ -219,6 +219,30 @@ class TestCallableSeam:
         warnings = [r for r in caplog.records if "callable raised" in r.message]
         assert len(warnings) == 1
 
+    @pytest.mark.parametrize(
+        "returned",
+        [
+            [{"code": "RU"}],
+            [["RU"]],
+            [{"RU"}],
+            ["RU", {"x": 1}],  # one VALID entry plus a nested object
+        ],
+    )
+    def test_an_unhashable_entry_fails_open_never_500s(self, returned, caplog):
+        """Soak finding #1 (2026-08-22): tuple() wraps a nested object
+        happily and the HASH into the memo cache raised, escaping the
+        seam and 500ing every request on every surface. The suite's
+        earlier malformed-entry tests only ever fed bad STRINGS — this
+        pins the unhashable shapes, including valid-entry-plus-junk
+        (which was still a total outage)."""
+        geo.configure_geo(deny_countries=lambda: returned)
+        with caplog.at_level(logging.WARNING):
+            # must behave exactly as an empty denylist: nobody blocked
+            assert geo.gate("/", {"cf-ipcountry": "RU"}) is None
+            assert geo.gate("/llms.txt", {"cf-ipcountry": "RU"}) is None
+            assert geo.gate("/assets/x.css", None) is None
+        assert any("callable raised" in r.message for r in caplog.records)
+
     def test_malformed_callable_entries_are_skipped_not_fatal(self, caplog):
         geo.configure_geo(deny_countries=lambda: ["RU", "Russia", 42])
         with caplog.at_level(logging.WARNING):

@@ -244,16 +244,16 @@ def build_panel_html(
     )
 
     # --- geo --------------------------------------------------------------
-    policy = geo.effective_policy()
+    geo_policy = geo.effective_policy()
     geo_rows = [
         "<table>",
-        f"<tr><th>configured</th><td>{_esc(policy['configured'])}</td></tr>",
+        f"<tr><th>configured</th><td>{_esc(geo_policy['configured'])}</td></tr>",
         "<tr><th>deny_countries</th>"
-        f"<td>{_esc(', '.join(policy['deny_countries']) or '(none)')}</td></tr>",
-        f"<tr><th>denylist source</th><td>{_esc(policy['denylist_source'])}</td></tr>",
-        f"<tr><th>unknown posture</th><td>{_esc(policy['unknown'])}</td></tr>",
-        f"<tr><th>resolver</th><td>{_esc(policy['resolver'])}</td></tr>",
-        f"<tr><th>exempt paths</th><td>{_esc(', '.join(policy['exempt_paths']))}</td></tr>",
+        f"<td>{_esc(', '.join(geo_policy['deny_countries']) or '(none)')}</td></tr>",
+        f"<tr><th>denylist source</th><td>{_esc(geo_policy['denylist_source'])}</td></tr>",
+        f"<tr><th>unknown posture</th><td>{_esc(geo_policy['unknown'])}</td></tr>",
+        f"<tr><th>resolver</th><td>{_esc(geo_policy['resolver'])}</td></tr>",
+        f"<tr><th>exempt paths</th><td>{_esc(', '.join(geo_policy['exempt_paths']))}</td></tr>",
         "</table>",
         # The per-host deployment check GEO.md mandates: an edge-proxied
         # request must show a real country here before the denylist is

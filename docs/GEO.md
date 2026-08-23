@@ -94,9 +94,19 @@ configure_geo(deny_countries=geo_deny)
 ```
 
 A store edit takes effect on the **next request in every worker** — no
-restart, no redeploy. Callable failures degrade the safe way: a raising
-callable or a malformed entry is logged **once** and treated as an empty
-denylist (fail-open); it can never take down the request path. The
+restart, no redeploy. Callable failures degrade the safe way, and the
+two failure shapes degrade DIFFERENTLY — deliberately:
+
+- a **raising callable** (or one returning something unhashable — any
+  nested object in the sequence) is logged once and treated as an
+  **empty denylist**: nobody is blocked, nothing 500s;
+- a **malformed entry** in an otherwise-valid list is **skipped**, logged
+  once, and the valid entries keep blocking. Voiding a whole compliance
+  denylist because one entry went stale would be a worse failure than
+  honouring the valid part — so `["RU", "XX", "nonsense"]` still blocks
+  RU.
+
+Neither shape can take down the request path. The
 fleet's writable board is the boilerplate's inherited template control
 board (see PANEL.md), and 2.8's bot × country matrix extends this same
 seam — nothing here needs to change for it.
@@ -118,9 +128,14 @@ the sweep's origin at your edge instead.
 
 ### Resolution order
 
-1. Your `resolver(headers)`, if configured (exceptions → unknown,
-   warned once). For apps with their own geo-IP database. **Never do
-   network I/O in it** — this runs inside every request.
+1. Your `resolver(headers)`, if configured. For apps with their own
+   geo-IP database. **Never do network I/O in it** — this runs inside
+   every request. Two failure shapes, distinct on purpose: a resolver
+   that **raises** is warned once and resolution **falls back to the
+   headers below** (a real `CF-IPCountry` still blocks a denied
+   country); a resolver that **returns an invalid value** answered —
+   badly — so the result is **unknown, with no header fallback** (the
+   override stands, even when wrong).
 2. `CF-IPCountry` (Cloudflare — the fleet's edge)
 3. `CloudFront-Viewer-Country` (AWS, when the distribution forwards it)
 4. `X-Vercel-IP-Country` (Vercel)
