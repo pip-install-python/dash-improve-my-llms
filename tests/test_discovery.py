@@ -18,11 +18,17 @@ from dash_improve_my_llms.discovery import (
     wants_plain_text,
 )
 
-from test_adapters import _Client, _backends, _build_app  # noqa: E402 - the harness
+from test_adapters import _Client, _build_app, _params  # noqa: E402 - the harness
 
 
-@pytest.fixture(params=_backends())
+@pytest.fixture(params=_params())
 def backend(request):
+    """The harness's own parametrization, xfail marks included: dash
+    4.3.0 + fastapi 500s every non-root URL from a stock upstream defect
+    (fixed in 4.4.0; the package warns at boot), and a browser-lane test
+    hitting /guide there fails for reasons that are not this package's.
+    Using the raw backend list instead of _params() is what failed
+    CD #16's 4.3.0 leg."""
     return request.param
 
 
