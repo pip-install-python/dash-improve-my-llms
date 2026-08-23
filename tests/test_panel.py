@@ -14,7 +14,7 @@ import dash_improve_my_llms as pkg
 from dash_improve_my_llms import geo
 from dash_improve_my_llms.robots_generator import RobotsConfig, generate_robots_txt
 
-from test_adapters import _Client, _build_app  # noqa: E402 - the harness
+from test_adapters import _Client, _build_app, _normalize_shell  # noqa: E402 - the harness
 
 TOKEN = "panel-secret-42"
 BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -43,7 +43,7 @@ class TestPanelOff:
         s1, b1 = c1.get("/llms-policy")
         s2, b2 = c2.get("/llms-policy")
         assert s1 == s2
-        assert b1 == b2
+        assert _normalize_shell(b1) == _normalize_shell(b2)
 
 
 class TestPanelGate:
@@ -130,8 +130,7 @@ class TestPanelContent:
             base_url="https://example.com",
         )
         rows = re.findall(
-            r"<tr><td>([^<]+)</td><td>[^<]*</td><td>[^<]*</td>"
-            r"<td class='policy-(\w+)'>", body
+            r"<tr><td>([^<]+)</td><td>[^<]*</td><td>[^<]*</td>" r"<td class='policy-(\w+)'>", body
         )
         assert rows, "vendor table missing"
         for display, policy in rows:

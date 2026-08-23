@@ -84,6 +84,21 @@ def _build_app(backend: str, **config_kwargs):
     return app
 
 
+def _normalize_shell(body: str) -> str:
+    """Strip dash's per-request nonce before byte comparison.
+
+    Dash 4.4.1's index embeds a fresh `"end_id":"<random>~<hash>"` on every
+    request, so two consecutive fetches of the SAME url differ by design.
+    Tests asserting "this knob changes nothing" must compare everything
+    EXCEPT that nonce — comparing raw bytes passes on <=4.4.0 and fails on
+    4.4.1 for reasons unrelated to the knob under test (CD run #14's
+    matrix failure, 2026-08-23).
+    """
+    import re
+
+    return re.sub(r'"end_id":"[^"]*"', '"end_id":"NORMALIZED"', body)
+
+
 def _lower(headers) -> dict:
     """Lowercase header keys — the three backends disagree on casing."""
     return {str(k).lower(): str(v) for k, v in dict(headers).items()}
@@ -878,7 +893,9 @@ class TestGeoAcrossAdapters:
         for path in ("/", "/llms.txt", "/robots.txt", "/sitemap.xml"):
             _, plain, _ = client.get_full(path)
             _, with_country = client.get(path, extra_headers={"CF-IPCountry": "KP"})
-            assert plain == with_country, f"{path} varied by country while unconfigured"
+            assert _normalize_shell(plain) == _normalize_shell(
+                with_country
+            ), f"{path} varied by country while unconfigured"
 
 
 class TestCrawlerLaneH1:

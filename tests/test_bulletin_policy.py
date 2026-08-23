@@ -18,7 +18,6 @@ from dash_improve_my_llms.bulletin import PayToAddressRefused, _normalize
 from dash_improve_my_llms.robots_generator import RobotsConfig
 from dash_improve_my_llms.vendors import effective_policies
 
-
 # ---------------------------------------------------------------------------
 # Schema normalization
 # ---------------------------------------------------------------------------
