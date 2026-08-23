@@ -19,7 +19,9 @@ from typing import Any
 
 from . import access
 from ._headers import normalize_headers
+from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
+    page_source_digest,
     LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
     TIER_DOC_PATHS,
@@ -134,6 +136,10 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         headers = dict(response.headers)
         # The body just changed length; a stale Content-Length truncates it.
         headers.pop("content-length", None)
+        if injected is not document:
+            # llms.txt v2 discovery (2.7.1): the relations ride the headers
+            # of the page response too.
+            headers["Link"] = link_header_value(request.url.path.rstrip("/") or "/")
 
         return Response(
             content=encoded,
@@ -178,6 +184,18 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                     )
 
         headers = _doc_headers()
+        # 2.7.1: the parity digest and the text/plain compatibility ramp.
+        digest = page_source_digest(
+            f"/{page_path}" if page_path else "/",
+            state.page_metadata,
+            state.hidden_pages,
+            state,
+        )
+        if digest and status == 200:
+            headers[DIGEST_HEADER] = digest
+        media_type = (
+            "text/plain" if wants_plain_text(request.headers.get("accept", "")) else "text/markdown"
+        )
         if status == 402:
             # W5: private/no-store + the app's payment challenge. Header
             # failures inside offer_headers degrade to a header-bare 402,
@@ -188,7 +206,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         return Response(
             content=body,
             status_code=status,
-            media_type="text/markdown",
+            media_type=media_type,
             headers=headers,
         )
 
@@ -256,7 +274,11 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             return Response(
                 content=body,
                 status_code=status,
-                media_type="text/markdown",
+                media_type=(
+                    "text/plain"
+                    if wants_plain_text(request.headers.get("accept", ""))
+                    else "text/markdown"
+                ),
                 headers=headers,
             )
 

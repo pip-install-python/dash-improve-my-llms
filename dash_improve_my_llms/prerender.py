@@ -137,6 +137,18 @@ def build_head_tags(context: Dict[str, Any], *, peers_html: str = "", document: 
         f'<link {_MARKER}="1" rel="alternate" type="text/markdown" '
         f'href="{_esc(llms_link)}" title="LLM-friendly documentation">'
     )
+    # llms.txt v2 discovery (2.7.1): the covering site index, and the
+    # digest of the markdown source this page's representations share —
+    # parity across the page, its twin, and the crawler document becomes
+    # provable rather than plausible. Digest is of the SERVED source
+    # (a gated page's lanes all carry the gate doc's digest).
+    if missing("link", "rel", "describedby"):
+        parts.append(f'<link {_MARKER}="1" rel="describedby" href="/llms.txt">')
+    from .discovery import DIGEST_META_NAME, source_digest
+
+    digest = source_digest(meta.get("llms_doc"))
+    if digest and missing("meta", "name", DIGEST_META_NAME):
+        parts.append(f'<meta {_MARKER}="1" name="{DIGEST_META_NAME}" content="{_esc(digest)}">')
     parts.append(f'<link {_MARKER}="1" rel="sitemap" type="application/xml" href="/sitemap.xml">')
     if missing("meta", "property", "og:type"):
         parts.append(f'<meta {_MARKER}="1" property="og:type" content="website">')

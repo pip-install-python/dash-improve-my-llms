@@ -11,7 +11,9 @@ from typing import Any
 
 from . import access
 from ._headers import normalize_headers
+from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
+    page_source_digest,
     LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
     TIER_DOC_PATHS,
@@ -109,6 +111,10 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
             )
             if injected is not document:
                 response.set_data(injected)
+                # llms.txt v2 discovery (2.7.1): the relations ride the
+                # headers of the page response too.
+                page_path_norm = request.path.rstrip("/") or "/"
+                response.headers["Link"] = link_header_value(page_path_norm)
             return response
 
     @server.route("/<path:page_path>/llms.txt")
@@ -146,6 +152,20 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
                     )
 
         headers = _doc_headers()
+        # 2.7.1: the digest that makes representation parity provable, and
+        # the text/plain compatibility ramp (same bytes, compatible type —
+        # a mainstream agent stack rejects text/markdown outright).
+        digest = page_source_digest(
+            f"/{page_path}" if page_path else "/",
+            state.page_metadata,
+            state.hidden_pages,
+            state,
+        )
+        if digest and status == 200:
+            headers[DIGEST_HEADER] = digest
+        mimetype = (
+            "text/plain" if wants_plain_text(request.headers.get("Accept", "")) else "text/markdown"
+        )
         if status == 402:
             # W5: private/no-store + the app's payment challenge. Enrichment
             # only — the Markdown body is the funnel; header failures inside
@@ -157,7 +177,7 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
         return Response(
             body,
             status=status,
-            mimetype="text/markdown",
+            mimetype=mimetype,
             headers=headers,
         )
 
@@ -222,7 +242,11 @@ def register_quart(app: Any, config: Any, state: Any) -> None:
             return Response(
                 body,
                 status=status,
-                mimetype="text/markdown",
+                mimetype=(
+                    "text/plain"
+                    if wants_plain_text(request.headers.get("Accept", ""))
+                    else "text/markdown"
+                ),
                 headers=headers,
             )
 

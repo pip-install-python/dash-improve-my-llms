@@ -893,6 +893,39 @@ def build_llms_full_summary(app: Any, corpus: str) -> str:
     )
 
 
+def page_source_digest(
+    page_path: str,
+    page_metadata: Dict[str, Dict[str, Any]],
+    hidden_paths: set,
+    state: Any = None,
+) -> Optional[str]:
+    """The digest of the source a page's markdown twin serves (2.7.1).
+
+    Mirrors build_llms_txt_for_page's source selection so the twin's
+    header always matches the HTML lanes' meta: allow → the resolved
+    prose; gated → the gate document; priced (metering on) → the offer;
+    deny or the root composite index → None (no header). The root
+    /llms.txt is built from many sources and is the documented exception
+    to representation parity.
+    """
+    if page_path == "/":
+        return None
+    verdict = access.resolve(page_path, hidden_paths)
+    if verdict == access.DENY:
+        return None
+    from .discovery import source_digest
+
+    if verdict == access.PRICED:
+        offer = access.offer_document(page_path, page_metadata, state)
+        if offer is not None:
+            return source_digest(offer)
+        verdict = access.GATED
+    if verdict == access.GATED:
+        return source_digest(access.gate_document(page_path, page_metadata, state))
+    entry = _find_page(page_path)
+    return source_digest(_resolve_llms_doc(page_path, page_metadata, entry))
+
+
 def build_llms_txt_for_page(
     app: Any,
     page_path: str,
@@ -1439,6 +1472,16 @@ def handle_bot_request(
         headers = {}
         if robots_config and robots_config.block_ai_training:
             headers["X-Robots-Tag"] = "noai"
+        # llms.txt v2 discovery (2.7.1): the relations ride the headers too,
+        # so an agent reading only headers still finds the machine surface;
+        # the digest makes representation parity provable.
+        from .discovery import DIGEST_HEADER, link_header_value, source_digest
+
+        headers["Link"] = link_header_value(page_path)
+        entry = _find_page(page_path)
+        digest = source_digest(_resolve_llms_doc(page_path, page_metadata, entry))
+        if digest:
+            headers[DIGEST_HEADER] = digest
         return {
             "status": 200,
             "body": html,

@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-08-23 — the standards fast-follow
+
+Three additive features tracking llms.txt v2's August 2026 discovery
+update, all default-on, none changing existing bytes' meaning — shipped
+quick so the fleet's floor round happens once (to >=2.7.1).
+
+### Added — discovery relations on every page
+
+`rel="alternate" type="text/markdown"` (the page's twin — emitted since
+2.x) is joined by `rel="describedby"` pointing at the covering
+`/llms.txt`, in the HTML head of BOTH document lanes (the
+prerender/browser path and the static crawler document), and both
+relations now ALSO ride an HTTP `Link` header on page responses — an
+agent that reads only headers still finds the machine surface.
+
+### Added — the text/plain compatibility ramp
+
+An `Accept` header naming `text/plain` (and not markdown) gets the same
+bytes with `Content-Type: text/plain` on every llms surface (root,
+per-page twins, both tiers) — a mainstream agent retrieval stack was
+measured rejecting `text/markdown` outright. `*/*` keeps the historical
+markdown type; `Vary: Accept` already travels on these responses.
+
+### Added — the representation source digest
+
+`sha256:<hex>` of the markdown source a lane serves, exposed as
+`<meta name="llms-source-digest">` on both HTML lanes and an
+`X-Llms-Source-Digest` header on the markdown twin — representation
+parity becomes provable rather than plausible: deployment batteries can
+assert the page, its twin, and the crawler document were generated from
+the same source. The digest is of the SERVED source, so parity holds
+for every access verdict (a gated page's three lanes all carry the gate
+document's digest, and the withheld prose's hash never leaks). The root
+`/llms.txt` is a composite built from many sources and carries no
+digest — the documented exception.
+
 ## [2.7.0] - 2026-08-22 — "the agent toll gate"
 
 The release the 2026-08-13 agent-exchange design specified (W1–W6 + P6),

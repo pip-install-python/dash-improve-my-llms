@@ -267,6 +267,11 @@ def generate_static_page_html(
     # the prose opens with its own h1, the header contributes only the
     # description; a doc-less or headless-prose page keeps the header h1.
     # Exactly one h1 either way, mirrored on both lanes, pinned on both.
+    from .discovery import DIGEST_META_NAME, source_digest
+
+    _digest = source_digest(llms_doc)
+    digest_meta = f'\n    <meta name="{DIGEST_META_NAME}" content="{_digest}">' if _digest else ""
+
     if body_html.lstrip().lower().startswith("<h1"):
         header_html = f"<p>{description}</p>"
     else:
@@ -306,6 +311,7 @@ def generate_static_page_html(
 
     <link rel="canonical" href="{base_url}{page_path}">
     <link rel="alternate" type="text/markdown" href="{llms_link}" title="LLM-friendly documentation">
+    <link rel="describedby" href="/llms.txt">{digest_meta}
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 {icon_links}
     <meta property="og:type" content="website">
