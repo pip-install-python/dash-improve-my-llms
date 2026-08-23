@@ -95,35 +95,6 @@ jobs:
           print(f"dash {dash.__version__} confirmed")
           PY
 
-  site:
-    # The docs-site suite (tests/site): social card, site identity, internal
-    # traffic. It boots app.py, so it needs the SITE's requirements.txt on
-    # top of the package — deps the test matrix deliberately never installs
-    # (the matrix proves the package against a bare pinned Dash). The suite
-    # skips itself via importorskip when those deps are absent; this job is
-    # the one place it is enforced rather than skipped. Secretless by design:
-    # no env, no tokens — the suite must pass with nothing configured.
-    name: docs site suite
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install the site's runtime deps + the package from this tree
-        run: |
-          pip install -r requirements.txt
-          # --no-deps, matching the Dockerfile: requirements.txt already
-          # pins the site's Dash, and this host exists to demonstrate the
-          # working tree's package, not a published release.
-          pip install --no-deps -e .
-          pip install pytest
-
-      - name: Site suite
-        run: pytest tests/site -q
-
   build:
     name: build + verify wheel
     runs-on: ubuntu-latest

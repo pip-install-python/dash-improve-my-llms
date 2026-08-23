@@ -1,5 +1,4 @@
-# Development requirements
--r requirements.txt
+# Development requirements for the package (test + lint + build tooling).
 
 # Testing
 pytest>=7.0.0

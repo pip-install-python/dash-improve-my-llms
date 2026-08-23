@@ -2,11 +2,6 @@
 include README.md
 include CHANGELOG.md
 include LICENSE
-# requirements.txt is the DOCUMENTATION SITE's dependency list — gunicorn,
-# dash-mantine-components, numpy — for the Render/Docker deployment in this
-# repo. It is not the package's; those live in pyproject.toml [dependencies].
-# Shipping it put a deployment's requirements inside a library artifact and
-# named the host in a comment. Neither file is shipped.
 include pyproject.toml
 
 # Documentation is deliberately NOT shipped.
@@ -37,11 +32,7 @@ global-exclude *.so
 global-exclude .git*
 
 # Exclude test and development files
-exclude app.py
-exclude visitor_analytics.json
 recursive-exclude tests *
-recursive-exclude pages *
-recursive-exclude templates *
 recursive-exclude .venv *
 recursive-exclude .idea *
 recursive-exclude .claude *

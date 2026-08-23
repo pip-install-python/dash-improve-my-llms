@@ -43,10 +43,15 @@ the default `unknown="allow"` the feature ships **inert**: configured,
 tested, and blocking nobody.
 
 The live per-host check is the operator panel's line
-*"this request resolved to: `DE` (via cf-ipcountry)"* — see
-[PANEL.md](PANEL.md). If it says "unknown" for a request you KNOW came
-through your edge, the header is not being forwarded; fix that before
-trusting the denylist.
+*"this request resolved to: `DE` (via cf-ipcountry)"* — the panel is the
+package's own surface, enabled with `LLMSConfig(panel=True)` and gated
+on `DIMLL_PANEL_TOKEN`; see [PANEL.md](PANEL.md). If it says "unknown"
+for a request you KNOW came through your edge, the header is not being
+forwarded; fix that before trusting the denylist. On the fleet, the
+boilerplate lineage (template ≥1.6.10) also answers this check without
+a token: its `/healthz` carries a geo block reporting the resolved
+country, so the mandatory per-host verification can ride the health
+endpoint fleet-wide.
 
 ## Usage
 
@@ -196,5 +201,7 @@ total.
    but exempt paths still answer.
 5. The callable seam: mutate the backing store, next request reflects
    it, no restart. A raising callable fails open with one warning.
-6. Live, per host: the panel's resolved-via line shows a real country
-   for an edge-proxied request BEFORE the denylist is trusted.
+6. Live, per host: the panel's resolved-via line (or, on
+   boilerplate-lineage hosts ≥1.6.10, the `/healthz` geo block) shows a
+   real country for an edge-proxied request BEFORE the denylist is
+   trusted.

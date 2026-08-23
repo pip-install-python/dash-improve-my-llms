@@ -143,18 +143,19 @@ Treat that warning as a to-do list. Those pages are the ones serving a stub.
 
 ## Documentation
 
-Full documentation, served by this package's own demo app — the reference
-deployment demonstrates every claim in this README on real URLs:
+Full documentation lives on the package's reference deployment and R&D
+bench — a separate repository,
+[`llms-2plot-dev`](https://github.com/pip-install-python/llms-2plot-dev),
+built on the network's documentation boilerplate and demonstrating every
+claim in this README on real URLs:
 
 ### 📚 **[llms.2plot.dev](https://llms.2plot.dev)**
 
 Every page there also serves `/<page>/llms.txt` — the prose as Markdown,
-ready to paste into a chat window. You can run the same site locally:
-
-```bash
-pip install -r requirements.txt
-python app.py                 # open http://localhost:8959
-```
+ready to paste into a chat window. THIS repository is the package and its
+test bed, nothing else: the multi-backend suite under `tests/` boots real
+Dash apps against the working tree (`pytest tests --ignore=tests/legacy`),
+and `scripts/matrix.py` reproduces the CI matrix locally.
 
 ## How the content gets served
 
