@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.2] - 2026-08-27 — HEAD on the ASGI lane
+
+### Fixed — `HEAD` returned 405 on FastAPI-backed apps
+
+Through 2.7.1 the FastAPI adapter registered every crawler-facing route
+with `@router.get(...)`. FastAPI's `APIRoute` takes that literally, and
+Starlette answers an undeclared method with **405 Method Not Allowed** —
+while Werkzeug (Flask, and Quart by descent) derives `HEAD` from every
+`GET` automatically. The same package version therefore answered
+`HEAD /llms.txt` with 200 on a Flask host and 405 on an ASGI one.
+
+**Operators of FastAPI-backed apps: this was the package, not your
+configuration.** Uptime monitors, link checkers and crawlers that
+preflight with `HEAD` before fetching have been receiving 405 from
+`/llms.txt`, the per-page `/<page>/llms.txt` twins, `/llms-small.txt`,
+`/llms-full.txt`, `/robots.txt`, `/sitemap.xml` and the operator panel
+since those routes existed. `GET` was never affected, so a monitor
+checking with `GET` saw nothing wrong. Only the root icon routes were
+correct, because they alone declared their methods explicitly.
+
+Every one of those routes now declares `GET` and `HEAD`. The methods are
+stated once, in `handlers.DOC_ROUTE_METHODS`, and all three adapters
+register from it — Flask and Quart included, where the behaviour was
+previously inherited from Werkzeug rather than chosen. Their responses do
+not change; the declaration does, so the three adapters now read the same
+and the guarantee is deliberate.
+
+Response bodies are unaffected: a `HEAD` returns the status and headers
+its `GET` would, and the body is suppressed by the serving layer as
+before (Werkzeug on WSGI; uvicorn and hypercorn both suppress a `HEAD`
+body on ASGI).
+
+### Added — HEAD parity is now covered on every backend
+
+`TestHeadParity` in `tests/test_adapters.py` sweeps every registered
+route on all three adapters and asserts `HEAD` matches `GET` on status
+and content-type, and is never 405. The test was checked for
+non-vacuity: with the FastAPI declaration reverted, its FastAPI leg goes
+red and the Flask and Quart legs stay green — the asymmetry that let this
+reach 2.7.1 without a failing test.
+
 ## [2.7.1] - 2026-08-23 — the standards fast-follow
 
 Three additive features tracking llms.txt v2's August 2026 discovery

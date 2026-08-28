@@ -13,6 +13,7 @@ from . import access
 from ._headers import normalize_headers
 from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
+    DOC_ROUTE_METHODS,
     page_source_digest,
     LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
@@ -114,8 +115,8 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
                 response.headers["Link"] = link_header_value(page_path_norm)
             return response
 
-    @server.route("/<path:page_path>/llms.txt")
-    @server.route("/llms.txt", defaults={"page_path": ""})
+    @server.route("/<path:page_path>/llms.txt", methods=DOC_ROUTE_METHODS)
+    @server.route("/llms.txt", defaults={"page_path": ""}, methods=DOC_ROUTE_METHODS)
     def _llms_txt(page_path: str):
         body, status = build_llms_txt_for_page(
             app=app,
@@ -180,8 +181,10 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
 
     if getattr(config, "llms_tiers", True):
 
-        @server.route(TIER_DOC_PATHS["small"], defaults={"tier": "small"})
-        @server.route(TIER_DOC_PATHS["full"], defaults={"tier": "full"})
+        @server.route(
+            TIER_DOC_PATHS["small"], defaults={"tier": "small"}, methods=DOC_ROUTE_METHODS
+        )
+        @server.route(TIER_DOC_PATHS["full"], defaults={"tier": "full"}, methods=DOC_ROUTE_METHODS)
         def _llms_tier(tier: str):
             body, status = build_llms_tier_doc(
                 app=app,
@@ -247,7 +250,7 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
                 headers=headers,
             )
 
-    @server.route("/robots.txt")
+    @server.route("/robots.txt", methods=DOC_ROUTE_METHODS)
     def _robots():
         return Response(build_robots_txt(app), mimetype="text/plain")
 
@@ -255,7 +258,7 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
         # P1: the read-only operator panel. A plain route check is airtight
         # here (unlike a Dash Pages layout); unauthorized is 404, never 403
         # — the panel does not advertise its own existence.
-        @server.route(getattr(config, "panel_path", "/llms-policy"))
+        @server.route(getattr(config, "panel_path", "/llms-policy"), methods=DOC_ROUTE_METHODS)
         def _llms_panel():
             from . import panel as _panel
 
@@ -270,7 +273,7 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
                 headers=_panel.panel_response_headers(),
             )
 
-    @server.route("/sitemap.xml")
+    @server.route("/sitemap.xml", methods=DOC_ROUTE_METHODS)
     def _sitemap():
         body = build_sitemap_xml(
             app=app,
@@ -306,5 +309,5 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
             _root_path,
             endpoint=f"_dimll_icon{_root_path.replace('/', '_').replace('.', '_')}",
             view_func=_root_icon,
-            methods=["GET", "HEAD"],
+            methods=DOC_ROUTE_METHODS,
         )

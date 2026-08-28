@@ -544,6 +544,13 @@ TIER_DOC_PATHS: Dict[str, str] = {
     "full": "/llms-full.txt",
 }
 
+# B7: the methods every crawler-facing route registers, stated once so all
+# three adapters read the same. HEAD is not decoration — monitors and
+# preflighting crawlers use it, and the ASGI lane will not derive it from
+# GET the way Werkzeug does. Flask and Quart would inherit it either way;
+# declaring it there makes the guarantee deliberate rather than accidental.
+DOC_ROUTE_METHODS: List[str] = ["GET", "HEAD"]
+
 # Default identity per tier. Seeded into page_metadata at registration so a
 # gated tier never renders its gate document as "# /llms-full.txt".
 TIER_DOC_META: Dict[str, Dict[str, str]] = {

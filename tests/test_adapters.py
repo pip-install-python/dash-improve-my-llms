@@ -104,6 +104,27 @@ def _lower(headers) -> dict:
     return {str(k).lower(): str(v) for k, v in dict(headers).items()}
 
 
+def _package_claimed_paths(app, backend: str) -> set:
+    """The root-icon paths THIS package registered, not the app or Dash.
+
+    `add_llms_routes` deliberately skips any icon path something else
+    already claimed, so a test that asserted on all of ROOT_ICON_PATHS
+    would be asserting on Dash's routes half the time.
+    """
+    server = app.server
+    if backend == "fastapi":
+        return {
+            getattr(route, "path", None)
+            for route in server.routes
+            if getattr(getattr(route, "endpoint", None), "__name__", "") == "_root_icon"
+        }
+    return {
+        str(rule.rule)
+        for rule in server.url_map.iter_rules()
+        if rule.endpoint.startswith("_dimll_icon")
+    }
+
+
 class _Client:
     """One `get(path, ua)` interface over Flask, Quart and Starlette clients."""
 
@@ -130,7 +151,24 @@ class _Client:
     def get_full(
         self, path: str, ua: str = BROWSER, accept: str = "*/*", extra_headers: dict = None
     ):
-        """(status, body, headers) — headers matter for content negotiation.
+        """(status, body, headers) — headers matter for content negotiation."""
+        return self.request("GET", path, ua=ua, accept=accept, extra_headers=extra_headers)
+
+    def head_full(
+        self, path: str, ua: str = BROWSER, accept: str = "*/*", extra_headers: dict = None
+    ):
+        """(status, body, headers) for a HEAD — see TestHeadParity."""
+        return self.request("HEAD", path, ua=ua, accept=accept, extra_headers=extra_headers)
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        ua: str = BROWSER,
+        accept: str = "*/*",
+        extra_headers: dict = None,
+    ):
+        """(status, body, headers) for any method.
 
         Redirects are never followed: Starlette's client follows them by
         default and Flask's does not, so a test asserting on a 302 would pass
@@ -140,14 +178,14 @@ class _Client:
         headers = {"User-Agent": ua, "Accept": accept, **(extra_headers or {})}
 
         if self.backend == "fastapi":
-            response = self._client.get(path, headers=headers, follow_redirects=False)
+            response = self._client.request(method, path, headers=headers, follow_redirects=False)
             return response.status_code, response.text, _lower(response.headers)
 
         if self.backend == "quart":
             import asyncio
 
             async def _run():
-                response = await self._client.get(path, headers=headers)
+                response = await self._client.open(path, method=method, headers=headers)
                 return (
                     response.status_code,
                     await response.get_data(as_text=True),
@@ -156,7 +194,7 @@ class _Client:
 
             return asyncio.get_event_loop().run_until_complete(_run())
 
-        response = self._client.get(path, headers=headers)
+        response = self._client.open(path, method=method, headers=headers)
         return (
             response.status_code,
             response.get_data(as_text=True),
@@ -910,3 +948,97 @@ class TestCrawlerLaneH1:
         status, body = client.get("/guide", ua="Mozilla/5.0 (compatible; Googlebot/2.1)")
         assert status == 200
         assert body.count("<h1") == 1, "the crawler lane serves duplicate h1s"
+
+
+class TestHeadParity:
+    """B7: every crawler-facing route answers HEAD, on every backend.
+
+    Through 2.7.1 the FastAPI adapter registered all of its routes with
+    `@router.get(...)`. Starlette answers an undeclared method with 405,
+    while Werkzeug (Flask, and Quart by descent) derives HEAD from every
+    GET automatically — so `HEAD /llms.txt` returned 200 on a Flask host
+    and 405 on an ASGI one, from the same package version. Monitors and
+    preflighting crawlers got the 405.
+
+    On the body: this asserts status and content-type parity but stops
+    short of requiring an empty body at the client, because the three
+    stacks discard it at three different layers and none of those layers
+    is ours. Werkzeug empties it in the response (`wrappers/response.py`,
+    `get_app_iter`), so Flask's client sees b"". Starlette emits it and
+    httpx's ASGI transport drops it (`httpx/_transports/asgi.py`), so the
+    FastAPI client also sees b"". Quart emits it and nothing in the test
+    path removes it, so Quart's client sees the whole document — while
+    the wire does not, because every ASGI server suppresses a HEAD body
+    (`hypercorn/protocol/http_stream.py`, `suppress_body`; uvicorn's
+    `h11_impl.py` sends `b"" if method == "HEAD"`). Measured on hypercorn's real H11Protocol, HEAD
+    /llms.txt is 200 with zero body bytes. Forcing the clients to agree
+    would mean stripping bodies inside two adapters purely to satisfy
+    this assertion; the disjunction below still catches a truncated or
+    substituted body, which is the failure worth catching.
+    """
+
+    SWEEP = (
+        "/llms.txt",
+        "/guide/llms.txt",
+        "/llms-small.txt",
+        "/llms-full.txt",
+        "/robots.txt",
+        "/sitemap.xml",
+    )
+
+    def test_head_is_never_method_not_allowed(self, client):
+        """The regression itself, stated as bluntly as it happened."""
+        for path in self.SWEEP:
+            status, _, _ = client.head_full(path)
+            assert status != 405, f"HEAD {path} is 405 on {client.backend}"
+
+    def test_head_matches_get_status_and_content_type(self, client):
+        for path in self.SWEEP:
+            get_status, _, get_headers = client.get_full(path)
+            head_status, _, head_headers = client.head_full(path)
+
+            assert head_status == get_status, (
+                f"HEAD {path} returned {head_status}, GET returned {get_status} "
+                f"on {client.backend}"
+            )
+            assert head_headers.get("content-type") == get_headers.get("content-type"), (
+                f"HEAD {path} content-type {head_headers.get('content-type')!r} != "
+                f"GET {get_headers.get('content-type')!r} on {client.backend}"
+            )
+
+    def test_head_body_is_empty_or_the_get_body(self, client):
+        """Never a truncated or substituted body — see the class docstring
+        for why this is a disjunction rather than `== ""`."""
+        for path in self.SWEEP:
+            _, get_body, _ = client.get_full(path)
+            _, head_body, _ = client.head_full(path)
+            assert head_body in ("", get_body), f"HEAD {path} served a third body"
+
+    def test_head_reaches_the_panel_route(self, backend):
+        """The panel is registered on a separate config branch, so the
+        sweep above never touches it."""
+        app = _build_app(backend, panel=True, panel_token="s3cret")
+        client = _Client(app, backend)
+
+        get_status, _, get_headers = client.get_full("/llms-policy?token=s3cret")
+        head_status, _, head_headers = client.head_full("/llms-policy?token=s3cret")
+
+        assert get_status == 200
+        assert head_status == get_status, f"HEAD on the panel is {head_status} on {backend}"
+        assert head_headers.get("content-type") == get_headers.get("content-type")
+
+    def test_head_reaches_the_root_icon_routes(self, backend):
+        """These already declared HEAD before B7 — this pins that they keep
+        it while the other routes are being changed around them."""
+        from dash_improve_my_llms.seo import ROOT_ICON_PATHS
+
+        app = _build_app(backend)
+        client = _Client(app, backend)
+        claimed = _package_claimed_paths(app, backend)
+
+        for path in ROOT_ICON_PATHS:
+            if path not in claimed:
+                continue  # the app, or Dash, owns this path — not ours to assert on
+            get_status, _, _ = client.get_full(path)
+            head_status, _, _ = client.head_full(path)
+            assert head_status == get_status, f"HEAD {path} is {head_status} on {backend}"

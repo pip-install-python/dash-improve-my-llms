@@ -21,6 +21,7 @@ from . import access
 from ._headers import normalize_headers
 from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
+    DOC_ROUTE_METHODS,
     page_source_digest,
     LLMS_FULL_VIEWER_NOTE,
     TIER_DOC_META,
@@ -210,7 +211,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             headers=headers,
         )
 
-    @router.get("/llms.txt")
+    @router.api_route("/llms.txt", methods=DOC_ROUTE_METHODS)
     def _llms_txt_root(request: Request):
         return _serve_llms("", request)
 
@@ -282,25 +283,25 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                 headers=headers,
             )
 
-        @router.get(TIER_DOC_PATHS["small"])
+        @router.api_route(TIER_DOC_PATHS["small"], methods=DOC_ROUTE_METHODS)
         def _llms_small(request: Request):
             return _serve_tier("small", request)
 
-        @router.get(TIER_DOC_PATHS["full"])
+        @router.api_route(TIER_DOC_PATHS["full"], methods=DOC_ROUTE_METHODS)
         def _llms_full(request: Request):
             return _serve_tier("full", request)
 
-    @router.get("/{page_path:path}/llms.txt")
+    @router.api_route("/{page_path:path}/llms.txt", methods=DOC_ROUTE_METHODS)
     def _llms_txt(page_path: str, request: Request):
         return _serve_llms(page_path, request)
 
-    @router.get("/robots.txt", response_class=PlainTextResponse)
+    @router.api_route("/robots.txt", methods=DOC_ROUTE_METHODS, response_class=PlainTextResponse)
     def _robots():
         return PlainTextResponse(build_robots_txt(app))
 
     if getattr(config, "panel", False):
         # P1: the read-only operator panel — see the Flask adapter's note.
-        @router.get(getattr(config, "panel_path", "/llms-policy"))
+        @router.api_route(getattr(config, "panel_path", "/llms-policy"), methods=DOC_ROUTE_METHODS)
         def _llms_panel(request: Request):
             from . import panel as _panel
 
@@ -316,7 +317,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                 headers=_panel.panel_response_headers(),
             )
 
-    @router.get("/sitemap.xml")
+    @router.api_route("/sitemap.xml", methods=DOC_ROUTE_METHODS)
     def _sitemap():
         body = build_sitemap_xml(
             app=app,
@@ -347,7 +348,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         router.add_api_route(
             _root_path,
             _make_root_icon(_root_path),
-            methods=["GET", "HEAD"],
+            methods=DOC_ROUTE_METHODS,
             include_in_schema=False,
         )
 
