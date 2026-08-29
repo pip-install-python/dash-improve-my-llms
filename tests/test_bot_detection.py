@@ -338,3 +338,70 @@ def test_get_all_bot_lists_names_the_monitor_class():
     assert "headlesschrome" in lists["monitor"]
     # and it did not leak into the three that existed before
     assert "pingdom" not in lists["traditional"]
+
+
+# ---------------------------------------------------------------------------
+# 2.9.1 — the rest of the Google family
+# ---------------------------------------------------------------------------
+
+GOOGLE_FAMILY = [
+    (
+        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 "
+        "Safari/537.36 (compatible; GoogleOther)",
+        "googleother",
+    ),
+    ("GoogleOther-Image/1.0", "googleother"),
+    ("GoogleOther-Video/1.0", "googleother"),
+    ("Mozilla/5.0 (compatible; Google-InspectionTool/1.0)", "google-inspectiontool"),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64; Storebot-Google/1.0) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+        "storebot-google",
+    ),
+    ("AdsBot-Google (+http://www.google.com/adsbot.html)", "adsbot-google"),
+    ("Google-Safety", "google-safety"),
+]
+
+
+@pytest.mark.parametrize("ua,vendor_key", GOOGLE_FAMILY)
+def test_the_google_family_is_named(ua, vendor_key):
+    """Through 2.9.0 none of these matched a vendor: their User-agents carry
+    no `googlebot` substring, so GoogleOther and Google-InspectionTool read
+    as `unknown` and Storebot-Google rode the generic `bot` token inside its
+    own `+http://www.google.com/bot.html` URL. Real, verifiable Google
+    traffic was landing in the null-vendor row of every ledger."""
+    from dash_improve_my_llms.bot_detection import classify
+
+    identity = classify(ua)
+    assert identity["vendor_key"] == vendor_key, ua
+    assert identity["bot_type"] == "traditional", ua
+    assert identity["vendor_class"] == "traditional", ua
+    assert identity["lane"] == "crawler", ua
+    assert get_bot_type(ua) == "traditional", ua
+
+
+def test_googleother_is_traditional_not_training():
+    """Stated deliberately. Google-Extended is the token that governs
+    training use and is already `training`; Google groups GoogleOther with
+    the common crawlers and says it does not affect Search ranking. Calling
+    it `training` would 403 it on every default host — a host that reads
+    Google's "R&D" as AI use has `vendor_policy={"googleother": "block"}`,
+    which only exists because the vendor now does."""
+    assert get_vendor("googleother").cls == "traditional"
+    assert get_vendor("google-extended").cls == "training"
+
+
+def test_the_family_does_not_steal_googlebots_own_user_agent():
+    """Substring matching, so the new tokens must not capture Googlebot —
+    whose UA contains `+http://www.google.com/bot.html`."""
+    ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+    assert get_bot_vendor(ua) == "googlebot"
+    assert get_bot_vendor("Googlebot-Image/1.0") == "googlebot"
+
+
+def test_google_safety_is_never_named_in_robots():
+    """Google documents that Google-Safety ignores robots.txt entirely.
+    Publishing a directive the vendor openly disregards is a promise the
+    site cannot keep — the anthropic-legacy rule, different reason."""
+    assert get_vendor("google-safety").robots_tokens == ()
+    assert get_vendor("adsbot-google").robots_tokens == ("AdsBot-Google",)

@@ -559,3 +559,102 @@ class TestMonitorsNeverReachRobots:
             policies = effective_policies(config)
             for vendor in vendors_of_class("monitor"):
                 assert policies[vendor.key] == "allow", vendor.key
+
+
+class TestGoogleFamilyRobots:
+    """2.9.1 item 3 — what the five new Google entries may and may not
+    change in a host's published robots.txt.
+
+    Measured against the 2.9.0 renderer across nine configurations before
+    this test was written (2026-08-29): identical on seven, including every
+    default and every vendor_policy that names an older vendor. The two
+    that move are pinned below, and both move deliberately.
+    """
+
+    NEW_KEYS = [
+        "googleother",
+        "google-inspectiontool",
+        "storebot-google",
+        "adsbot-google",
+        "google-safety",
+    ]
+
+    def _render(self, config):
+        return generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            RobotsConfig(),
+            RobotsConfig(block_ai_training=False),
+            RobotsConfig(allow_ai_search=False),
+            RobotsConfig(vendor_policy={"googlebot": "block"}),
+            RobotsConfig(default_unknown_ai="block"),
+            RobotsConfig(crawl_delay=5, disallowed_paths=["/admin"]),
+        ],
+    )
+    def test_the_default_family_of_configs_names_none_of_them(self, config):
+        """`allow_traditional` is True by default, so the traditional class
+        rides `User-agent: *` and five more members of it change nothing."""
+        robots = self._render(config)
+        for token in ("GoogleOther", "Google-InspectionTool", "Storebot-Google", "AdsBot-Google"):
+            assert token not in robots, token
+
+    def test_blocking_traditional_now_publishes_the_whole_family(self):
+        """The one existing configuration whose output moves, and it moves
+        on purpose. A host that blocked every traditional crawler was ALSO
+        403ing these five from 2.9.1 on — publishing the block is what
+        keeps robots.txt and the middleware one source (soak finding #2:
+        enforced-but-unpublished is the defect, not the fix)."""
+        robots = self._render(RobotsConfig(allow_traditional=False))
+        for token in (
+            "GoogleOther",
+            "GoogleOther-Image",
+            "GoogleOther-Video",
+            "Google-InspectionTool",
+            "Storebot-Google",
+            "AdsBot-Google",
+        ):
+            assert f"User-agent: {token}\nDisallow: /" in robots, token
+        # ...but never the one that ignores robots.txt.
+        assert "Google-Safety" not in robots
+
+    def test_naming_a_new_key_publishes_just_that_one(self):
+        robots = self._render(RobotsConfig(vendor_policy={"googleother": "block"}))
+        assert "User-agent: GoogleOther\nDisallow: /" in robots
+        assert "Storebot-Google" not in robots
+        assert "User-agent: Googlebot\n" not in robots
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            RobotsConfig(),
+            RobotsConfig(allow_traditional=False),
+            RobotsConfig(block_ai_training=True, allow_ai_search=False),
+            RobotsConfig(vendor_policy={"googlebot": "meter"}),
+        ],
+    )
+    def test_the_new_keys_follow_the_coarse_flags_exactly_as_googlebot_does(self, config):
+        """Item 4: no special-casing anywhere in the fold. The reference is
+        `bingbot` — an existing traditional vendor that none of these
+        configs names — because the last config overrides googlebot itself,
+        and a new key must track its CLASS, not another vendor's override."""
+        from dash_improve_my_llms.vendors import effective_policies
+
+        policies = effective_policies(config)
+        for key in self.NEW_KEYS:
+            assert policies[key] == policies["bingbot"], key
+        if not (config.vendor_policy or {}).get("googlebot"):
+            assert policies["googleother"] == policies["googlebot"]
+
+    def test_an_override_on_one_family_member_moves_only_that_one(self):
+        from dash_improve_my_llms.vendors import effective_policies
+
+        policies = effective_policies(RobotsConfig(vendor_policy={"storebot-google": "block"}))
+        assert policies["storebot-google"] == "block"
+        assert policies["googlebot"] == "allow"
+        assert policies["googleother"] == "allow"

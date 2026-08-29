@@ -342,7 +342,7 @@ Callbacks run on the request path, so append to a queue rather than
 blocking — and a callback that raises is caught and warned about once,
 never allowed to take a document down.
 
-**`verified` is not a gate.** For the eleven registry vendors whose
+**`verified` is not a gate.** For the sixteen registry vendors whose
 operators publish their crawler IP ranges — Google, OpenAI, Microsoft,
 Apple, Perplexity, DuckDuckGo, Common Crawl — the client address is
 checked against the published list and the event says `verified` or

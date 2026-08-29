@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.1] - 2026-08-29 — name the rest of the Google family
+
+Registry only. 2.9.0's ledger had its first real day on a live host and
+the null-vendor row turned out to contain real, verifiable Google
+traffic: three of Google's own common crawlers carry no `googlebot`
+substring, so they never matched a vendor at all.
+
+### Added — five Google crawlers the registry could not name
+
+| Entry | robots token(s) | was, before 2.9.1 |
+|---|---|---|
+| `googleother` | `GoogleOther`, `GoogleOther-Image`, `GoogleOther-Video` | `bot_type=unknown`, no vendor |
+| `google-inspectiontool` | `Google-InspectionTool` | `bot_type=unknown`, no vendor |
+| `storebot-google` | `Storebot-Google` | `traditional`, no vendor — it matched the generic `bot` token inside its own `+http://www.google.com/bot.html` URL |
+| `adsbot-google` | `AdsBot-Google` | `traditional`, no vendor |
+| `google-safety` | *(none — see below)* | `bot_type=unknown`, no vendor |
+
+All five now verify against Google's published ranges, so a real one is
+`verified` and an impostor is `unverified`, the same as Googlebot.
+
+**GoogleOther is classified `traditional`, not `training`** — stated
+deliberately, because Google describes it as serving "one-off internal
+R&D crawls". Three reasons: `Google-Extended` is the token that governs
+training use and is already in the registry as `training`; Google groups
+GoogleOther with the common crawlers and says it does not affect Search
+ranking; and classifying it `training` would silently start 403ing it on
+every host that blocks AI training — from a patch release. A host that
+reads Google's "R&D" as AI use has the exact control it needs,
+`vendor_policy={"googleother": "block"}`, which works only because the
+vendor now exists.
+
+**`Google-Safety` is deliberately never named in robots.txt.** Google
+documents that it ignores robots.txt entirely; publishing a directive the
+vendor openly disregards is a promise the site cannot keep. That is the
+`anthropic-legacy` rule, reached for a different reason. **`AdsBot-Google`
+is the mirror case**: Google documents that AdsBot ignores the global
+`User-agent: *` rule, so naming it explicitly is the only way a site can
+address it at all.
+
+### Added — shared range snapshots (`Vendor.ranges_key`)
+
+Google publishes ONE ranges document for its whole common-crawler family
+and one for its special-case crawlers, so `_ranges/` is now keyed by
+snapshot rather than by vendor: `googlebot.json` is read by `googlebot`,
+`googleother`, `google-inspectiontool` and `storebot-google`, and the new
+`google-special.json` (135 v4 + 135 v6, from `special-crawlers.json`) by
+`adsbot-google` and `google-safety`. The alternative was shipping the same
+315 CIDRs four more times and re-fetching them four more times per
+release. The parse cache is keyed on the snapshot too, so a family is
+parsed once for all its members. A vendor without `ranges_key` still reads
+`<its own key>.json`; nothing else in `_ranges/` moved.
+
+### robots.txt — what changes, exactly
+
+Measured against the 2.9.0 renderer across nine configurations: **byte-identical
+on seven**, including every default, `block_ai_training=False`,
+`allow_ai_search=False`, `default_unknown_ai=...`, `crawl_delay`,
+`disallowed_paths` and any `vendor_policy` naming an older vendor. Two
+move, both deliberately:
+
+1. `vendor_policy` naming one of the five new keys — which is the point of
+   adding them. At 2.9.0 such an entry was dropped with a warning
+   (`unknown vendor 'googleother'`).
+2. **`allow_traditional=False`** — a host that blocks every traditional
+   crawler now publishes `Disallow` groups for GoogleOther (×3 tokens),
+   Google-InspectionTool, Storebot-Google and AdsBot-Google, **and the
+   middleware 403s them**, where 2.9.0 served them. This is the one
+   behaviour change in the release. It is the correct rendering of a policy
+   such a host already chose, and the alternative — classifying them but
+   never naming them — is exactly the enforced-but-unpublished defect
+   (soak finding #2) that 2.8 fixed. If you run Google Ads against a host
+   that sets `allow_traditional=False`, add
+   `vendor_policy={"adsbot-google": "allow"}`.
+
 ## [2.9.0] - 2026-08-29 — the posture on every row, `twitter:url`, monitors get a name
 
 2.8.0 started recording the read. Its first consumer put a ledger behind

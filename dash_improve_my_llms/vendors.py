@@ -78,6 +78,12 @@ class Vendor:
         ua_tokens: Lowercase substrings matched against the User-agent
             header. Matching is substring-based, same as 1.x.
         cls: ``training`` | ``search`` | ``traditional`` | ``monitor``.
+        ranges_key: Which ``_ranges/<name>.json`` snapshot verifies this
+            vendor, when it is not the vendor's own key. Google publishes
+            ONE document for all of its common crawlers and one for its
+            special-case crawlers, so five registry entries share two
+            files rather than shipping five copies of the same CIDRs.
+            Defaults to ``key``.
         ip_ranges_url: Where this operator PUBLISHES the IP ranges its
             crawler fetches from, or None when it publishes none. Feeds
             ``_identity.verify()`` and ``scripts/refresh_ip_ranges.py``.
@@ -99,6 +105,7 @@ class Vendor:
         "ua_tokens",
         "cls",
         "ip_ranges_url",
+        "ranges_key",
     )
 
     def __init__(
@@ -111,6 +118,7 @@ class Vendor:
         ua_tokens: Sequence[str],
         cls: str,
         ip_ranges_url: Optional[str] = None,
+        ranges_key: Optional[str] = None,
     ) -> None:
         assert cls in _CLASSES, cls
         self.key = key
@@ -121,6 +129,7 @@ class Vendor:
         self.ua_tokens = tuple(t.lower() for t in ua_tokens)
         self.cls = cls
         self.ip_ranges_url = ip_ranges_url
+        self.ranges_key = ranges_key or key
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +137,13 @@ class Vendor:
 # pre-2.7.0 vendors first (byte-stable for existing hosts), 2.7.0 additions
 # after.
 # ---------------------------------------------------------------------------
+
+#: Google publishes one ranges document per crawler FAMILY, not per
+#: crawler — these two are shared by several registry entries below.
+GOOGLEBOT_RANGES = "https://developers.google.com/static/search/apis/ipranges/googlebot.json"
+GOOGLE_SPECIAL_RANGES = (
+    "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+)
 
 VENDORS: Tuple[Vendor, ...] = (
     # ------------------------------------------------------ training ------
@@ -391,6 +407,96 @@ VENDORS: Tuple[Vendor, ...] = (
         ["duckduckbot"],
         TRADITIONAL,
         ip_ranges_url="https://duckduckgo.com/duckduckbot.json",
+    ),
+    # ------------------------------ traditional, 2.9.1 add (Google) ------
+    # The rest of Google's COMMON crawlers. All three fetch from the same
+    # document `googlebot` verifies against — Google publishes one list
+    # for the whole family (served both as `.../search/apis/ipranges/
+    # googlebot.json` and, under its newer name, `.../crawling/ipranges/
+    # common-crawlers.json`; byte-identical, measured 2026-08-29) — so
+    # they share its snapshot via `ranges_key` instead of shipping three
+    # more copies of 315 CIDRs.
+    #
+    # Until 2.9.1 none of them matched a vendor at all: their User-agents
+    # carry no `googlebot` substring, so GoogleOther and
+    # Google-InspectionTool read as `unknown` and Storebot-Google rode the
+    # generic `bot` token in its own `+http://www.google.com/bot.html`
+    # URL. Real, verifiable Google traffic was landing in the null-vendor
+    # row of every host's ledger.
+    Vendor(
+        "googleother",
+        "GoogleOther",
+        "Google",
+        "Generic fetcher used by Google product teams for one-off R&D "
+        "crawls of publicly accessible content; Google states it does not "
+        "affect Search ranking. Classified `traditional`, not `training`: "
+        "Google-Extended is the token that governs training use and is "
+        "already here as `training`, and Google groups this one with the "
+        "common crawlers. A host that reads Google's 'R&D' as AI use has "
+        "the exact control it needs — `vendor_policy={'googleother': "
+        "'block'}` — which 2.9.1 is what makes possible at all.",
+        ["GoogleOther", "GoogleOther-Image", "GoogleOther-Video"],
+        ["googleother"],
+        TRADITIONAL,
+        ip_ranges_url=GOOGLEBOT_RANGES,
+        ranges_key="googlebot",
+    ),
+    Vendor(
+        "google-inspectiontool",
+        "Google-InspectionTool",
+        "Google",
+        "Search Console's URL Inspection and the Rich Result Test — a "
+        "fetch a site OWNER triggered about their own page. Robots tokens "
+        "are its own only: Google documents that it also obeys `Googlebot` "
+        "rules, and emitting that token here would render a second, "
+        "duplicate Googlebot group.",
+        ["Google-InspectionTool"],
+        ["google-inspectiontool"],
+        TRADITIONAL,
+        ip_ranges_url=GOOGLEBOT_RANGES,
+        ranges_key="googlebot",
+    ),
+    Vendor(
+        "storebot-google",
+        "Storebot-Google",
+        "Google",
+        "Crawls for all surfaces of Google Shopping.",
+        ["Storebot-Google"],
+        ["storebot-google"],
+        TRADITIONAL,
+        ip_ranges_url=GOOGLEBOT_RANGES,
+        ranges_key="googlebot",
+    ),
+    # Google's SPECIAL-CASE crawlers verify against a different published
+    # document, snapshotted once as `_ranges/google-special.json`.
+    Vendor(
+        "adsbot-google",
+        "AdsBot-Google",
+        "Google",
+        "Assesses ad landing-page quality for Google Ads. Naming it in "
+        "robots.txt is the ONLY way to address it: Google documents that "
+        "AdsBot ignores the global `User-agent: *` rule, so a host's "
+        "wildcard directives never reached it.",
+        ["AdsBot-Google"],
+        ["adsbot-google"],
+        TRADITIONAL,
+        ip_ranges_url=GOOGLE_SPECIAL_RANGES,
+        ranges_key="google-special",
+    ),
+    Vendor(
+        "google-safety",
+        "Google-Safety",
+        "Google",
+        "Abuse and malware scanning of links shared on Google properties. "
+        "Robots tokens are deliberately EMPTY, the anthropic-legacy rule "
+        "for a different reason: Google documents that Google-Safety "
+        "ignores robots.txt entirely, and publishing a directive a vendor "
+        "openly disregards is a promise the site cannot keep.",
+        [],
+        ["google-safety"],
+        TRADITIONAL,
+        ip_ranges_url=GOOGLE_SPECIAL_RANGES,
+        ranges_key="google-special",
     ),
     # ------------------------------------------- monitor, 2.9.0 add ------
     # Uptime probes and headless automation. ALL of these carry

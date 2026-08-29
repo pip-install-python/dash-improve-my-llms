@@ -6,10 +6,12 @@ client can send ``ClaudeBot`` in its User-agent and be counted as
 Anthropic. For a ledger whose rows are meant to be shown to the vendors
 they name, "who" needs a second factor wherever one is published.
 
-That second factor is the operator's own published IP ranges. Eleven of
-the twenty-five registry vendors publish them (see ``Vendor
-.ip_ranges_url``); this module answers, for a (vendor, client address)
-pair, one of three strings:
+That second factor is the operator's own published IP ranges. Sixteen of
+the registry's vendors publish them (see ``Vendor.ip_ranges_url``), across
+twelve snapshot files — Google publishes one document for its whole
+common-crawler family and another for its special-case crawlers, so
+several vendors share a file via ``Vendor.ranges_key``. This module
+answers, for a (vendor, client address) pair, one of three strings:
 
     ``verified``    the vendor publishes ranges and the address is in one
     ``unverified``  the vendor publishes ranges and the address is NOT
@@ -28,7 +30,7 @@ the package's behaviour depend on a third-party JSON file's uptime.
 
 Where the data comes from
 -------------------------
-A snapshot ships in the wheel (``_ranges/<vendor>.json``), refreshed by
+A snapshot ships in the wheel (``_ranges/<snapshot>.json``), refreshed by
 ``scripts/refresh_ip_ranges.py`` as part of the release. The request path
 never touches the network: a runtime refresh is opt-in via
 ``configure_identity(refresh=True)``, runs once on first use, and falls
@@ -54,9 +56,12 @@ NOT_APPLICABLE = "n/a"
 
 _RANGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_ranges")
 
-# vendor key -> (v4 networks, v6 networks). Built once per vendor, on first
-# use, and cached for the process: parsing ~1400 CIDRs on every request
-# would be the one place this package added measurable latency.
+# SNAPSHOT name -> (v4 networks, v6 networks). Keyed on the snapshot and
+# not the vendor because several vendors share one file (Google's five
+# common crawlers verify against one published document), so a shared list
+# is parsed once for all of them. Built on first use and cached for the
+# process: parsing ~1400 CIDRs on every request would be the one place
+# this package added measurable latency.
 _CACHE: Dict[str, Tuple[List[ipaddress.IPv4Network], List[ipaddress.IPv6Network]]] = {}
 
 _warned: set = set()
@@ -87,8 +92,19 @@ def configure_identity(refresh: bool = False) -> None:
     _refreshed = False
 
 
-def _snapshot_path(vendor_key: str) -> str:
-    return os.path.join(_RANGES_DIR, f"{vendor_key}.json")
+def _snapshot_name(vendor_key: str) -> str:
+    """The snapshot FILE a vendor verifies against — its own by default.
+
+    ``Vendor.ranges_key`` lets a family share one file (2.9.1). Read with
+    getattr so a vendor object from an older pickle or a downstream
+    subclass without the attribute still resolves to its own key.
+    """
+    vendor = get_vendor(vendor_key)
+    return getattr(vendor, "ranges_key", None) or vendor_key
+
+
+def _snapshot_path(name: str) -> str:
+    return os.path.join(_RANGES_DIR, f"{name}.json")
 
 
 def parse_prefixes(payload: object) -> Tuple[List[str], List[str]]:
@@ -122,10 +138,11 @@ def parse_prefixes(payload: object) -> Tuple[List[str], List[str]]:
 
 def _load(vendor_key: str):
     """Networks for a vendor, or None when it has no usable snapshot."""
-    if vendor_key in _CACHE:
-        return _CACHE[vendor_key]
+    name = _snapshot_name(vendor_key)
+    if name in _CACHE:
+        return _CACHE[name]
 
-    path = _snapshot_path(vendor_key)
+    path = _snapshot_path(name)
     try:
         with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -133,12 +150,12 @@ def _load(vendor_key: str):
         return None
     except Exception as exc:  # noqa: BLE001 - a bad snapshot is never fatal
         _warn_once(
-            f"dash-improve-my-llms: IP-range snapshot for {vendor_key!r} is "
-            f"unreadable ({exc}); crawler identity for this vendor will "
-            f"report 'n/a'."
+            f"dash-improve-my-llms: IP-range snapshot {name!r} is "
+            f"unreadable ({exc}); crawler identity for every vendor that "
+            f"reads it will report 'n/a'."
         )
-        _CACHE[vendor_key] = ([], [])
-        return _CACHE[vendor_key]
+        _CACHE[name] = ([], [])
+        return _CACHE[name]
 
     # The shipped snapshot is normalised (`ipv4`/`ipv6` lists of CIDR
     # strings) by scripts/refresh_ip_ranges.py. Fall back to the upstream
@@ -165,10 +182,10 @@ def _load(vendor_key: str):
     if bad:
         _warn_once(
             f"dash-improve-my-llms: {bad} malformed prefix(es) in the "
-            f"IP-range snapshot for {vendor_key!r}; they were skipped."
+            f"IP-range snapshot {name!r}; they were skipped."
         )
-    _CACHE[vendor_key] = (v4, v6)
-    return _CACHE[vendor_key]
+    _CACHE[name] = (v4, v6)
+    return _CACHE[name]
 
 
 def _maybe_refresh() -> None:
@@ -238,7 +255,8 @@ def snapshot_status() -> Dict[str, Dict[str, object]]:
         if not url:
             continue
         fetched_at = None
-        path = _snapshot_path(vendor.key)
+        name = _snapshot_name(vendor.key)
+        path = _snapshot_path(name)
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 fetched_at = (json.load(handle) or {}).get("fetched_at")
@@ -247,6 +265,7 @@ def snapshot_status() -> Dict[str, Dict[str, object]]:
         loaded: Tuple[List[Any], List[Any]] = _load(vendor.key) or ([], [])
         out[vendor.key] = {
             "url": url,
+            "snapshot": name,
             "fetched_at": fetched_at,
             "ipv4": len(loaded[0]),
             "ipv6": len(loaded[1]),

@@ -16,10 +16,15 @@ strictly better than a missing one, because a missing one turns every
 request from that vendor into ``n/a`` and quietly empties a column of the
 ledger.
 
-Only the eleven vendors with a ``ip_ranges_url`` are touched. The rest —
+Only the vendors with a ``ip_ranges_url`` are touched. The rest —
 Anthropic's crawlers most notably — publish no ranges at all, so there is
 nothing to snapshot and their identity is ``n/a`` by construction, not by
 omission.
+
+One file per SNAPSHOT, not per vendor: Google publishes a single document
+for its whole common-crawler family and another for its special-case
+crawlers, so vendors sharing a ``ranges_key`` are fetched and written
+once between them.
 """
 
 import datetime
@@ -63,12 +68,19 @@ def refresh_all(only: Optional[Sequence[str]] = None, quiet: bool = False) -> in
 
     written = 0
     failures: List[str] = []
+    seen: set = set()
     for vendor in VENDORS:
         url = getattr(vendor, "ip_ranges_url", None)
         if not url:
             continue
         if only and vendor.key not in only:
             continue
+        name = getattr(vendor, "ranges_key", None) or vendor.key
+        if name in seen:
+            # A later member of a shared family — the first one already
+            # fetched and wrote the file they both read.
+            continue
+        seen.add(name)
         try:
             payload = _fetch(url)
             v4, v6 = parse_prefixes(payload)
@@ -78,8 +90,18 @@ def refresh_all(only: Optional[Sequence[str]] = None, quiet: bool = False) -> in
             failures.append(f"{vendor.key}: {type(exc).__name__}: {exc}")
             continue
 
+        sharers = [
+            v.key
+            for v in VENDORS
+            if (getattr(v, "ranges_key", None) or v.key) == name
+            and getattr(v, "ip_ranges_url", None)
+        ]
         snapshot = {
-            "vendor": vendor.key,
+            # `vendor` stays the SNAPSHOT's name (a string, as it always
+            # was); `vendors` lists everyone who reads it. Additive, so a
+            # reader of the old shape is unaffected.
+            "vendor": name,
+            "vendors": sorted(sharers),
             "source": url,
             "fetched_at": stamp,
             # The upstream document's own timestamp, kept so a reader can
@@ -91,13 +113,14 @@ def refresh_all(only: Optional[Sequence[str]] = None, quiet: bool = False) -> in
             "ipv4": sorted(v4),
             "ipv6": sorted(v6),
         }
-        path = os.path.join(RANGES_DIR, f"{vendor.key}.json")
+        path = os.path.join(RANGES_DIR, f"{name}.json")
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(snapshot, handle, indent=1, sort_keys=True)
             handle.write("\n")
         written += 1
         if not quiet:
-            print(f"  {vendor.key:<20} v4={len(v4):<5} v6={len(v6):<5} {url}")
+            label = name if len(sharers) == 1 else f"{name} ({len(sharers)} vendors)"
+            print(f"  {label:<28} v4={len(v4):<5} v6={len(v6):<5} {url}")
 
     if failures and not quiet:
         print("\nkept existing snapshots for:")

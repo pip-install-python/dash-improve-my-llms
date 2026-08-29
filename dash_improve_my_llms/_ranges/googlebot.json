@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-08-29T06:53:24+00:00",
+ "fetched_at": "2026-08-29T23:28:26+00:00",
  "ipv4": [
   "192.178.4.0/27",
   "192.178.4.128/27",
@@ -321,5 +321,11 @@
  ],
  "source": "https://developers.google.com/static/search/apis/ipranges/googlebot.json",
  "source_created": "2026-08-28T14:46:23.000000",
- "vendor": "googlebot"
+ "vendor": "googlebot",
+ "vendors": [
+  "google-inspectiontool",
+  "googlebot",
+  "googleother",
+  "storebot-google"
+ ]
 }

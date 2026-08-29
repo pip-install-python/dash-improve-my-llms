@@ -191,3 +191,82 @@ class TestSnapshots:
         assert _identity._refresh_enabled is True
         _identity.configure_identity()
         assert _identity._refresh_enabled is False
+
+
+# ---------------------------------------------------------------------------
+# 2.9.1 — one published document, several vendors
+# ---------------------------------------------------------------------------
+
+
+class TestSharedSnapshots:
+    """Google publishes ONE ranges document per crawler family, so five
+    registry entries verify against two files. Before `ranges_key` the
+    snapshot name was the vendor key, which would have meant shipping the
+    same 315 CIDRs five times and re-fetching them five times a release.
+    """
+
+    SHARED = {
+        "googlebot": ["googlebot", "googleother", "google-inspectiontool", "storebot-google"],
+        "google-special": ["adsbot-google", "google-safety"],
+    }
+
+    def test_every_sharer_resolves_to_the_family_snapshot(self):
+        for snapshot, keys in self.SHARED.items():
+            for key in keys:
+                assert _identity._snapshot_name(key) == snapshot, key
+
+    def test_a_vendor_with_no_ranges_key_still_uses_its_own(self):
+        """The default must not change for the twenty-odd vendors that
+        never heard of families."""
+        assert _identity._snapshot_name("gptbot") == "gptbot"
+        assert _identity._snapshot_name("google-extended") == "google-extended"
+
+    @pytest.mark.parametrize(
+        "vendor_key",
+        [
+            "googlebot",
+            "googleother",
+            "google-inspectiontool",
+            "storebot-google",
+            "adsbot-google",
+            "google-safety",
+        ],
+    )
+    def test_the_shipped_snapshot_verifies_both_families_for_each(self, vendor_key):
+        """One v4 and one v6 address out of the real shipped file, per the
+        drop's acceptance. An address outside must still be unverified —
+        a snapshot that verifies everything is worse than none."""
+        import json
+        import os
+
+        name = _identity._snapshot_name(vendor_key)
+        path = os.path.join(_identity._RANGES_DIR, f"{name}.json")
+        with open(path) as handle:
+            snapshot = json.load(handle)
+        assert vendor_key in snapshot["vendors"]
+
+        v4 = snapshot["ipv4"][0].split("/")[0]
+        v6 = snapshot["ipv6"][0].split("/")[0]
+        assert _identity.verify(vendor_key, v4) == "verified"
+        assert _identity.verify(vendor_key, v6) == "verified"
+        assert _identity.verify(vendor_key, "8.8.8.8") == "unverified"
+        assert _identity.verify(vendor_key, "2606:4700::1111") == "unverified"
+
+    def test_the_family_is_parsed_once_not_once_per_vendor(self):
+        """The cache is keyed on the snapshot, not the vendor — that is the
+        whole reason the sharing is worth having."""
+        _identity.reset()
+        assert _identity.verify("googlebot", "8.8.8.8") == "unverified"
+        assert set(_identity._CACHE) == {"googlebot"}
+        assert _identity.verify("storebot-google", "8.8.8.8") == "unverified"
+        assert set(_identity._CACHE) == {"googlebot"}, "a sharer re-parsed the same file"
+
+    def test_a_shared_snapshot_names_its_readers(self):
+        import json
+        import os
+
+        for snapshot, keys in self.SHARED.items():
+            with open(os.path.join(_identity._RANGES_DIR, f"{snapshot}.json")) as handle:
+                payload = json.load(handle)
+            assert payload["vendor"] == snapshot
+            assert sorted(payload["vendors"]) == sorted(keys)
