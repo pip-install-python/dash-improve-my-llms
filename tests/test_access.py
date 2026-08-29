@@ -321,7 +321,10 @@ def test_ordinary_responses_stay_cacheable():
     app = _app()
     client = app.server.test_client()
     headers = {k.lower(): v for k, v in dict(client.get("/guide/llms.txt").headers).items()}
-    assert headers.get("vary") == "Accept"
+    # 2.8: the same URL answers a browser and a crawler with different
+    # bytes, so User-Agent joins Accept. Still cacheable — the point of
+    # this test is that no Cache-Control appears on an ordinary response.
+    assert headers.get("vary") == "Accept, User-Agent"
     assert "cache-control" not in headers
 
 

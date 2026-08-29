@@ -1042,3 +1042,160 @@ class TestHeadParity:
             get_status, _, _ = client.get_full(path)
             head_status, _, _ = client.head_full(path)
             assert head_status == get_status, f"HEAD {path} is {head_status} on {backend}"
+
+
+# ---------------------------------------------------------------------------
+# 2.8 item 3 — Vary: User-Agent
+# ---------------------------------------------------------------------------
+
+
+class TestVaryHeader:
+    """The same URL answers a browser and a crawler with different bytes.
+
+    Through 2.7.x the package told no cache so: `_doc_headers()` emitted
+    `Vary: Accept` alone, and the page routes emitted nothing at all. It
+    went unnoticed only because the edge in front of these hosts marked
+    every document response DYNAMIC; a shared cache that did not would
+    hand a crawler the document built for a browser, or the reverse.
+    """
+
+    @pytest.mark.parametrize("path", ["/", "/llms.txt", "/guide/llms.txt", "/llms-full.txt"])
+    def test_vary_names_both_accept_and_user_agent(self, client, path):
+        _, _, headers = client.get_full(path, ua=BROWSER)
+        vary = {token.strip().lower() for token in headers.get("vary", "").split(",")}
+        assert "accept" in vary, f"{path} lost Vary: Accept"
+        assert "user-agent" in vary, f"{path} does not declare the UA split"
+
+    def test_the_crawler_document_declares_it_too(self, client):
+        """The response that IS the split has the most to say about it."""
+        _, _, headers = client.get_full("/guide", ua=GOOGLEBOT)
+        vary = {token.strip().lower() for token in headers.get("vary", "").split(",")}
+        assert {"accept", "user-agent"} <= vary
+
+    def test_it_does_not_clobber_tokens_the_backend_already_set(self, client):
+        """Dash and the backends put their own tokens there."""
+        from dash_improve_my_llms.handlers import merge_vary
+
+        assert merge_vary("Accept-Encoding", "Accept", "User-Agent") == (
+            "Accept-Encoding, Accept, User-Agent"
+        )
+        assert merge_vary("accept", "Accept", "User-Agent") == "accept, User-Agent"
+        assert merge_vary("", "Accept", "User-Agent") == "Accept, User-Agent"
+
+
+# ---------------------------------------------------------------------------
+# 2.8 item 5 — one read event per document response, on every adapter
+# ---------------------------------------------------------------------------
+
+
+class TestReadEvents:
+    """Exactly one event per response, with the fields actually filled in.
+
+    Asserting mere presence would pass against a stub, so the tier, lane,
+    verdict and byte count are all checked against the response they
+    describe — `bytes` in particular, because a ledger that reports the
+    wrong size is worse than one that reports nothing.
+    """
+
+    SWEEP = [
+        ("/llms.txt", "index"),
+        ("/guide/llms.txt", "page"),
+        ("/llms-small.txt", "small"),
+        ("/llms-full.txt", "full"),
+        ("/robots.txt", "policy"),
+        ("/sitemap.xml", "sitemap"),
+    ]
+
+    @pytest.fixture
+    def recorded(self):
+        from dash_improve_my_llms import _ledger
+
+        _ledger.reset()
+        events = []
+        _ledger.on_document_read(events.append)
+        yield events
+        _ledger.reset()
+
+    @pytest.mark.parametrize("path,tier", SWEEP)
+    def test_one_event_per_document_response(self, client, recorded, path, tier):
+        status, body, _ = client.get_full(path, ua=GPTBOT)
+        assert status == 200
+        assert len(recorded) == 1, f"{path} emitted {len(recorded)} events, expected 1"
+        event = recorded[0]
+        assert event["tier"] == tier
+        assert event["verdict"] == "served"
+        assert event["status"] == 200
+        assert event["vendor_key"] == "gptbot"
+        assert event["bot_type"] == "training"
+        assert event["lane"] == "crawler"
+        assert event["bytes"] == len(body.encode("utf-8"))
+
+    def test_the_crawler_html_lane_emits_html(self, client, recorded):
+        status, body, _ = client.get_full("/guide", ua=GOOGLEBOT)
+        assert status == 200
+        assert len(recorded) == 1
+        event = recorded[0]
+        assert event["tier"] == "html"
+        assert event["lane"] == "crawler"
+        assert event["verdict"] == "served"
+        assert event["vendor_key"] == "googlebot"
+        assert event["bytes"] == len(body.encode("utf-8"))
+
+    def test_an_absent_user_agent_on_the_root_is_recorded_as_a_machine(self, client, recorded):
+        """2.8 item 2's new lane has to reach the ledger too."""
+        status, _, _ = client.get_full("/", ua="")
+        assert status == 200
+        assert len(recorded) == 1
+        assert recorded[0]["lane"] == "crawler"
+        assert recorded[0]["bot_type"] == "unknown"
+        assert recorded[0]["vendor_key"] is None
+
+    def test_a_browser_page_view_is_not_a_document_read(self, client, recorded):
+        """The prerendered shell is the application answering, not us."""
+        status, _, _ = client.get_full("/guide", ua=BROWSER)
+        assert status == 200
+        assert recorded == []
+
+    def test_a_blocked_crawler_is_recorded_as_blocked(self, backend, recorded):
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+        status, _, _ = _Client(app, backend).get_full("/guide", ua=GPTBOT)
+        assert status == 403
+        assert len(recorded) == 1
+        assert recorded[0]["verdict"] == "blocked"
+        assert recorded[0]["status"] == 403
+        assert recorded[0]["vendor_key"] == "gptbot"
+
+    def test_a_rate_limited_crawler_is_recorded_as_rate_limited(self, backend, recorded):
+        from dash_improve_my_llms import _rate_limit
+
+        _rate_limit.reset()
+        app = _build_app(backend, rate_limit_per_minute=1)
+        client = _Client(app, backend)
+        assert client.get_full("/llms-full.txt", ua=GPTBOT)[0] == 200
+        status, _, _ = client.get_full("/llms-full.txt", ua=GPTBOT)
+        assert status == 429
+        assert recorded[-1]["verdict"] == "rate_limited"
+        assert recorded[-1]["status"] == 429
+        _rate_limit.reset()
+
+    def test_a_raising_callback_leaves_the_response_untouched(self, client):
+        from dash_improve_my_llms import _ledger
+
+        _ledger.reset()
+        _ledger.on_document_read(lambda event: (_ for _ in ()).throw(RuntimeError("broken")))
+        try:
+            with pytest.warns(RuntimeWarning):
+                status, body, _ = client.get_full("/llms.txt", ua=GPTBOT)
+            assert status == 200
+            assert "# Test App" in body
+        finally:
+            _ledger.reset()
+
+    def test_with_no_listener_the_routes_are_unchanged(self, client):
+        from dash_improve_my_llms import _ledger
+
+        _ledger.reset()
+        assert _ledger.has_listeners() is False
+        for path, _tier in self.SWEEP:
+            assert client.get_full(path, ua=GPTBOT)[0] == 200

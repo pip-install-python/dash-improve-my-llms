@@ -17,7 +17,7 @@ from typing import Any
 # parameter and every /llms.txt request 422s. Keep annotations eager so they
 # resolve in the enclosing scope where the import actually lives.
 
-from . import access
+from . import _ledger, access
 from ._headers import normalize_headers
 from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
@@ -34,6 +34,7 @@ from .handlers import (
     build_robots_txt,
     build_sitemap_xml,
     handle_bot_request,
+    merge_vary,
     should_prerender,
     wants_html_viewer,
 )
@@ -47,10 +48,17 @@ def _doc_headers():
     negotiation and a CDN must not hand a cached browser page to the next
     agent. When the response is per-requester — it names the reader, or its
     links carry authority — nothing shared may cache it at all.
+
+    ``Vary: User-Agent`` since 2.8, because it is simply true: the same URL
+    answers a browser and a crawler with different bytes, and through
+    2.7.x the package told no cache so. Nothing reported it only because
+    the edge in front of these hosts happened to mark every document
+    response DYNAMIC; a shared cache that did not would hand a crawler the
+    document built for a browser, or the reverse.
     """
     if access.is_restricted():
         return access.private_headers()
-    return {"Vary": "Accept"}
+    return {"Vary": "Accept, User-Agent"}
 
 
 def register_fastapi(app: Any, config: Any, state: Any) -> None:
@@ -84,6 +92,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
             headers=normalize_headers(request.headers),
+            method=request.method,
         )
         if result is not None:
             return Response(
@@ -108,6 +117,14 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             )
         ):
             return response
+
+        # 2.8: this page route answers a browser and a crawler with
+        # different bytes — the middleware short-circuits machines to the
+        # crawler document above — so the header has to say so whether or
+        # not the prerender ends up injecting anything.
+        response.headers["Vary"] = merge_vary(
+            response.headers.get("Vary", ""), "Accept", "User-Agent"
+        )
 
         # call_next hands back a streaming response, so the body has to be
         # drained before it can be rewritten.
@@ -149,6 +166,25 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             media_type=response.media_type,
         )
 
+    def _emit(request, path: str, tier: str, status: int, body, verdict: str = "") -> None:
+        """One read event for a document this adapter served.
+
+        The package does no I/O with it — see _ledger. On a host with no
+        listener registered this is a single truth-test.
+        """
+        if not _ledger.has_listeners():
+            return
+        _ledger.emit_read(
+            path=path,
+            method=request.method,
+            tier=tier,
+            status=status,
+            body=body,
+            verdict=verdict or _ledger.verdict_for_status(status),
+            user_agent=request.headers.get("user-agent", ""),
+            headers=normalize_headers(request.headers),
+        )
+
     router = APIRouter()
 
     def _serve_llms(page_path: str, request: Request) -> Response:
@@ -177,6 +213,13 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                     state=state,
                 )
                 if html is not None:
+                    _emit(
+                        request,
+                        request.url.path,
+                        "index" if not page_path else "page",
+                        status,
+                        html,
+                    )
                     return Response(
                         content=html,
                         status_code=status,
@@ -204,6 +247,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             headers.update(
                 access.offer_headers("/llms.txt" if not page_path else f"/{page_path}/llms.txt")
             )
+        _emit(request, request.url.path, "index" if not page_path else "page", status, body)
         return Response(
             content=body,
             status_code=status,
@@ -265,6 +309,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                         or TIER_DOC_META[tier]["name"],
                     )
                     if html is not None:
+                        _emit(request, tier_path, tier, status, html)
                         return Response(
                             content=html,
                             status_code=status,
@@ -272,6 +317,7 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                             headers=headers,
                         )
 
+            _emit(request, tier_path, tier, status, body)
             return Response(
                 content=body,
                 status_code=status,
@@ -296,8 +342,10 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         return _serve_llms(page_path, request)
 
     @router.api_route("/robots.txt", methods=DOC_ROUTE_METHODS, response_class=PlainTextResponse)
-    def _robots():
-        return PlainTextResponse(build_robots_txt(app))
+    def _robots(request: Request):
+        body = build_robots_txt(app)
+        _emit(request, "/robots.txt", "policy", 200, body)
+        return PlainTextResponse(body)
 
     if getattr(config, "panel", False):
         # P1: the read-only operator panel — see the Flask adapter's note.
@@ -318,12 +366,13 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             )
 
     @router.api_route("/sitemap.xml", methods=DOC_ROUTE_METHODS)
-    def _sitemap():
+    def _sitemap(request: Request):
         body = build_sitemap_xml(
             app=app,
             page_metadata=state.page_metadata,
             hidden_paths=state.hidden_pages,
         )
+        _emit(request, "/sitemap.xml", "sitemap", 200, body)
         return Response(content=body, media_type="application/xml")
 
     # Well-known root icons — see the note in _flask_adapter. Dash's page

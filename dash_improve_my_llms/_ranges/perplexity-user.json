@@ -1,0 +1,13 @@
+{
+ "fetched_at": "2026-08-29T06:53:24+00:00",
+ "ipv4": [
+  "18.97.21.0/30",
+  "18.97.43.80/29",
+  "34.193.163.52/32",
+  "44.208.221.197/32"
+ ],
+ "ipv6": [],
+ "source": "https://www.perplexity.com/perplexity-user.json",
+ "source_created": "2025-10-17T10:17:00.000000",
+ "vendor": "perplexity-user"
+}

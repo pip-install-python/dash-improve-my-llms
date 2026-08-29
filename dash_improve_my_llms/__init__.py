@@ -37,14 +37,17 @@ or via register_page_metadata(path, llms_doc="..."):
 
 from __future__ import annotations
 
-__version__ = "2.7.2"
+__version__ = "2.8.0"
 
 import logging
 import warnings
 from typing import Any, Dict, List, Optional
 
+from ._identity import configure_identity
+from ._ledger import on_document_read
 from ._paths import normalize_path as _normalize_path
 from .access import configure_access, configure_viewer_identity
+from .bot_detection import classify
 from .bulletin import configure_bulletin
 from .network import NetworkConfig, NetworkSite
 from .robots_generator import RobotsConfig
@@ -596,6 +599,14 @@ __all__: List[str] = [
     "configure_viewer_identity",
     # Country guardrail — opt-in 451 on every surface (see docs/GEO.md)
     "configure_geo",
+    # The read ledger — one event per document served (2.8)
+    "on_document_read",
+    # One classification fold: who is asking, and on which lane (2.8).
+    # THE entry point for classifying a request — an application should
+    # call this rather than keep User-agent lists of its own.
+    "classify",
+    # Opt-in refresh of the shipped crawler IP-range snapshots (2.8)
+    "configure_identity",
     # Site-level search identity for the crawler document (see docs/SEO.md)
     "autoconfigure_icons",
     "configure_seo",

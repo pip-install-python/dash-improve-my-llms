@@ -503,7 +503,7 @@ class TestHandleBotRequest:
     def test_returns_none_for_regular_browser(self, fake_app, page_metadata_sample):
         result = handle_bot_request(
             path="/",
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             app=fake_app,
             page_metadata=page_metadata_sample,
             hidden_paths=set(),
@@ -592,7 +592,7 @@ class TestHandleBotRequest:
         for ua in (
             "Mozilla/5.0 (compatible; ChatGPT-User/1.0)",
             "Mozilla/5.0 (compatible; Googlebot/2.1)",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ):
             result = handle_bot_request(
                 path="/llms-full.txt",
@@ -746,7 +746,7 @@ class TestGeoEnforcement:
         for path in ("/assets/app.css", "/_dash-update-component", "/_dash-layout"):
             result = handle_bot_request(
                 path=path,
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 app=fake_app,
                 page_metadata=page_metadata_sample,
                 hidden_paths=set(),
@@ -806,7 +806,7 @@ class TestGeoEnforcement:
         self._deny_ru()
         result = handle_bot_request(
             path="/",
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             app=fake_app,
             page_metadata=page_metadata_sample,
             hidden_paths=set(),
@@ -847,7 +847,7 @@ class TestGeoEnforcement:
 
 
 class TestVendorPolicyEnforcement:
-    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)"
+    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     def _request(self, fake_app, page_metadata_sample, ua, path="/"):
         return handle_bot_request(
@@ -1002,7 +1002,7 @@ class TestPolicyBlock:
 
 class TestRateLimit:
     GPT = "Mozilla/5.0 (compatible; GPTBot/1.0)"
-    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)"
+    BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     @pytest.fixture(autouse=True)
     def _clean_limiter(self):

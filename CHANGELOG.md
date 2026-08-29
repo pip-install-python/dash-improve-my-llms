@@ -5,6 +5,153 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-08-29 — one classifier, one lane, one read event
+
+The package has always known who was asking, what policy applied and
+which document went out. It just never said so, and on two of the paths
+it decided, it decided wrongly. 2.8 fixes the lane and starts recording
+the read.
+
+### Changed — a permitted AI crawler now gets the crawler document
+
+**If your site allows AI crawlers, they were being served the wrong
+document, and nothing reported it.**
+
+Through 2.7.x the crawler branch required an *explicit* `vendor_policy`
+entry before it would serve a training-class vendor. A vendor merely
+not-blocked by the coarse flags fell through to the application. So on a
+host whose posture was *allow*, measured on the wire: `ClaudeBot/1.0` and
+`GPTBot/1.2` received the **204,611-byte JavaScript shell**, while
+`Googlebot` and bare `curl` received the **12,515-byte crawler
+document**. Both at 200, both with a correct `Link` header — which is why
+it survived two minor versions. The hosts that had deliberately opted in
+to AI crawlers were serving them the worst document on the site.
+
+The lane now follows the registry: a request whose *effective* policy is
+`allow` or `meter` — explicit or defaulted — is served the crawler
+document. `block` keeps its 403 semantics unchanged, including the
+documentation-route carve-out.
+
+Retired deliberately: byte-identity of the served document between a
+flag-only configuration and an explicit `vendor_policy`. That property
+was only ever preserved by serving the wrong document to one of them.
+
+### Changed — an unidentified client is treated as a machine, not a person
+
+`is_any_bot()` returning false was never evidence of a human. `httpx`,
+`aiohttp`, `node-fetch`, `Go-http-client` and an **absent** User-agent
+all landed in the browser lane and were handed a JavaScript shell
+containing none of the prose they came for. For a package whose thesis is
+machine readers, the fallback was backwards.
+
+Browser identification is now positive: a User-agent carrying `Mozilla/`
+**and** an engine token (`AppleWebKit`, `Gecko/`, `Trident`, `Edg/`,
+`Chrome/`, `Safari/`, `Firefox/`) is a browser. Everything else takes the
+crawler lane with `vendor_key=None`, `bot_type="unknown"`. Vendor
+matching runs first, so ClaudeBot — whose real header opens
+`Mozilla/5.0 AppleWebKit/537.36 ...` — stays on the crawler lane.
+
+Dash's own endpoints are never short-circuited regardless of User-agent;
+`/_dash-update-component`, `/_dash-layout`, `/_dash-dependencies`,
+`/_dash-component-suites/*`, `/_reload-hash`, `/_favicon.ico` and
+`/assets/*` are now named explicitly rather than left to a prefix match.
+
+*Sharp edge worth knowing:* a client sending `Mozilla/5.0` with no engine
+token is now read as a machine. No mainstream browser does this, but a
+synthetic or heavily-stripped User-agent will get static HTML instead of
+the app shell.
+
+### Added — `Vary: User-Agent` on every response that varies by it
+
+The same URL answers a browser and a crawler with different bytes, and
+through 2.7.x the package told no cache so — `_doc_headers()` emitted
+`Vary: Accept` alone and the page routes emitted nothing. It went
+unnoticed only because the edge in front of these hosts marks document
+responses `DYNAMIC`; a shared cache that did not would hand a crawler the
+document built for a browser, or the reverse. Now emitted on the document
+routes, the crawler HTML, and the prerendered page responses, on all
+three adapters, merging with rather than clobbering existing tokens.
+
+### Added — the read event: `on_document_read`
+
+One structured event per document the package serves, delivered to a
+callback the application registers. The package does **no I/O** with it.
+
+```python
+from dash_improve_my_llms import on_document_read
+
+@on_document_read
+def record(event: dict) -> None:
+    db.insert(event)
+```
+
+The event carries `ts`, `host`, `path`, `method`, `tier`, `lane`,
+`bot_type`, `vendor_key`, `verified`, `policy`, `verdict`, `status`,
+`bytes`, `ua` and `client_ip`. Every key is always present; `None` means
+"not known here". Emitted from every place a document leaves the package
+— the middleware's 403/429/404/gate/offer/crawler-HTML returns, and each
+adapter's `/llms.txt`, tier, `/robots.txt` and `/sitemap.xml` handlers —
+through one shared `emit_read()`, so the shape cannot drift between
+backends.
+
+A callback that raises is caught and warned about once; the response is
+unaffected. Same fail-open rule as the rate limiter, for the same reason:
+a bookkeeping failure is not a reason to stop serving documents. With no
+callback registered — the default — emission costs one truth-test.
+
+### Added — verified crawler identity
+
+`get_bot_vendor()` matches a substring, so "who is asking" has always
+been a claim the client makes about itself. For the eleven registry
+vendors whose operators publish crawler IP ranges (Google, OpenAI,
+Microsoft, Apple, Perplexity, DuckDuckGo, Common Crawl), the client
+address is now checked against the published list and the event reports
+`verified`, `unverified`, or `n/a`.
+
+**It is never a gate.** An unverified client is served exactly the
+document a verified one is served; it gets a row that says so. Making it
+a block would put a third-party JSON file's uptime in the request path.
+
+Ranges ship in the wheel (`_ranges/*.json`) and are refreshed by
+`scripts/refresh_ip_ranges.py` at release time. Nothing is fetched on the
+request path; a runtime refresh is opt-in via
+`configure_identity(refresh=True)` and falls back to the shipped
+snapshot. The package gains no new dependency. Anthropic publishes no
+crawler ranges, so ClaudeBot reports `n/a` rather than a guess.
+
+### Added — `classify()`, the one classification fold
+
+```python
+from dash_improve_my_llms import classify
+
+classify(user_agent, client_ip=None)
+# {'bot_type', 'vendor_key', 'vendor_class', 'verified', 'lane'}
+```
+
+*The* classification entry point, so an application can delete its own
+User-agent lists. Hand-written lists drift — they keep retired tokens
+alive and miss new vendors — and that drift is how bot traffic gets
+mis-attributed downstream. The existing predicates still work and
+delegate here.
+
+### Added — the accounting line in the corpus policy block
+
+`build_policy_block` now states, in one line, that reads are recorded and
+where the policy lives, pulling the URL from the network bulletin or the
+registered hub — never a hard-coded host. Emitted only when a callback is
+actually registered: this section's standing rule is that every input
+degrades and the text stays truthful on every host, and a host recording
+nothing must not claim otherwise.
+
+### Notes
+
+- `handle_bot_request()` gained a keyword-only `method` parameter
+  (default `"GET"`), used for the event. Existing callers are unaffected.
+- `Vendor` gained an `ip_ranges_url` attribute; readers using `getattr`
+  with a default are unaffected.
+- The geo guardrail still runs before classification and emits no event —
+  a 451 is a jurisdictional refusal, not a document read.
+
 ## [2.7.2] - 2026-08-27 — HEAD on the ASGI lane
 
 ### Fixed — `HEAD` returned 405 on FastAPI-backed apps

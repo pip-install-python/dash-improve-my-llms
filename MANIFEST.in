@@ -24,6 +24,11 @@ include pyproject.toml
 recursive-include dash_improve_my_llms *.py
 recursive-include dash_improve_my_llms py.typed
 
+# Crawler IP-range snapshots, refreshed by scripts/refresh_ip_ranges.py.
+# Without these _identity.verify() reports 'n/a' for every vendor and the
+# ledger's identity column is silently empty.
+recursive-include dash_improve_my_llms/_ranges *.json
+
 # Exclude common files
 global-exclude __pycache__
 global-exclude *.py[co]

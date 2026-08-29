@@ -18,7 +18,8 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from . import access
 from . import geo
 from ._paths import normalize_path as _normalize_page_path
-from .bot_detection import get_bot_type, is_any_bot
+from . import _ledger
+from .bot_detection import classify, is_any_bot
 from .markdown_renderer import strip_directive_lines
 from .robots_generator import RobotsConfig, generate_robots_txt
 from .sitemap_generator import generate_sitemap_xml
@@ -377,6 +378,33 @@ def build_policy_block(
             parts.append("blocked: " + ", ".join(by_policy["block"]))
         if parts:
             lines.append("- Crawler policy (mirrors /robots.txt): " + "; ".join(parts) + ".")
+
+    # 2.8 — the ledger, stated in the document that states everything else.
+    #
+    # Conditional on a listener actually being registered, and deliberately
+    # so: this section's standing rule is that every input degrades and the
+    # text stays truthful on every host. A host that has not wired
+    # on_document_read records nothing, and a line claiming otherwise would
+    # be the one false sentence in the contract.
+    if _ledger.has_listeners():
+        recorded = (
+            "- Accounting: every document read is logged with the "
+            "requesting vendor (verified against published IP ranges where "
+            "the operator publishes them)."
+        )
+        # The hub can move this with one edit; never hard-code a host.
+        policy_url = ""
+        try:
+            from .bulletin import get_bulletin
+
+            policy_url = str(((get_bulletin() or {}).get("network") or {}).get("policy_url") or "")
+        except Exception:  # pragma: no cover - bulletin is optional by design
+            policy_url = ""
+        if not policy_url and hub_url:
+            policy_url = f"{hub_url}/llms.txt"
+        if policy_url:
+            recorded += f" See {policy_url}"
+        lines.append(recorded)
 
     lines.append("")
     return lines
@@ -1244,14 +1272,71 @@ _ASSET_MARKERS: Tuple[str, ...] = (
     ".ico",
     ".woff",
     ".woff2",
+    # Dash's own endpoints. `_dash` alone covers /_dash-update-component,
+    # /_dash-layout and /_dash-dependencies, but 2.8 inverted the default
+    # lane for unrecognised clients — an XHR carries no browser UA of its
+    # own on some stacks, so these are named explicitly rather than left
+    # to a prefix match nobody would think to check.
     "_dash",
     "_reload-hash",
+    "/assets/",
     "/favicon",
+)
+
+# The Dash request paths that must NEVER be short-circuited, whatever the
+# User-agent says. Kept as an explicit list beside the marker tuple above
+# so the guarantee is greppable: a client-side callback POST answered with
+# crawler HTML breaks the application itself, not just its SEO.
+_DASH_ENDPOINTS: Tuple[str, ...] = (
+    "/_dash-update-component",
+    "/_dash-layout",
+    "/_dash-dependencies",
+    "/_dash-component-suites",
+    "/_reload-hash",
+    "/_favicon.ico",
 )
 
 
 def _is_asset_path(path: str) -> bool:
+    if any(path.startswith(endpoint) for endpoint in _DASH_ENDPOINTS):
+        return True
     return any(marker in path for marker in _ASSET_MARKERS)
+
+
+def merge_vary(existing: str, *tokens: str) -> str:
+    """Add Vary tokens to a possibly-populated Vary header, case-insensitively.
+
+    Dash and the backend put their own tokens there; clobbering the header
+    would trade one caching bug for another.
+    """
+    have = [t.strip() for t in (existing or "").split(",") if t.strip()]
+    lowered = {t.lower() for t in have}
+    for token in tokens:
+        if token.lower() not in lowered:
+            have.append(token)
+            lowered.add(token.lower())
+    return ", ".join(have)
+
+
+def document_tier(path: str) -> str:
+    """Which document a path names, for the read event's ``tier`` field.
+
+    ``html`` is the catch-all: a page route served as crawler HTML or
+    prerendered markup, which is every path that is not one of the
+    package's own document routes.
+    """
+    if path.endswith("/llms-small.txt"):
+        return "small"
+    if path.endswith("/llms-full.txt"):
+        return "full"
+    if path.endswith("/robots.txt"):
+        return "policy"
+    if path.endswith("/sitemap.xml"):
+        return "sitemap"
+    if path.endswith("/llms.txt"):
+        # "/llms.txt" is the site index; "/guide/llms.txt" is one page.
+        return "index" if path.rstrip("/") in ("/llms.txt", "llms.txt") else "page"
+    return "html"
 
 
 def _is_documentation_route(path: str) -> bool:
@@ -1266,6 +1351,7 @@ def handle_bot_request(
     page_metadata: Dict[str, Dict[str, Any]],
     hidden_paths: set,
     headers: Optional[Mapping[str, str]] = None,
+    method: str = "GET",
 ) -> Optional[Dict[str, Any]]:
     """
     Decide whether to short-circuit a request.
@@ -1301,10 +1387,32 @@ def handle_bot_request(
     # packages used, and an upgrade must not silently start 403ing them.
     is_doc_route = _is_documentation_route(path)
 
-    if not is_any_bot(user_agent):
+    # 2.8 item 2 — the default lane is the CRAWLER document, not the app
+    # shell. `is_any_bot()` false was never evidence of a person: httpx,
+    # aiohttp, node-fetch, Go-http-client and an absent User-agent all
+    # landed here and were handed a JavaScript shell containing none of
+    # the prose they came for. Browser identification is now POSITIVE, and
+    # everything that is not positively a browser reads as a machine.
+    #
+    # Vendor matching runs FIRST inside classify(), which is what keeps
+    # ClaudeBot — whose real UA is `Mozilla/5.0 AppleWebKit/537.36 (KHTML,
+    # like Gecko; compatible; ClaudeBot/1.0; ...)` — on the crawler lane
+    # instead of being read as the browser it is imitating.
+    from ._headers import client_ip as _client_ip
+
+    request_ip = None
+    if headers is not None:
+        try:
+            request_ip = _client_ip(headers)
+        except Exception:  # noqa: BLE001
+            request_ip = None
+
+    identity = classify(user_agent, request_ip)
+    if identity["lane"] == "browser":
         return None
 
-    bot_type = get_bot_type(user_agent)
+    bot_type = identity["bot_type"] or "unknown"
+    vendor_key = identity["vendor_key"]
     robots_config: Optional[RobotsConfig] = getattr(app, "_robots_config", None)
 
     # W2: the SAME effective-policy fold robots.txt renders from decides
@@ -1313,14 +1421,11 @@ def handle_bot_request(
     # reproduces the coarse flags, so this block behaves exactly as the
     # training-only branch it replaced.
     effective = None
-    explicitly_policied = False
     if robots_config is not None:
-        from .vendors import effective_policies, get_bot_vendor, vendor_overrides
+        from .vendors import effective_policies
 
-        vendor_key = get_bot_vendor(user_agent)
         if vendor_key is not None:
             effective = effective_policies(robots_config).get(vendor_key)
-            explicitly_policied = vendor_key in vendor_overrides(robots_config)
         elif bot_type == "traditional":
             # Generic-pattern bots with no vendor identity — the
             # unenumerated-AI residue of P2. CLI tools are deliberately
@@ -1330,6 +1435,28 @@ def handle_bot_request(
             is_cli = any(t in ua_lower for t in ("curl", "wget", "python-requests"))
             if posture in ("block", "meter") and not is_cli:
                 effective = posture
+
+    def _emit(status: int, body: Any, verdict: str) -> None:
+        """One read event for a document the middleware itself produced.
+
+        Costs a truth-test on hosts with no listener registered, which is
+        every host that has not opted in.
+        """
+        if not _ledger.has_listeners():
+            return
+        _ledger.emit_read(
+            path=path,
+            method=method,
+            tier=document_tier(path),
+            lane="crawler",
+            status=status,
+            body=body,
+            verdict=verdict,
+            user_agent=user_agent,
+            headers=headers,
+            classification=identity,
+            policy=effective,
+        )
 
     if effective == "block":
         # `block_ai_training_docs` is the opt-in, and the seam the
@@ -1357,6 +1484,7 @@ def handle_bot_request(
                     f"Bot detected: {user_agent[:100]}\n"
                     "For more information, see /robots.txt"
                 )
+            _emit(403, body, "blocked")
             return {
                 "status": 403,
                 "body": body,
@@ -1398,6 +1526,7 @@ def handle_bot_request(
             except Exception:
                 retry_after = None  # fail open
             if retry_after is not None:
+                _emit(429, "", "rate_limited")
                 return {
                     "status": 429,
                     "body": (
@@ -1421,82 +1550,100 @@ def handle_bot_request(
     if is_doc_route:
         return None
 
-    # An EXPLICIT vendor_policy allow/meter serves the crawler branch —
-    # that is what "allow" means for a crawler. A vendor merely
-    # not-blocked by the coarse flags keeps its historical fall-through
-    # to the app (byte-identity for flag-only configs).
-    if bot_type in ("search", "traditional") or (
-        explicitly_policied and effective in ("allow", "meter")
-    ):
-        page_path = _normalize_page_path(path)
+    # 2.8 item 1 — everything still here is served the crawler document.
+    #
+    # Through 2.7.x this branch demanded an EXPLICIT vendor_policy entry
+    # before it would serve a training-class crawler, so a host whose
+    # posture was "allow" handed ClaudeBot and GPTBot the 204kB browser
+    # shell while Googlebot and bare curl got the 12kB crawler document.
+    # The hosts that opted IN to AI crawlers were serving them the worst
+    # document available, at 200, with a correct Link header — so nothing
+    # ever reported it.
+    #
+    # There is no condition left to write. A blocked vendor returned 403
+    # above; a documentation route returned None above; a browser returned
+    # None at the identity gate. What reaches this line is, by
+    # construction, a machine reader that policy permits — and the lane
+    # follows the registry rather than second-guessing it.
+    #
+    # Retired deliberately: byte-identity of the served document between a
+    # flag-only config and an explicit vendor_policy. That property was
+    # only ever preserved by serving the wrong document.
+    page_path = _normalize_page_path(path)
 
-        verdict = access.resolve(page_path, hidden_paths)
-        if verdict == access.DENY:
-            return {
-                "status": 404,
-                "body": "404 Not Found - Page not available",
-                "content_type": "text/plain",
-                "headers": {},
-            }
-
-        # A crawler sees exactly what an anonymous human sees. Serving prose
-        # here while gating the same content elsewhere would be cloaking, and
-        # would make the gate pointless besides — the index would hold the
-        # very text the gate withholds.
-        if verdict == access.PRICED:
-            # Part 4's crawler column: the payment doc, no prose. Served at
-            # 200 like the gate doc — the anti-cloaking rule (a crawler
-            # sees what an anonymous human sees) applies to the offer too;
-            # the 402 status belongs to the DOCUMENT routes. noindex rides
-            # along: an offer must not compete with the page in search.
-            offer = access.offer_document(page_path, page_metadata, None)
-            if offer is not None:
-                return {
-                    "status": 200,
-                    "body": offer,
-                    "content_type": "text/markdown; charset=utf-8",
-                    "headers": {"X-Robots-Tag": "noindex"},
-                }
-            verdict = access.GATED  # payment path failed — degrade
-
-        if verdict == access.GATED:
-            return {
-                "status": 200,
-                "body": access.gate_document(page_path, page_metadata, None),
-                "content_type": "text/markdown; charset=utf-8",
-                "headers": {},
-            }
-
-        html = _render_static_html_for_bot(
-            app=app,
-            page_path=page_path,
-            page_metadata=page_metadata,
-            hidden_paths=hidden_paths,
-        )
-        if html is None:
-            return None
-
-        headers = {}
-        if robots_config and robots_config.block_ai_training:
-            headers["X-Robots-Tag"] = "noai"
-        # llms.txt v2 discovery (2.7.1): the relations ride the headers too,
-        # so an agent reading only headers still finds the machine surface;
-        # the digest makes representation parity provable.
-        from .discovery import DIGEST_HEADER, link_header_value, source_digest
-
-        headers["Link"] = link_header_value(page_path)
-        entry = _find_page(page_path)
-        digest = source_digest(_resolve_llms_doc(page_path, page_metadata, entry))
-        if digest:
-            headers[DIGEST_HEADER] = digest
+    verdict = access.resolve(page_path, hidden_paths)
+    if verdict == access.DENY:
+        _emit(404, "404 Not Found - Page not available", "denied")
         return {
-            "status": 200,
-            "body": html,
-            "content_type": "text/html",
-            "headers": headers,
+            "status": 404,
+            "body": "404 Not Found - Page not available",
+            "content_type": "text/plain",
+            "headers": {},
         }
 
-    return None
+    # A crawler sees exactly what an anonymous human sees. Serving prose
+    # here while gating the same content elsewhere would be cloaking, and
+    # would make the gate pointless besides — the index would hold the
+    # very text the gate withholds.
+    if verdict == access.PRICED:
+        # Part 4's crawler column: the payment doc, no prose. Served at
+        # 200 like the gate doc — the anti-cloaking rule (a crawler
+        # sees what an anonymous human sees) applies to the offer too;
+        # the 402 status belongs to the DOCUMENT routes. noindex rides
+        # along: an offer must not compete with the page in search.
+        offer = access.offer_document(page_path, page_metadata, None)
+        if offer is not None:
+            _emit(200, offer, "priced")
+            return {
+                "status": 200,
+                "body": offer,
+                "content_type": "text/markdown; charset=utf-8",
+                "headers": {"X-Robots-Tag": "noindex"},
+            }
+        verdict = access.GATED  # payment path failed — degrade
+
+    if verdict == access.GATED:
+        gate_body = access.gate_document(page_path, page_metadata, None)
+        _emit(200, gate_body, "gated")
+        return {
+            "status": 200,
+            "body": gate_body,
+            "content_type": "text/markdown; charset=utf-8",
+            "headers": {},
+        }
+
+    html = _render_static_html_for_bot(
+        app=app,
+        page_path=page_path,
+        page_metadata=page_metadata,
+        hidden_paths=hidden_paths,
+    )
+    if html is None:
+        return None
+
+    # This response IS the UA split — the same URL just answered a machine
+    # with different bytes than a browser would get. Say so, or a shared
+    # cache will serve one to the other.
+    headers = {"Vary": "Accept, User-Agent"}
+    if robots_config and robots_config.block_ai_training:
+        headers["X-Robots-Tag"] = "noai"
+    # llms.txt v2 discovery (2.7.1): the relations ride the headers too,
+    # so an agent reading only headers still finds the machine surface;
+    # the digest makes representation parity provable.
+    from .discovery import DIGEST_HEADER, link_header_value, source_digest
+
+    headers["Link"] = link_header_value(page_path)
+    entry = _find_page(page_path)
+    digest = source_digest(_resolve_llms_doc(page_path, page_metadata, entry))
+    if digest:
+        headers[DIGEST_HEADER] = digest
+    _emit(200, html, "served")
+    return {
+        "status": 200,
+        "body": html,
+        "content_type": "text/html",
+        "headers": headers,
+    }
 
 
 def resolve_page_context(

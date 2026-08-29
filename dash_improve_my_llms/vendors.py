@@ -70,13 +70,28 @@ class Vendor:
         ua_tokens: Lowercase substrings matched against the User-agent
             header. Matching is substring-based, same as 1.x.
         cls: ``training`` | ``search`` | ``traditional``.
+        ip_ranges_url: Where this operator PUBLISHES the IP ranges its
+            crawler fetches from, or None when it publishes none. Feeds
+            ``_identity.verify()`` and ``scripts/refresh_ip_ranges.py``.
+            ``None`` is a real answer, not a gap to fill: Anthropic
+            publishes no crawler ranges, so ClaudeBot is unverifiable and
+            the ledger records ``n/a`` rather than guessing.
         default_policy: What class membership implies before any
             ``vendor_policy`` override: training → governed by
             ``block_ai_training``; search → by ``allow_ai_search``;
             traditional → by ``allow_traditional``.
     """
 
-    __slots__ = ("key", "display", "operator", "purpose", "robots_tokens", "ua_tokens", "cls")
+    __slots__ = (
+        "key",
+        "display",
+        "operator",
+        "purpose",
+        "robots_tokens",
+        "ua_tokens",
+        "cls",
+        "ip_ranges_url",
+    )
 
     def __init__(
         self,
@@ -87,6 +102,7 @@ class Vendor:
         robots_tokens: Sequence[str],
         ua_tokens: Sequence[str],
         cls: str,
+        ip_ranges_url: Optional[str] = None,
     ) -> None:
         assert cls in _CLASSES, cls
         self.key = key
@@ -96,6 +112,7 @@ class Vendor:
         self.robots_tokens = tuple(robots_tokens)
         self.ua_tokens = tuple(t.lower() for t in ua_tokens)
         self.cls = cls
+        self.ip_ranges_url = ip_ranges_url
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +131,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["GPTBot"],
         ["gptbot"],
         TRAINING,
+        ip_ranges_url="https://openai.com/gptbot.json",
     ),
     Vendor(
         "claudebot",
@@ -135,6 +153,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["CCBot"],
         ["ccbot"],
         TRAINING,
+        ip_ranges_url="https://index.commoncrawl.org/ccbot.json",
     ),
     Vendor(
         "google-extended",
@@ -144,6 +163,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["Google-Extended"],
         ["google-extended"],
         TRAINING,
+        ip_ranges_url="https://developers.google.com/static/search/apis/ipranges/googlebot.json",
     ),
     Vendor(
         "facebookbot",
@@ -211,6 +231,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["Applebot-Extended"],
         ["applebot-extended"],
         TRAINING,
+        ip_ranges_url="https://search.developer.apple.com/applebot.json",
     ),
     Vendor(
         "meta-externalagent",
@@ -266,6 +287,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["ChatGPT-User"],
         ["chatgpt-user"],
         SEARCH,
+        ip_ranges_url="https://openai.com/chatgpt-user.json",
     ),
     Vendor(
         "claude-user",
@@ -295,6 +317,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["PerplexityBot"],
         ["perplexitybot"],
         SEARCH,
+        ip_ranges_url="https://www.perplexity.com/perplexitybot.json",
     ),
     Vendor(
         "oai-searchbot",
@@ -304,6 +327,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["OAI-SearchBot"],
         ["oai-searchbot"],
         SEARCH,
+        ip_ranges_url="https://openai.com/searchbot.json",
     ),
     # ----------------------------------------------- search, 2.7.0 add ----
     Vendor(
@@ -315,6 +339,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["Perplexity-User"],
         ["perplexity-user"],
         SEARCH,
+        ip_ranges_url="https://www.perplexity.com/perplexity-user.json",
     ),
     # --------------------------------------------------- traditional ------
     # robots.txt names these ONLY when allow_traditional=False (the P4
@@ -328,6 +353,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["Googlebot"],
         ["googlebot"],
         TRADITIONAL,
+        ip_ranges_url="https://developers.google.com/static/search/apis/ipranges/googlebot.json",
     ),
     Vendor(
         "bingbot",
@@ -337,6 +363,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["Bingbot"],
         ["bingbot"],
         TRADITIONAL,
+        ip_ranges_url="https://www.bing.com/toolbox/bingbot.json",
     ),
     Vendor(
         "slurp",
@@ -355,6 +382,7 @@ VENDORS: Tuple[Vendor, ...] = (
         ["DuckDuckBot"],
         ["duckduckbot"],
         TRADITIONAL,
+        ip_ranges_url="https://duckduckgo.com/duckduckbot.json",
     ),
 )
 

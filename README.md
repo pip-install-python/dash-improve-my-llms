@@ -317,6 +317,57 @@ configure_access(
 
 The full contract is in [`docs/ACCESS.md`](docs/ACCESS.md).
 
+## Who is reading, and what they read
+
+Every document this package serves can be accounted for: which vendor
+asked, whether that identity checks out, which document they got, and how
+many bytes went out.
+
+```python
+from dash_improve_my_llms import on_document_read
+
+@on_document_read
+def record(event: dict) -> None:
+    # one call per document served — the package does no I/O with it
+    db.insert(event)
+```
+
+The event names `vendor_key`, `bot_type`, `verified`, `policy`, `tier`,
+`lane`, `verdict`, `status`, `bytes`, `path`, `host`, `ua`, `client_ip`
+and `ts`. Every key is always present; `None` means "not known here".
+Callbacks run on the request path, so append to a queue rather than
+blocking — and a callback that raises is caught and warned about once,
+never allowed to take a document down.
+
+**`verified` is not a gate.** For the eleven registry vendors whose
+operators publish their crawler IP ranges — Google, OpenAI, Microsoft,
+Apple, Perplexity, DuckDuckGo, Common Crawl — the client address is
+checked against the published list and the event says `verified` or
+`unverified`. For everyone else it says `n/a`; Anthropic, notably,
+publishes no ranges, so ClaudeBot is unverifiable and is recorded as such
+rather than guessed at. **An unverified client is served exactly what a
+verified one is served.** The point is a row that says so, not a wall.
+The ranges ship with the package and are refreshed at release time by
+`scripts/refresh_ip_ranges.py`; nothing is fetched on the request path.
+
+### One classifier, not four
+
+If your application keeps its own list of bot User-agents, replace it
+with the registry this package already maintains:
+
+```python
+from dash_improve_my_llms import classify
+
+classify(request.headers.get("User-Agent", ""), client_ip=ip)
+# {'bot_type': 'training', 'vendor_key': 'gptbot', 'vendor_class': 'training',
+#  'verified': 'n/a', 'lane': 'crawler'}
+```
+
+This is *the* classification entry point. Hand-written lists drift — they
+keep retired tokens alive and miss new vendors — and a drifted list is
+how bot traffic gets mis-attributed in dashboards. The older predicates
+(`is_ai_training_bot`, `get_bot_type`, ...) still work and delegate here.
+
 ## Dash compatibility
 
 Verified against every supported Dash release on all three backends —
@@ -372,6 +423,9 @@ its examples.
 | `configure_bulletin(url=...)` | Opt in to hub-published tips / announcements |
 | `configure_access(check, ...)` | Per-request allow / gated / deny on every surface |
 | `configure_viewer_identity(provider)` | Show the signed-in reader in the HTML viewer |
+| `on_document_read(callback)` | One event per document served — vendor, tier, verdict, bytes |
+| `classify(user_agent, client_ip=None)` | The one classification fold: vendor, class, lane, verification |
+| `configure_identity(refresh=True)` | Opt in to refreshing the shipped crawler IP ranges at runtime |
 
 ## Development
 

@@ -149,6 +149,102 @@ def get_bot_type(user_agent: str) -> str:
     return "unknown"
 
 
+# ---------------------------------------------------------------------------
+# 2.8 — positive browser identification, and the one classification fold.
+# ---------------------------------------------------------------------------
+
+# Through 2.7.x an unrecognised client was assumed to be a person and was
+# handed the JavaScript shell. For a package whose whole thesis is machine
+# readers that default is backwards: `httpx`, `aiohttp`, `node-fetch`,
+# `Go-http-client` and an absent User-agent are overwhelmingly programs,
+# and a program that receives the shell receives nothing at all. So 2.8
+# asks the positive question instead — is this a BROWSER? — and treats
+# everything else as a reader.
+#
+# A browser sends `Mozilla/` and an engine token. That is a low bar by
+# design: the cost of a false "browser" is one agent getting the shell (the
+# old behaviour for everyone), while the cost of a false "crawler" is a
+# person seeing static HTML, which is the more visible failure.
+_BROWSER_ENGINE_TOKENS = (
+    "applewebkit",
+    "gecko/",
+    "trident",
+    "edg/",
+    "chrome/",
+    "safari/",
+    "firefox/",
+)
+
+
+def is_browser_ua(user_agent: str) -> bool:
+    """True when the User-agent positively identifies a web browser.
+
+    NOT the complement of ``is_any_bot()``: most AI crawlers also send
+    ``Mozilla/5.0 ... AppleWebKit ...`` for compatibility, so this must
+    only ever be consulted AFTER vendor and generic-bot matching have both
+    failed. ``classify()`` enforces that order; callers should prefer it.
+    """
+    if not user_agent:
+        return False
+    ua_lower = user_agent.lower()
+    if "mozilla/" not in ua_lower:
+        return False
+    return any(token in ua_lower for token in _BROWSER_ENGINE_TOKENS)
+
+
+def classify(user_agent: str, client_ip: Optional[str] = None) -> dict:
+    """The one classification fold — who is asking, and on which lane.
+
+    This is *the* entry point for classifying a request, and the reason it
+    exists is that it was not there before: with only the predicates on
+    offer, every consumer that needed a vendor name wrote its own
+    User-agent list, and those lists drifted from this registry in both
+    directions. An application should call this once and use the result
+    rather than maintaining lists of its own.
+
+    Args:
+        user_agent: The raw ``User-agent`` header, possibly empty.
+        client_ip: The client address, when the caller has one. Only used
+            for ``verified``; omitting it costs nothing else.
+
+    Returns a dict with:
+        ``bot_type``      ``training`` | ``search`` | ``traditional`` |
+                          ``unknown``, or ``None`` for an identified browser.
+        ``vendor_key``    registry key, or ``None``.
+        ``vendor_class``  the vendor's class, or ``None`` when no vendor
+                          matched (a generic ``bot`` token gives a
+                          ``bot_type`` but no ``vendor_class``).
+        ``verified``      ``verified`` | ``unverified`` | ``n/a`` — see
+                          ``_identity``. Never affects the lane.
+        ``lane``          ``crawler`` | ``browser``. What this UA gets by
+                          identity alone; per-vendor POLICY can still turn
+                          a crawler lane into a 403, which is
+                          ``handle_bot_request``'s decision, not this one.
+    """
+    vendor_key = get_bot_vendor(user_agent)
+    vendor = get_vendor(vendor_key) if vendor_key else None
+    vendor_class = vendor.cls if vendor is not None else None
+
+    bot_type: Optional[str] = get_bot_type(user_agent)
+    if bot_type == "unknown" and is_browser_ua(user_agent):
+        # An identified browser is the one case with no bot_type at all.
+        bot_type = None
+        lane = "browser"
+    else:
+        # Vendors, generic bots, AND the unidentified all read as crawlers.
+        lane = "crawler"
+
+    from ._identity import verify
+
+    return {
+        "bot_type": bot_type,
+        "vendor_key": vendor_key,
+        "vendor_class": vendor_class,
+        "verified": verify(vendor_key, client_ip),
+        "lane": lane,
+    }
+
+
 def get_all_bot_lists() -> dict:
     """
     Get all bot lists for reference.

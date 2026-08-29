@@ -485,7 +485,7 @@ def private_headers() -> Dict[str, str]:
     """Response headers for a per-requester document."""
     return {
         "Cache-Control": "private, no-store",
-        "Vary": "Accept, Cookie",
+        "Vary": "Accept, Cookie, User-Agent",
         "X-Robots-Tag": "noindex",
     }
 

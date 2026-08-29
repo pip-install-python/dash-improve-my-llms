@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "2.7.2"
+version = "2.8.0"
 description = "Crawler/SEO companion for Dash apps: /llms.txt, /robots.txt, /sitemap.xml, bot detection, static-HTML prerender, and an MCP bridge. Works with Flask, FastAPI, and Quart backends (Dash 4.1+)."
 readme = "README.md"
 license = "MIT"
@@ -92,7 +92,9 @@ packages = ["dash_improve_my_llms"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-dash_improve_my_llms = ["py.typed"]
+# The crawler IP-range snapshots ship in the wheel: _identity reads them
+# from disk and never fetches on the request path.
+dash_improve_my_llms = ["py.typed", "_ranges/*.json"]
 
 [tool.black]
 line-length = 100
