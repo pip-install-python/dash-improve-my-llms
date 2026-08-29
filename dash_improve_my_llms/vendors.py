@@ -41,13 +41,21 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence, Tuple
 
-#: Classification vocabulary. ``get_bot_type()`` has answered with these
-#: strings since 1.x; the registry keeps that contract.
+#: Classification vocabulary. ``get_bot_type()`` answered with the first
+#: three strings from 1.x through 2.8.x; ``monitor`` joins them in 2.9.0.
 TRAINING = "training"
 SEARCH = "search"
 TRADITIONAL = "traditional"
+#: Uptime probes and headless automation. Not readers: they fetch to prove
+#: the site answers, or to drive it programmatically. Before 2.9.0 they
+#: landed in ``traditional`` (``uptimerobot`` via the generic ``bot``
+#: token) or in ``unknown``, so the null-vendor row in a host's ledger was
+#: part monitoring traffic and part everything else. A class of their own
+#: is what makes that row readable. Their policy is ALWAYS ``allow`` by
+#: default: a monitor that receives 403 pages its owner at 3 a.m.
+MONITOR = "monitor"
 
-_CLASSES = (TRAINING, SEARCH, TRADITIONAL)
+_CLASSES = (TRAINING, SEARCH, TRADITIONAL, MONITOR)
 
 
 class Vendor:
@@ -69,7 +77,7 @@ class Vendor:
             hard-won rule, not an omission.
         ua_tokens: Lowercase substrings matched against the User-agent
             header. Matching is substring-based, same as 1.x.
-        cls: ``training`` | ``search`` | ``traditional``.
+        cls: ``training`` | ``search`` | ``traditional`` | ``monitor``.
         ip_ranges_url: Where this operator PUBLISHES the IP ranges its
             crawler fetches from, or None when it publishes none. Feeds
             ``_identity.verify()`` and ``scripts/refresh_ip_ranges.py``.
@@ -384,6 +392,70 @@ VENDORS: Tuple[Vendor, ...] = (
         TRADITIONAL,
         ip_ranges_url="https://duckduckgo.com/duckduckbot.json",
     ),
+    # ------------------------------------------- monitor, 2.9.0 add ------
+    # Uptime probes and headless automation. ALL of these carry
+    # `robots_tokens=[]` on purpose, exactly as `anthropic-legacy` does:
+    # robots.txt is a crawling policy, and telling a health check what it
+    # may crawl is a category error. Appended last, so every existing
+    # host's robots.txt is byte-identical across the upgrade.
+    Vendor(
+        "pingdom",
+        "Pingdom",
+        "SolarWinds",
+        "Synthetic uptime and transaction checks.",
+        [],
+        ["pingdom"],
+        MONITOR,
+    ),
+    Vendor(
+        "uptimerobot",
+        "UptimeRobot",
+        "UptimeRobot",
+        "Interval uptime checks. Classified `traditional` before 2.9.0 — "
+        "the generic `bot` token caught it and said nothing more.",
+        [],
+        ["uptimerobot"],
+        MONITOR,
+    ),
+    Vendor(
+        "betteruptime",
+        "Better Uptime",
+        "Better Stack",
+        "Interval uptime and heartbeat checks.",
+        [],
+        ["better uptime", "better-uptime", "betteruptime", "betterstack"],
+        MONITOR,
+    ),
+    Vendor(
+        "statuscake",
+        "StatusCake",
+        "StatusCake",
+        "Interval uptime and page-speed checks.",
+        [],
+        ["statuscake"],
+        MONITOR,
+    ),
+    Vendor(
+        "site24x7",
+        "Site24x7",
+        "Zoho",
+        "Synthetic uptime and application checks.",
+        [],
+        ["site24x7"],
+        MONITOR,
+    ),
+    Vendor(
+        "headless",
+        "Headless browser",
+        "various",
+        "Headless Chrome, PhantomJS, Puppeteer and Playwright — synthetic "
+        "checks, screenshot services and scripted automation. Automation, "
+        "not a reader: the UA claims a browser, so through 2.8.x it took "
+        "the BROWSER lane and was handed the JavaScript shell.",
+        [],
+        ["headlesschrome", "phantomjs", "puppeteer", "playwright"],
+        MONITOR,
+    ),
 )
 
 _BY_KEY: Dict[str, Vendor] = {v.key: v for v in VENDORS}
@@ -509,6 +581,10 @@ def effective_policies(robots_config) -> Dict[str, str]:
         TRAINING: POLICY_BLOCK if block_training else POLICY_ALLOW,
         SEARCH: POLICY_ALLOW if allow_search else POLICY_BLOCK,
         TRADITIONAL: POLICY_ALLOW if allow_traditional else POLICY_BLOCK,
+        # Monitors answer to no coarse flag. `allow_traditional=False` is a
+        # statement about search engines, and a host that makes it has not
+        # asked to start 403ing its own health checks.
+        MONITOR: POLICY_ALLOW,
     }
     overrides = _overrides(robots_config)
     result = {v.key: overrides.get(v.key, defaults[v.cls]) for v in VENDORS}

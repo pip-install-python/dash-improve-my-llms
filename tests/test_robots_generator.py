@@ -499,3 +499,63 @@ class TestSaysEqualsDoes:
                     f"{vendor.key} ({token}): robots.txt resolves {got}, "
                     f"middleware enforces {policies[vendor.key]}"
                 )
+
+
+class TestMonitorsNeverReachRobots:
+    """2.9.0's fourth class must be invisible to robots.txt.
+
+    Verified byte-for-byte against the 2.8.0 renderer across eight
+    configurations before this test was written (2026-08-29); what the
+    test pins is the property that makes that hold, so a later monitor
+    vendor with a stray robots token cannot quietly change every host's
+    robots.txt on upgrade.
+    """
+
+    def _render(self, config):
+        return generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            RobotsConfig(),
+            RobotsConfig(allow_traditional=False),
+            RobotsConfig(block_ai_training=False, allow_ai_search=False),
+            RobotsConfig(vendor_policy={"pingdom": "block"}),
+            RobotsConfig(vendor_policy={"headless": "meter"}),
+        ],
+    )
+    def test_no_monitor_is_ever_named(self, config):
+        from dash_improve_my_llms.vendors import vendors_of_class
+
+        robots = self._render(config)
+        for vendor in vendors_of_class("monitor"):
+            assert vendor.display not in robots, vendor.key
+            for token in vendor.ua_tokens:
+                assert token not in robots.lower(), vendor.key
+
+    def test_a_blocked_monitor_changes_nothing(self):
+        """Even an explicit block: the record has no robots tokens, so
+        there is nothing to publish — the same rule anthropic-legacy has
+        always exercised through this branch."""
+        assert self._render(RobotsConfig(vendor_policy={"uptimerobot": "block"})) == self._render(
+            RobotsConfig()
+        )
+
+    def test_monitors_default_to_allow_under_every_coarse_flag(self):
+        """`allow_traditional=False` is a statement about search engines. A
+        host that makes it has not asked to start 403ing its own health
+        checks at 3 a.m."""
+        from dash_improve_my_llms.vendors import effective_policies, vendors_of_class
+
+        for config in (
+            RobotsConfig(),
+            RobotsConfig(allow_traditional=False),
+            RobotsConfig(block_ai_training=True, allow_ai_search=False),
+        ):
+            policies = effective_policies(config)
+            for vendor in vendors_of_class("monitor"):
+                assert policies[vendor.key] == "allow", vendor.key

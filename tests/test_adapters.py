@@ -732,14 +732,21 @@ def test_crawler_title_keeps_the_site_name(backend):
 @pytest.mark.parametrize("backend", _backends())
 def test_unconfigured_seo_adds_no_identity_tags(backend):
     """configure_seo is opt-in: an upgrade must not invent an icon or a card
-    for a site that never declared one."""
+    for a site that never declared one.
+
+    `twitter:url` is the one exception, and it is not an identity tag: the
+    document's own URL is known without any configuration at all, and the
+    card set (`twitter:card`, `:title`, `:image`, …) still appears only
+    when a social image is declared."""
     app = _build_app(backend)
     client = _Client(app, backend)
 
     _, crawler = client.get("/guide", ua=GOOGLEBOT)
     assert 'rel="icon"' not in crawler
     assert "og:image" not in crawler
-    assert "twitter:" not in crawler
+    for tag in ("twitter:card", "twitter:title", "twitter:description", "twitter:image"):
+        assert tag not in crawler
+    assert '<meta name="twitter:url"' in crawler
 
 
 @pytest.mark.parametrize("backend", _backends())
@@ -1178,6 +1185,82 @@ class TestReadEvents:
         assert recorded[-1]["verdict"] == "rate_limited"
         assert recorded[-1]["status"] == 429
         _rate_limit.reset()
+
+    # ---------------------------------------------------------------
+    # 2.9.0 item 1 — the resolved posture on every row
+    # ---------------------------------------------------------------
+
+    @pytest.mark.parametrize("path,tier", SWEEP)
+    def test_every_document_event_names_a_policy(self, client, recorded, path, tier):
+        """The invariant. Through 2.8.x `policy` started life as None and
+        became a string only for a registry vendor on a host that had a
+        RobotsConfig — and the adapters, which serve these six documents,
+        passed no policy at all. So a ledger rolling up by
+        (vendor, verified, policy) had None on every row of a default
+        host and could not say what posture a read was served under."""
+        assert client.get_full(path, ua=GPTBOT)[0] == 200
+        assert len(recorded) == 1
+        assert recorded[0]["policy"] in ("allow", "meter", "block")
+
+    def test_the_crawler_html_event_names_a_policy(self, client, recorded):
+        """The middleware's own lane, not an adapter route."""
+        assert client.get_full("/guide", ua=GOOGLEBOT)[0] == 200
+        assert recorded[0]["policy"] == "allow"
+
+    def test_a_default_host_serving_googlebot_records_allow(self, backend, recorded):
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig()
+        assert _Client(app, backend).get_full("/guide", ua=GOOGLEBOT)[0] == 200
+        assert recorded[0]["policy"] == "allow"
+
+    def test_a_blocked_vendor_records_block_on_its_403(self, backend, recorded):
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+        assert _Client(app, backend).get_full("/guide", ua=GPTBOT)[0] == 403
+        assert recorded[0]["verdict"] == "blocked"
+        assert recorded[0]["policy"] == "block"
+
+    def test_a_metered_vendor_records_meter(self, backend, recorded):
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(vendor_policy={"gptbot": "meter"})
+        assert _Client(app, backend).get_full("/guide", ua=GPTBOT)[0] == 200
+        assert recorded[0]["policy"] == "meter"
+
+    def test_an_absent_user_agent_records_the_unknown_ai_posture(self, backend, recorded):
+        """2.8 moved the unidentified onto the crawler lane; 2.9.0 lets
+        `default_unknown_ai` govern them. An unnamed agent IS the unknown
+        AI the knob names."""
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(default_unknown_ai="meter")
+        assert _Client(app, backend).get_full("/", ua="")[0] == 200
+        assert recorded[0]["bot_type"] == "unknown"
+        assert recorded[0]["policy"] == "meter"
+
+    def test_a_cli_tool_is_exempt_from_the_unknown_ai_posture(self, backend, recorded):
+        """curl is the paste-into-chat lane, not an unenumerated crawler:
+        metering a person's terminal is not what the knob is for."""
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(default_unknown_ai="meter")
+        assert _Client(app, backend).get_full("/", ua="curl/8.4.0")[0] == 200
+        assert recorded[0]["policy"] == "allow"
+
+    def test_a_host_with_no_robots_config_records_allow(self, backend, recorded):
+        """The document went out; None never described that."""
+        app = _build_app(backend)
+        assert getattr(app, "_robots_config", None) is None
+        assert _Client(app, backend).get_full("/llms.txt", ua=GPTBOT)[0] == 200
+        assert recorded[0]["policy"] == "allow"
+
+    def test_a_monitor_is_named_and_allowed(self, backend, recorded):
+        """2.9.0 item 3 on the wire: a health check reads as `monitor`,
+        carries a vendor key, and is never blocked."""
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(block_ai_training=True, allow_traditional=False)
+        pingdom = "Pingdom.com_bot_version_1.4_(http://www.pingdom.com/)"
+        assert _Client(app, backend).get_full("/guide", ua=pingdom)[0] == 200
+        assert recorded[0]["bot_type"] == "monitor"
+        assert recorded[0]["vendor_key"] == "pingdom"
+        assert recorded[0]["policy"] == "allow"
 
     def test_a_raising_callback_leaves_the_response_untouched(self, client):
         from dash_improve_my_llms import _ledger

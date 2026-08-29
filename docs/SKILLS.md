@@ -266,7 +266,8 @@ RobotsConfig(
 from dash_improve_my_llms.bot_detection import get_bot_type
 
 bot_type = get_bot_type(user_agent_string)
-# Returns one of: "training", "search", "traditional", "unknown"
+# Returns one of: "training", "search", "traditional", "monitor", "unknown"
+# ("monitor" — uptime probes and headless automation — is new in 2.9.0)
 ```
 
 ### Skill: verify bot policy with curl

@@ -5,6 +5,112 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-08-29 — the posture on every row, `twitter:url`, monitors get a name
+
+2.8.0 started recording the read. Its first consumer put a ledger behind
+it, rolled up by `(vendor, verified, policy)`, and found the third key
+empty on every row of a default host. This release fills it in, and fixes
+the two smaller things that day of production traffic surfaced.
+
+**Why 2.9.0 and not 2.8.1.** `get_bot_type()` has answered with three
+strings since 1.x and now answers with four; a headless browser changes
+lanes; and `default_unknown_ai` widens to cover clients it did not cover
+before. Any one of those is more than a patch.
+
+### Fixed — `policy` was `None` on every event of a default host
+
+Measured on the 2.8.0 wheel, 2026-08-29: `/` on a host with no explicit
+`vendor_policy` emitted `policy=None` for Googlebot, GPTBot and ClaudeBot
+alike. The field became a string only for a registry vendor on a host
+that carried a `RobotsConfig`, or for a generic-pattern bot on a host
+that had set `default_unknown_ai`. Everything else got `None` — and the
+three adapters, which serve `/llms.txt`, `/llms-small.txt`,
+`/llms-full.txt`, `/robots.txt`, `/sitemap.xml` and the per-page
+documents, passed no `policy` at all. A consumer rolling up by posture
+had nothing to group on.
+
+The invariant now: **every emitted event carries `policy` ∈ {`allow`,
+`meter`, `block`}. Never `None`.** One resolver, `resolve_policy`, and
+the middleware and all three adapters ask it:
+
+- a registry vendor → the same `effective_policies` fold robots.txt
+  renders from;
+- no vendor → `default_unknown_ai`, with CLI tools (curl, wget,
+  python-requests) always `allow` — they are the paste-into-chat lane;
+- no `RobotsConfig` on the app → `allow`; the document was served, and
+  `None` never described that;
+- a 403 from the block branch → `block`, by construction.
+
+That the *same* function decides the block and names the posture is the
+point, not an implementation detail: a ledger row that reports something
+other than what the middleware did is the defect this fixes, and two
+copies of the rule is how it comes back.
+
+### Changed — `default_unknown_ai` now covers the unidentified, not just the generic
+
+2.8 moved `httpx`, `Go-http-client`, `node-fetch` and an absent
+User-agent onto the crawler lane. This knob kept covering only the
+GENERIC patterns (`bot`/`crawler`/`spider`/`scraper`), so the one class
+of reader a host cannot enumerate was also the one it could not govern.
+It now covers both.
+
+**If you set `default_unknown_ai="block"`**, a request with an
+unrecognised or absent User-agent that 2.8.0 served now receives 403,
+exactly as a `some-crawler/1.0` already did. The default is `allow` and
+is unchanged; hosts that never set the knob see no difference. CLI tools
+remain exempt.
+
+### Added — `twitter:url` on the crawler document
+
+`og:url` was emitted unconditionally while every `twitter:*` tag lived
+inside `_social_tags()`, which returns nothing unless a social image is
+declared. So a host with no card image published a document whose URL X
+could not read. The tag is now emitted beside `og:url`, from the same
+`base_url` — so it follows the forwarded scheme wherever `og:url` does —
+with `name=`, not `property=`, which is the difference between X reading
+it and X ignoring it silently. The card set (`twitter:card`, `:title`,
+`:image`, …) stays opt-in behind `social_image`; only the URL is
+unconditional. This unblocks the boilerplate template's verbatim
+`tests/test_proxy_scheme.py`, which asserted on the tag and reddened on
+every fork because a default-UA request lands on the crawler lane where
+the tag did not exist.
+
+### Added — `monitor`, the fourth bot class
+
+Uptime probes and headless automation were `unknown` with no vendor
+(`pingdom`, `better-uptime`, `headlesschrome`, `phantomjs`) or hidden
+inside `traditional` (`uptimerobot`, which the generic `bot` token caught
+and said nothing more about). Either way the null-vendor row in a host's
+ledger was part monitoring traffic and part everything else, and
+unreadable. Registry entries: `pingdom`, `uptimerobot`, `betteruptime`,
+`statuscake`, `site24x7`, and `headless` (HeadlessChrome, PhantomJS,
+Puppeteer, Playwright); plus the unnamed probes — Uptime Kuma and a dozen
+self-hosted checkers — which classify `monitor` with `vendor_key=None`
+rather than being misattributed to a vendor they are not.
+
+`render-health` was **not** added: Render's health probe publishes no
+documented User-agent token, and a registry entry that matches nothing is
+worse than an honest gap.
+
+Monitors are **always `allow`** by default, under every coarse flag —
+`allow_traditional=False` is a statement about search engines, and a host
+that makes it has not asked to start 403ing its own health checks at
+3 a.m. They carry **empty `robots_tokens`**, the same rule
+`anthropic-legacy` carries for a different reason: robots.txt is a
+crawling policy, and telling a health check what it may crawl is a
+category error. Verified byte-for-byte: `/robots.txt` is identical to
+2.8.0's across eight configurations.
+
+**Two contract changes ride with it.** `get_bot_type()` can now return
+`"monitor"` — a consumer switching exhaustively on the other four needs a
+branch. And a headless browser now takes the **crawler** lane: its UA
+claims a browser, so through 2.8.x it was handed the JavaScript shell,
+and vendor matching runs before the browser check. Screenshot services,
+synthetic checks and Playwright scripts against a page route therefore
+receive the crawler document. That is the right document for automation
+and the wrong one for a service that is deliberately rendering your app;
+such a service should send its own User-agent.
+
 ## [2.8.0] - 2026-08-29 — one classifier, one lane, one read event
 
 The package has always known who was asking, what policy applied and

@@ -338,3 +338,52 @@ class TestCrawlerDocumentH1Dedup:
         html = self._render(None)
         assert html.count("<h1") == 1
         assert "<h1>The Guide</h1>" in html
+
+
+class TestTwitterUrl:
+    """2.9.0 item 2 — the crawler document carries `twitter:url`.
+
+    Through 2.8.x `og:url` was emitted unconditionally while every
+    `twitter:*` tag lived inside `_social_tags()`, which returns "" unless
+    a social image is declared. So a host with no card image published a
+    document whose URL X could not read, and a consumer's verbatim test
+    for "twitter:url follows the forwarded scheme" reddened on the tag
+    simply being absent. The URL of a document exists whether or not a
+    card image does.
+    """
+
+    def _render(self, page_path, base_url="https://example.com"):
+        return generate_static_page_html(
+            page_path=page_path,
+            page_metadata={"name": "About", "description": "About this thing"},
+            all_pages=[{"path": "/", "name": "Home"}, {"path": "/about", "name": "About"}],
+            app_config={"name": "Test App", "base_url": base_url},
+        )
+
+    @pytest.mark.parametrize("page_path", ["/", "/about"])
+    def test_exactly_one_twitter_url_matching_og_url(self, page_path):
+        html = self._render(page_path)
+        assert html.count('name="twitter:url" content=') == 1
+        og = html.split('property="og:url" content="')[1].split('"')[0]
+        twitter = html.split('name="twitter:url" content="')[1].split('"')[0]
+        assert twitter == og == f"https://example.com{page_path}"
+
+    def test_it_is_name_not_property(self):
+        """X reads `name=`; declaring it with `property=` makes it
+        invisible, which is the silent mistake `_social_tags` documents."""
+        html = self._render("/about")
+        assert '<meta name="twitter:url"' in html
+        assert 'property="twitter:url"' not in html
+
+    def test_it_follows_the_base_url_scheme_that_og_url_follows(self):
+        """One base_url feeds both, so a host that resolves it from
+        X-Forwarded-Proto gets https on both tags or neither."""
+        html = self._render("/about", base_url="https://secure.example.com")
+        assert '<meta name="twitter:url" content="https://secure.example.com/about">' in html
+        assert '<meta property="og:url" content="https://secure.example.com/about">' in html
+
+    def test_no_social_image_still_means_no_card_set(self):
+        """The card tags stay opt-in — only the URL is unconditional."""
+        html = self._render("/about")
+        for tag in ("twitter:card", "twitter:title", "twitter:description", "twitter:image"):
+            assert tag not in html

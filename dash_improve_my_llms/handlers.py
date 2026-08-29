@@ -1343,6 +1343,91 @@ def _is_documentation_route(path: str) -> bool:
     return any(path.endswith(suffix) for suffix in _DOC_ROUTE_SUFFIXES)
 
 
+def resolve_policy(*, robots_config: Any, identity: Dict[str, Any], user_agent: str) -> str:
+    """The posture one read was served under — always one of the three.
+
+    2.9.0. Through 2.8.x this was computed inline in ``handle_bot_request``
+    and started life as ``None``: it became a string only for a registry
+    vendor, or for a generic-pattern bot on a host that had set
+    ``default_unknown_ai``. So on a DEFAULT host every read event carried
+    ``policy=None`` — Googlebot, GPTBot and ClaudeBot alike — and a ledger
+    that rolls up by ``(vendor, verified, policy)`` could not say what
+    posture a read was served under. The three adapters passed no policy
+    at all.
+
+    There is one resolver now, and the middleware and all three adapters
+    ask it. That matters beyond tidiness: a ledger row must report what
+    actually happened, so the function that decides the block must be the
+    function that names the posture. Two answers to "what applied here?"
+    is the defect, not the duplication.
+
+    The rules, in order:
+
+    * **A registry vendor** — the ``effective_policies`` fold, the same one
+      robots.txt renders from. A key missing from the fold would be a bug
+      in the fold; ``allow`` is the safe read of "the document went out".
+    * **No vendor** — ``default_unknown_ai``, which since 2.9.0 covers the
+      unidentified (``bot_type`` ``unknown``) as well as the
+      generic-pattern bots it always covered. 2.8 moved the unidentified
+      onto the crawler lane; an unnamed agent IS the unknown AI the knob
+      names, and leaving it uncovered meant the one class of reader a host
+      cannot enumerate was also the one it could not govern.
+    * **CLI tools** — ``allow``, always. curl, wget and python-requests are
+      the paste-into-chat lane, and metering a person's terminal is not
+      what the knob is for.
+    * **No ``RobotsConfig`` at all** — ``allow``. The document was served;
+      that is the posture, and ``None`` never described it.
+    """
+    from .vendors import POLICY_ALLOW
+
+    if robots_config is None:
+        return POLICY_ALLOW
+
+    from .vendors import effective_policies
+
+    vendor_key = identity.get("vendor_key")
+    if vendor_key is not None:
+        return effective_policies(robots_config).get(vendor_key) or POLICY_ALLOW
+
+    ua_lower = (user_agent or "").lower()
+    if any(t in ua_lower for t in ("curl", "wget", "python-requests")):
+        return POLICY_ALLOW
+
+    posture = getattr(robots_config, "default_unknown_ai", POLICY_ALLOW)
+    return posture if posture in ("block", "meter") else POLICY_ALLOW
+
+
+def read_event_identity(*, app: Any, user_agent: str, headers: Any) -> Dict[str, Any]:
+    """``classification`` + ``policy`` for one read event, as kwargs.
+
+    The adapters' shared prelude: they serve documents from their own
+    routes without ever entering ``handle_bot_request``, so before 2.9.0
+    those events carried no policy at all. Splatted straight into
+    ``_ledger.emit_read(**...)``. Classifying here rather than letting
+    ``build_event`` do it costs nothing — it would classify anyway — and
+    guarantees the policy and the classification on one row describe the
+    same request.
+    """
+    from ._headers import client_ip as _client_ip
+
+    request_ip = None
+    if headers is not None:
+        try:
+            request_ip = _client_ip(headers)
+        except Exception:  # noqa: BLE001
+            request_ip = None
+
+    identity = classify(user_agent, request_ip)
+    return {
+        "classification": identity,
+        "policy": resolve_policy(
+            robots_config=getattr(app, "_robots_config", None),
+            identity=identity,
+            user_agent=user_agent,
+        ),
+    }
+
+
 def handle_bot_request(
     *,
     path: str,
@@ -1412,29 +1497,17 @@ def handle_bot_request(
         return None
 
     bot_type = identity["bot_type"] or "unknown"
-    vendor_key = identity["vendor_key"]
     robots_config: Optional[RobotsConfig] = getattr(app, "_robots_config", None)
 
     # W2: the SAME effective-policy fold robots.txt renders from decides
     # what the middleware does — what the site says and what it does are
-    # one source, by construction. With vendor_policy unset the fold
-    # reproduces the coarse flags, so this block behaves exactly as the
-    # training-only branch it replaced.
-    effective = None
-    if robots_config is not None:
-        from .vendors import effective_policies
-
-        if vendor_key is not None:
-            effective = effective_policies(robots_config).get(vendor_key)
-        elif bot_type == "traditional":
-            # Generic-pattern bots with no vendor identity — the
-            # unenumerated-AI residue of P2. CLI tools are deliberately
-            # exempt: they are the paste-into-chat lane.
-            posture = getattr(robots_config, "default_unknown_ai", "allow")
-            ua_lower = user_agent.lower()
-            is_cli = any(t in ua_lower for t in ("curl", "wget", "python-requests"))
-            if posture in ("block", "meter") and not is_cli:
-                effective = posture
+    # one source, by construction. Since 2.9.0 that resolution lives in
+    # `resolve_policy`, which the three adapters ask too: the posture that
+    # decides the response is the posture the ledger row reports, because
+    # it is one function.
+    effective = resolve_policy(
+        robots_config=robots_config, identity=identity, user_agent=user_agent
+    )
 
     def _emit(status: int, body: Any, verdict: str) -> None:
         """One read event for a document the middleware itself produced.

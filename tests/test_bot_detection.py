@@ -251,3 +251,90 @@ def test_registry_order_keeps_pre27_vendors_first():
         "bytespider",
         "anthropic-legacy",
     ]
+
+
+# ---------------------------------------------------------------------------
+# 2.9.0 — the monitor class
+# ---------------------------------------------------------------------------
+
+PINGDOM = "Pingdom.com_bot_version_1.4_(http://www.pingdom.com/)"
+BETTER_UPTIME = "Better Uptime Bot Mozilla/5.0 (compatible; https://betterstack.com)"
+HEADLESS = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "HeadlessChrome/128.0.0.0 Safari/537.36"
+)
+
+
+@pytest.mark.parametrize(
+    "ua,vendor_key",
+    [
+        (PINGDOM, "pingdom"),
+        (BETTER_UPTIME, "betteruptime"),
+        (HEADLESS, "headless"),
+        ("Mozilla/5.0 (compatible; UptimeRobot/2.0; http://uptimerobot.com/)", "uptimerobot"),
+        ("Mozilla/5.0 (compatible; StatusCake)", "statuscake"),
+        ("Site24x7", "site24x7"),
+    ],
+)
+def test_monitors_are_named_not_unknown(ua, vendor_key):
+    """The 2.9.0 fourth class. Before it, `uptimerobot` landed in
+    `traditional` via the generic `bot` token and everything else landed in
+    `unknown` with no vendor — so the null-key row in a host's ledger was
+    part monitoring traffic and part everything else, and unreadable."""
+    from dash_improve_my_llms.bot_detection import classify
+
+    identity = classify(ua)
+    assert identity["bot_type"] == "monitor", ua
+    assert identity["vendor_key"] == vendor_key, ua
+    assert identity["vendor_class"] == "monitor", ua
+    assert identity["lane"] == "crawler", ua
+    assert get_bot_type(ua) == "monitor", ua
+
+
+def test_a_headless_browser_takes_the_crawler_lane():
+    """Contract change: through 2.8.x HeadlessChrome claimed a browser UA,
+    took the BROWSER lane and was handed the JavaScript shell. It is
+    automation, not a reader — vendor matching runs before the browser
+    check, so it now gets the crawler document."""
+    from dash_improve_my_llms.bot_detection import classify, is_browser_ua
+
+    assert is_browser_ua(HEADLESS) is True  # it really does look like one
+    assert classify(HEADLESS)["lane"] == "crawler"
+
+
+def test_an_unnamed_monitor_is_still_a_monitor():
+    """Uptime Kuma, Uptime.com and a dozen self-hosted probes carry
+    `uptime` without naming a vendor. `monitor` with no vendor_key beats
+    attributing them all to UptimeRobot."""
+    from dash_improve_my_llms.bot_detection import classify
+
+    for ua in ("Uptime-Kuma/1.23.0", "MyCorp-Monitoring/2", "healthcheck/1.0"):
+        identity = classify(ua)
+        assert identity["bot_type"] == "monitor", ua
+        assert identity["vendor_key"] is None, ua
+
+
+def test_monitor_tokens_do_not_capture_real_crawlers():
+    """The generic monitor tokens are matched before the generic bot
+    tokens, so they must not be able to swallow a named vendor."""
+    assert get_bot_type("Mozilla/5.0 (compatible; Googlebot/2.1)") == "traditional"
+    assert get_bot_type("Mozilla/5.0 (compatible; GPTBot/1.0)") == "training"
+    assert get_bot_type("Claude-User/1.0") == "search"
+    assert get_bot_type("curl/8.4.0") == "traditional"
+
+
+def test_monitors_are_never_named_in_robots_txt():
+    """A health check is not a crawler and robots.txt is a crawling
+    policy — every monitor record carries empty robots_tokens, the same
+    hard rule anthropic-legacy carries for a different reason."""
+    for vendor in vendors_of_class("monitor"):
+        assert vendor.robots_tokens == (), vendor.key
+        assert vendor.ip_ranges_url is None, vendor.key
+
+
+def test_get_all_bot_lists_names_the_monitor_class():
+    lists = get_all_bot_lists()
+    assert "pingdom" in lists["monitor"]
+    assert "headlesschrome" in lists["monitor"]
+    # and it did not leak into the three that existed before
+    assert "pingdom" not in lists["traditional"]

@@ -335,6 +335,9 @@ def record(event: dict) -> None:
 The event names `vendor_key`, `bot_type`, `verified`, `policy`, `tier`,
 `lane`, `verdict`, `status`, `bytes`, `path`, `host`, `ua`, `client_ip`
 and `ts`. Every key is always present; `None` means "not known here".
+`policy` is the exception: since 2.9.0 it is always one of `allow`,
+`meter` or `block` — the posture the read was actually served under, so a
+rollup keyed on `(vendor, verified, policy)` has a third key to group by.
 Callbacks run on the request path, so append to a queue rather than
 blocking — and a callback that raises is caught and warned about once,
 never allowed to take a document down.
@@ -361,6 +364,9 @@ from dash_improve_my_llms import classify
 classify(request.headers.get("User-Agent", ""), client_ip=ip)
 # {'bot_type': 'training', 'vendor_key': 'gptbot', 'vendor_class': 'training',
 #  'verified': 'n/a', 'lane': 'crawler'}
+#
+# bot_type is one of: training | search | traditional | monitor | unknown
+# (monitor — uptime probes and headless automation — is new in 2.9.0)
 ```
 
 This is *the* classification entry point. Hand-written lists drift — they

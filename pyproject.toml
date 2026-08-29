@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-improve-my-llms"
-version = "2.8.0"
+version = "2.9.0"
 description = "Crawler/SEO companion for Dash apps: /llms.txt, /robots.txt, /sitemap.xml, bot detection, static-HTML prerender, and an MCP bridge. Works with Flask, FastAPI, and Quart backends (Dash 4.1+)."
 readme = "README.md"
 license = "MIT"

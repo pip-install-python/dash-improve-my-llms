@@ -35,6 +35,7 @@ from .handlers import (
     build_sitemap_xml,
     handle_bot_request,
     merge_vary,
+    read_event_identity,
     should_prerender,
     wants_html_viewer,
 )
@@ -174,6 +175,8 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         """
         if not _ledger.has_listeners():
             return
+        user_agent = request.headers.get("user-agent", "")
+        request_headers = normalize_headers(request.headers)
         _ledger.emit_read(
             path=path,
             method=request.method,
@@ -181,8 +184,12 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             status=status,
             body=body,
             verdict=verdict or _ledger.verdict_for_status(status),
-            user_agent=request.headers.get("user-agent", ""),
-            headers=normalize_headers(request.headers),
+            user_agent=user_agent,
+            headers=request_headers,
+            # 2.9.0: the posture this document went out under. Documents
+            # served from these routes never enter handle_bot_request, so
+            # before this every adapter event carried policy=None.
+            **read_event_identity(app=app, user_agent=user_agent, headers=request_headers),
         )
 
     router = APIRouter()

@@ -57,15 +57,20 @@ class RobotsConfig:
                 exists for) and is enforced by the rate limiter once W4
                 lands; until then it behaves as allow. Unset reproduces the
                 coarse flags exactly.
-            default_unknown_ai: Middleware-only posture for bots that match
-                only the GENERIC patterns (``bot``/``crawler``/``spider``/
-                ``scraper``) with no registry vendor identity — the
-                unenumerated-AI residue of defect P2. ``allow`` (default,
-                the historical behaviour) | ``block`` | ``meter``. CLI
-                tools (curl, wget, python-requests) are deliberately NOT
-                covered: they are the paste-into-chat lane. robots.txt
-                cannot address unnamed agents, so this knob has no robots
-                rendering.
+            default_unknown_ai: Middleware-only posture for every crawler
+                with no registry vendor identity — the unenumerated-AI
+                residue of defect P2. ``allow`` (default, the historical
+                behaviour) | ``block`` | ``meter``. Through 2.8.x it
+                covered only the GENERIC patterns
+                (``bot``/``crawler``/``spider``/``scraper``); since 2.9.0
+                it also covers the UNIDENTIFIED — ``httpx``,
+                ``Go-http-client``, an absent User-agent — which 2.8 moved
+                onto the crawler lane. Leaving them out meant the one
+                class of reader a host cannot enumerate was also the one
+                it could not govern. CLI tools (curl, wget,
+                python-requests) are deliberately NOT covered: they are
+                the paste-into-chat lane. robots.txt cannot address
+                unnamed agents, so this knob has no robots rendering.
         """
         self.block_ai_training = block_ai_training
         self.allow_ai_search = allow_ai_search

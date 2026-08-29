@@ -1222,3 +1222,82 @@ class TestPricedVerdict:
         headers = access.offer_headers("/about")
         assert "X-Payment" not in headers
         assert headers["Cache-Control"] == "private, no-store"  # still private
+
+
+class TestResolvePolicy:
+    """2.9.0 item 1 — the pure resolver, backend-independent.
+
+    The adapters and the middleware all ask this one function, which is
+    the point: a ledger row must report the posture that actually
+    decided the response, so the function that names the posture has to
+    be the function the block branch reads. Two answers to "what applied
+    here?" was the defect, not the duplication.
+    """
+
+    def _resolve(self, ua, config=None):
+        from dash_improve_my_llms.bot_detection import classify
+        from dash_improve_my_llms.handlers import resolve_policy
+
+        return resolve_policy(robots_config=config, identity=classify(ua), user_agent=ua)
+
+    def test_no_robots_config_is_allow_not_none(self):
+        """The document went out. `None` never described that."""
+        assert self._resolve("Mozilla/5.0 (compatible; Googlebot/2.1)") == "allow"
+        assert self._resolve("") == "allow"
+
+    def test_a_registry_vendor_reads_the_same_fold_robots_renders_from(self):
+        from dash_improve_my_llms.robots_generator import RobotsConfig
+        from dash_improve_my_llms.vendors import effective_policies
+
+        config = RobotsConfig(block_ai_training=True, vendor_policy={"ccbot": "meter"})
+        policies = effective_policies(config)
+        for ua, key in (
+            ("Mozilla/5.0 (compatible; GPTBot/1.0)", "gptbot"),
+            ("Mozilla/5.0 (compatible; Googlebot/2.1)", "googlebot"),
+            ("Claude-User/1.0", "claude-user"),
+            ("CCBot/2.0", "ccbot"),
+        ):
+            assert self._resolve(ua, config) == policies[key], ua
+
+    def test_the_five_acceptance_values(self):
+        from dash_improve_my_llms.robots_generator import RobotsConfig
+
+        gptbot = "Mozilla/5.0 (compatible; GPTBot/1.0)"
+        googlebot = "Mozilla/5.0 (compatible; Googlebot/2.1)"
+        assert self._resolve(googlebot, RobotsConfig()) == "allow"
+        assert self._resolve(gptbot, RobotsConfig(block_ai_training=True)) == "block"
+        assert self._resolve(gptbot, RobotsConfig(vendor_policy={"gptbot": "meter"})) == "meter"
+        assert self._resolve("", RobotsConfig(default_unknown_ai="meter")) == "meter"
+        assert self._resolve("curl/8.4.0", RobotsConfig(default_unknown_ai="meter")) == "allow"
+
+    def test_the_unknown_ai_posture_now_covers_the_unidentified(self):
+        """The 2.9.0 widening. 2.8 moved `httpx`, `Go-http-client` and an
+        absent UA onto the crawler lane; leaving them outside this knob
+        meant the one class of reader a host cannot enumerate was also the
+        one it could not govern."""
+        from dash_improve_my_llms.robots_generator import RobotsConfig
+
+        for ua in ("", "Go-http-client/2.0", "httpx/0.27", "some-random-crawler/1.0"):
+            assert self._resolve(ua, RobotsConfig(default_unknown_ai="block")) == "block", ua
+            assert self._resolve(ua, RobotsConfig()) == "allow", ua
+
+    def test_an_invalid_posture_degrades_to_allow(self):
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(default_unknown_ai="nonsense")
+        assert self._resolve("some-crawler/1.0", config) == "allow"
+
+    def test_it_only_ever_answers_with_the_three_strings(self):
+        from dash_improve_my_llms.robots_generator import RobotsConfig
+        from dash_improve_my_llms.vendors import VENDORS
+
+        configs = [
+            None,
+            RobotsConfig(),
+            RobotsConfig(block_ai_training=True, allow_ai_search=False, allow_traditional=False),
+            RobotsConfig(default_unknown_ai="block"),
+        ]
+        uas = [v.ua_tokens[0] for v in VENDORS] + ["", "curl/8.4.0", "Uptime-Kuma/1.0", "x"]
+        for config in configs:
+            for ua in uas:
+                assert self._resolve(ua, config) in ("allow", "meter", "block"), (ua, config)

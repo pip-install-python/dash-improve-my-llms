@@ -318,6 +318,11 @@ def generate_static_page_html(
     <meta property="og:title" content="{head_title}">
     <meta property="og:description" content="{description}">
     <meta property="og:url" content="{base_url}{page_path}">
+    <!-- twitter:url sits here and not in _social_tags() because the URL of
+         a document exists whether or not a card image was declared; the
+         tag was absent on every host with no social_image until 2.9.0.
+         `name=`, not `property=` — see _social_tags(). -->
+    <meta name="twitter:url" content="{base_url}{page_path}">
     <meta property="og:site_name" content="{site_name_esc}">
 {social_tags}
     <title>{head_title}</title>

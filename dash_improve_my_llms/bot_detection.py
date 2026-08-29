@@ -26,6 +26,7 @@ gained tokens and classify ``search`` (P3).
 from typing import Optional
 
 from .vendors import (
+    MONITOR,
     SEARCH,
     TRADITIONAL,
     TRAINING,
@@ -53,7 +54,22 @@ _GENERIC_BOT_TOKENS = [
     "python-requests",  # CLI tools
 ]
 
+# The same idea for monitors: "some uptime checker" without saying whose.
+# `uptime` deliberately names no vendor — Uptime Kuma, Uptime.com and a
+# dozen self-hosted probes carry it, and attributing them all to
+# UptimeRobot would be worse than leaving `vendor_key` None. Matched
+# BEFORE the generic bot tokens, because most of these also say "bot" and
+# whoever matches first decides.
+_GENERIC_MONITOR_TOKENS = [
+    "uptime",
+    "monitoring",
+    "healthcheck",
+]
+
 TRADITIONAL_BOTS = ua_tokens_of_class(TRADITIONAL) + _GENERIC_BOT_TOKENS
+
+#: Uptime probes and headless automation — the 2.9.0 class.
+MONITOR_BOTS = ua_tokens_of_class(MONITOR) + _GENERIC_MONITOR_TOKENS
 
 
 def _vendor_class(user_agent: str) -> Optional[str]:
@@ -138,12 +154,16 @@ def get_bot_type(user_agent: str) -> str:
         user_agent: User agent string from request headers
 
     Returns:
-        One of: 'training', 'search', 'traditional', or 'unknown'
+        One of: 'training', 'search', 'traditional', 'monitor', or
+        'unknown'. ``monitor`` is new in 2.9.0; a consumer that switches
+        exhaustively on the other four needs a branch for it.
     """
     cls = _vendor_class(user_agent)
     if cls is not None:
         return cls
     ua_lower = user_agent.lower()
+    if any(token in ua_lower for token in _GENERIC_MONITOR_TOKENS):
+        return MONITOR
     if any(token in ua_lower for token in _GENERIC_BOT_TOKENS):
         return TRADITIONAL
     return "unknown"
@@ -209,7 +229,8 @@ def classify(user_agent: str, client_ip: Optional[str] = None) -> dict:
 
     Returns a dict with:
         ``bot_type``      ``training`` | ``search`` | ``traditional`` |
-                          ``unknown``, or ``None`` for an identified browser.
+                          ``monitor`` | ``unknown``, or ``None`` for an
+                          identified browser. ``monitor`` is new in 2.9.0.
         ``vendor_key``    registry key, or ``None``.
         ``vendor_class``  the vendor's class, or ``None`` when no vendor
                           matched (a generic ``bot`` token gives a
@@ -256,4 +277,5 @@ def get_all_bot_lists() -> dict:
         "training": AI_TRAINING_BOTS,
         "search": AI_SEARCH_BOTS,
         "traditional": TRADITIONAL_BOTS,
+        "monitor": MONITOR_BOTS,
     }
