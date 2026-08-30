@@ -332,9 +332,9 @@ def record(event: dict) -> None:
     db.insert(event)
 ```
 
-The event names `vendor_key`, `bot_type`, `verified`, `policy`, `tier`,
-`lane`, `verdict`, `status`, `bytes`, `path`, `host`, `ua`, `client_ip`
-and `ts`. Every key is always present; `None` means "not known here".
+The event names `vendor_key`, `vendor_class`, `bot_type`, `verified`,
+`policy`, `tier`, `lane`, `verdict`, `status`, `bytes`, `path`, `host`,
+`ua`, `client_ip` and `ts`. Every key is always present; `None` means "not known here".
 `policy` is the exception: since 2.9.0 it is always one of `allow`,
 `meter` or `block` — the posture the read was actually served under, so a
 rollup keyed on `(vendor, verified, policy)` has a third key to group by.

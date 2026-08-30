@@ -52,6 +52,14 @@ EVENT_FIELDS = (
     "lane",
     "bot_type",
     "vendor_key",
+    # 2.9.2: `classify()` has always computed the vendor's class and
+    # `build_event` has always had it in hand — it simply never made it
+    # into the event. A consumer storing `{k: event[k] for k in
+    # EVENT_FIELDS}` therefore dropped it at the app boundary on every
+    # host, and every rollup's per-vendor class was null. None when no
+    # vendor matched, which is a real answer: a generic `bot` token gives
+    # a bot_type without saying whose.
+    "vendor_class",
     "verified",
     "policy",
     "verdict",
@@ -187,6 +195,7 @@ def build_event(
         "lane": lane or classification.get("lane"),
         "bot_type": classification.get("bot_type"),
         "vendor_key": classification.get("vendor_key"),
+        "vendor_class": classification.get("vendor_class"),
         "verified": classification.get("verified", "n/a"),
         "policy": policy,
         "verdict": verdict,

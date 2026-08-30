@@ -1262,6 +1262,51 @@ class TestReadEvents:
         assert recorded[0]["vendor_key"] == "pingdom"
         assert recorded[0]["policy"] == "allow"
 
+    # ---------------------------------------------------------------
+    # 2.9.2 — the vendor's class reaches the row
+    # ---------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "ua,vendor_class",
+        [
+            (GPTBOT, "training"),
+            (GOOGLEBOT, "traditional"),
+            ("Pingdom.com_bot_version_1.4_(http://www.pingdom.com/)", "monitor"),
+            ("Claude-User/1.0", "search"),
+            ("curl/8.4.0", None),
+            ("", None),
+        ],
+    )
+    def test_every_event_carries_the_vendor_class(self, backend, recorded, ua, vendor_class):
+        """`classify()` computed it and `build_event` held it, but it was
+        never put in the event — so a consumer storing
+        `{k: event[k] for k in EVENT_FIELDS}` dropped the class at the app
+        boundary on every host, and every rollup's per-vendor class was
+        null. None where no vendor matched: a generic `bot` token gives a
+        bot_type without saying whose."""
+        from dash_improve_my_llms.bot_detection import classify
+
+        app = _build_app(backend)
+        assert _Client(app, backend).get_full("/llms.txt", ua=ua)[0] == 200
+        assert len(recorded) == 1
+        assert recorded[0]["vendor_class"] == vendor_class
+        assert recorded[0]["vendor_class"] == classify(ua)["vendor_class"]
+
+    def test_the_class_rides_the_middleware_lane_too(self, backend, recorded):
+        """Not only the adapter routes — the crawler-HTML branch emits its
+        own event and must carry the same field."""
+        app = _build_app(backend)
+        assert _Client(app, backend).get_full("/guide", ua=GOOGLEBOT)[0] == 200
+        assert recorded[0]["tier"] == "html"
+        assert recorded[0]["vendor_class"] == "traditional"
+
+    def test_the_class_is_present_on_a_blocked_event(self, backend, recorded):
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+        assert _Client(app, backend).get_full("/guide", ua=GPTBOT)[0] == 403
+        assert recorded[0]["vendor_class"] == "training"
+        assert recorded[0]["policy"] == "block"
+
     def test_a_raising_callback_leaves_the_response_untouched(self, client):
         from dash_improve_my_llms import _ledger
 

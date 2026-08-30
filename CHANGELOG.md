@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.2] - 2026-08-30 — the vendor's class reaches the row
+
+### Fixed — `vendor_class` was computed, held, and then dropped
+
+`classify()` has returned `vendor_class` since 2.8.0 and `build_event`
+has had the whole classification dict in hand the entire time. The field
+simply was not in `EVENT_FIELDS`, and not in the event `build_event`
+returns. Since the documented way to store a row is
+
+```python
+{key: event[key] for key in EVENT_FIELDS}
+```
+
+every consumer dropped the class at the application boundary, on every
+host — so a fleet-wide rollup keyed on it had `null` for every vendor,
+and a ledger view showed "—" in the class column for all of them. Found
+by the first fork to build that view, against the 2.8.0 wheel, and
+confirmed against 2.9.1's.
+
+`vendor_class` is now the sixteenth field, emitted from every emission
+point — the middleware's crawler lane and all three adapters — and
+present on every event including 403s. It is `None` when no vendor
+matched, which is a real answer rather than a gap: a generic `bot` token
+gives a `bot_type` without saying whose.
+
+No key was renamed and no key was removed: the field names are the
+consumer contract. A consumer that iterates `EVENT_FIELDS` picks the new
+column up automatically; one with a hand-written column list adds
+`vendor_class` where it wants it.
+
 ## [2.9.1] - 2026-08-29 — name the rest of the Google family
 
 Registry only. 2.9.0's ledger had its first real day on a live host and
