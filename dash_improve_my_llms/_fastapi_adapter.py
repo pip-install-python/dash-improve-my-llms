@@ -5,7 +5,7 @@ Translates between FastAPI/Starlette's request/response cycle and the
 pure handlers in handlers.py. Only this file knows about FastAPI types.
 """
 
-from typing import Any
+from typing import Any, Dict
 
 # NOTE: deliberately NO `from __future__ import annotations` in this module.
 #
@@ -80,12 +80,43 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             "Install with: pip install dash-improve-my-llms[fastapi]"
         ) from exc
 
+    class _MarkdownResponse(Response):
+        """Only ever used as a `response_class` — for the SCHEMA's media type.
+
+        Every doc endpoint returns an explicit `Response` it built itself,
+        so this class never renders anything. It exists because FastAPI
+        derives the declared media type from `response_class` and defaults
+        to JSONResponse; without it the schema opens every markdown route
+        with `application/json`. Declared here rather than at module level
+        because `fastapi` is an extra and is imported inside this function
+        on purpose.
+        """
+
+        media_type = "text/markdown"
+
+    class _XmlResponse(Response):
+        """Same, for /sitemap.xml."""
+
+        media_type = "application/xml"
+
+    class _HtmlSchemaResponse(Response):
+        """Same, for the operator panel."""
+
+        media_type = "text/html"
+
     server = app.server
 
     prerender_enabled = getattr(config, "prerender", True)
 
     @server.middleware("http")
     async def _bot_middleware(request: Request, call_next):
+        if request.method == "HEAD":
+            # Dash's page catch-all is registered from the ASGI lifespan
+            # startup, i.e. after register_fastapi() ran — so the pass at
+            # registration time cannot have seen it. Idempotent; see
+            # _allow_head_wherever_get_is_allowed.
+            _allow_head_wherever_get_is_allowed(server)
+
         result = handle_bot_request(
             path=request.url.path,
             user_agent=request.headers.get("user-agent", ""),
@@ -262,7 +293,60 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
             headers=headers,
         )
 
-    @router.api_route("/llms.txt", methods=DOC_ROUTE_METHODS)
+    # ---------------------------------------------------------------
+    # 2.9.3 — the schema says what the wire does
+    # ---------------------------------------------------------------
+    #
+    # Measured on a live host 2026-08-31 and reproduced in-process: every
+    # markdown route declared `application/json` with an empty schema,
+    # because FastAPI infers the media type from `response_class` and the
+    # default is JSONResponse. `/sitemap.xml` declared JSON too, while
+    # serving application/xml. An agent generating a client from that
+    # schema gets the wrong content contract for the one surface the whole
+    # package exists to serve.
+    #
+    # The declaration is the FULL truth, not just the common case: the
+    # llms.txt family answers text/markdown, and by Accept negotiation
+    # text/html (the viewer) and text/plain. All three are reachable, so
+    # all three are declared.
+    MARKDOWN_MEDIA_TYPES = {
+        "text/markdown": {"schema": {"type": "string"}},
+        "text/html": {"schema": {"type": "string"}},
+        "text/plain": {"schema": {"type": "string"}},
+    }
+
+    def _doc_route(path: str, *, summary: str, media: Dict[str, Any], **extra: Any):
+        """Register one document route as GET-in-schema plus a hidden HEAD.
+
+        Two registrations rather than one `methods=["GET", "HEAD"]` route,
+        because FastAPI derives an operationId per route and then emits it
+        once per method — which produced six `Duplicate Operation ID`
+        warnings and a schema whose operationIds collide, so a generated
+        client silently loses methods. HEAD is a protocol obligation
+        (RFC 9110) rather than a distinct operation for a client author,
+        so it is registered and kept out of the schema.
+        """
+
+        def decorator(fn):
+            router.add_api_route(
+                path,
+                fn,
+                methods=["GET"],
+                summary=summary,
+                responses={200: {"content": media, "description": summary}},
+                **extra,
+            )
+            router.add_api_route(path, fn, methods=["HEAD"], include_in_schema=False, **extra)
+            return fn
+
+        return decorator
+
+    @_doc_route(
+        "/llms.txt",
+        summary="This site's llms.txt index — the machine-readable documentation entry point",
+        media=MARKDOWN_MEDIA_TYPES,
+        response_class=_MarkdownResponse,
+    )
     def _llms_txt_root(request: Request):
         return _serve_llms("", request)
 
@@ -336,19 +420,39 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                 headers=headers,
             )
 
-        @router.api_route(TIER_DOC_PATHS["small"], methods=DOC_ROUTE_METHODS)
+        @_doc_route(
+            TIER_DOC_PATHS["small"],
+            summary="The smallest corpus tier — index and taglines only",
+            media=MARKDOWN_MEDIA_TYPES,
+            response_class=_MarkdownResponse,
+        )
         def _llms_small(request: Request):
             return _serve_tier("small", request)
 
-        @router.api_route(TIER_DOC_PATHS["full"], methods=DOC_ROUTE_METHODS)
+        @_doc_route(
+            TIER_DOC_PATHS["full"],
+            summary="The whole corpus in one document — every page's prose",
+            media=MARKDOWN_MEDIA_TYPES,
+            response_class=_MarkdownResponse,
+        )
         def _llms_full(request: Request):
             return _serve_tier("full", request)
 
-    @router.api_route("/{page_path:path}/llms.txt", methods=DOC_ROUTE_METHODS)
+    @_doc_route(
+        "/{page_path:path}/llms.txt",
+        summary="One page's prose documentation",
+        media=MARKDOWN_MEDIA_TYPES,
+        response_class=_MarkdownResponse,
+    )
     def _llms_txt(page_path: str, request: Request):
         return _serve_llms(page_path, request)
 
-    @router.api_route("/robots.txt", methods=DOC_ROUTE_METHODS, response_class=PlainTextResponse)
+    @_doc_route(
+        "/robots.txt",
+        summary="Crawler policy, rendered from the vendor registry",
+        media={"text/plain": {"schema": {"type": "string"}}},
+        response_class=PlainTextResponse,
+    )
     def _robots(request: Request):
         body = build_robots_txt(app)
         _emit(request, "/robots.txt", "policy", 200, body)
@@ -356,7 +460,12 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
 
     if getattr(config, "panel", False):
         # P1: the read-only operator panel — see the Flask adapter's note.
-        @router.api_route(getattr(config, "panel_path", "/llms-policy"), methods=DOC_ROUTE_METHODS)
+        @_doc_route(
+            getattr(config, "panel_path", "/llms-policy"),
+            summary="Operator policy panel (token-gated; 404 without one)",
+            media={"text/html": {"schema": {"type": "string"}}},
+            response_class=_HtmlSchemaResponse,
+        )
         def _llms_panel(request: Request):
             from . import panel as _panel
 
@@ -372,7 +481,12 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
                 headers=_panel.panel_response_headers(),
             )
 
-    @router.api_route("/sitemap.xml", methods=DOC_ROUTE_METHODS)
+    @_doc_route(
+        "/sitemap.xml",
+        summary="XML sitemap of every public page",
+        media={"application/xml": {"schema": {"type": "string"}}},
+        response_class=_XmlResponse,
+    )
     def _sitemap(request: Request):
         body = build_sitemap_xml(
             app=app,
@@ -411,3 +525,115 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
     # IMPORTANT: register router last so /{page_path:path}/llms.txt doesn't
     # shadow user-registered routes like /api/something.
     server.include_router(router)
+
+    _allow_head_wherever_get_is_allowed(server)
+    _apply_openapi_identity(server, app, config)
+
+
+def _apply_openapi_identity(server: Any, app: Any, config: Any) -> None:
+    """Say whose documentation this schema describes (2.9.3).
+
+    Measured on a live host 2026-08-31: `info` was
+    `{"title": "FastAPI", "version": "0.1.0"}` — FastAPI's defaults. An
+    agent that fetches /openapi.json therefore learns the framework and
+    nothing else, on a surface whose entire purpose is telling agents what
+    a site is.
+
+    Two rules, both about not lying:
+
+    * **Never overwrite what the host set.** Only the literal FastAPI
+      default (`"FastAPI"`) is replaced; any other title is the host's own
+      answer and stands. Same for a description that is already non-empty.
+    * **The description says DOCUMENTATION BACKEND.** A host whose app
+      documents a Python library publishes a schema that an agent will
+      otherwise read as that library's HTTP API — which it is not. The
+      sentence is what stops that misreading.
+
+    `info.version` is left at FastAPI's default unless the host injects
+    one: the package does not know the host's version and will not invent
+    it. The template passes its healthz app key through
+    ``openapi_title``/``openapi_description``; that key lives on the host,
+    not here.
+    """
+    try:
+        title = getattr(config, "openapi_title", None) or getattr(app, "title", None)
+        if title and getattr(server, "title", None) in (None, "", "FastAPI"):
+            server.title = str(title)
+
+        description = getattr(config, "openapi_description", None)
+        if not description:
+            name = getattr(server, "title", None) or "this site"
+            description = (
+                f"Machine-readable documentation surfaces for {name}: "
+                "`/llms.txt` and per-page `/<page>/llms.txt` prose, the "
+                "`/llms-small.txt` and `/llms-full.txt` corpus tiers, "
+                "`/robots.txt` crawler policy and `/sitemap.xml`. "
+                "This schema describes the DOCUMENTATION BACKEND of the "
+                "site — not the API of whatever the site documents."
+            )
+        if not getattr(server, "description", None):
+            server.description = description
+
+        version = getattr(config, "openapi_version", None)
+        if version:
+            server.version = str(version)
+
+        # FastAPI caches the generated document on first request; identity
+        # set after that would never be published.
+        server.openapi_schema = None
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _allow_head_wherever_get_is_allowed(server: Any) -> None:
+    """Make HEAD work on every GET route of a FastAPI-backed app.
+
+    Measured 2026-08-31, in-process on all three backends: a browser-UA
+    ``HEAD /`` returned **405 Allow: GET** on FastAPI while Googlebot-UA
+    and suppressed-UA HEAD returned 200 — and Flask *and Quart* were clean
+    on all three. So this is not an ASGI property and not the lane split:
+
+    * Werkzeug (Flask, Quart) adds HEAD to every GET rule automatically;
+    * Starlette's own ``Route`` does the same (``if "GET" in methods:
+      methods.add("HEAD")``);
+    * **FastAPI's ``APIRoute`` does not** — and Dash's FastAPI backend
+      registers its index route through it, as ``methods=["GET"]``.
+
+    The User-agent only appeared to matter because a crawler never reaches
+    that route: this package's own middleware answers the crawler lane
+    itself, HEAD included, while a browser falls through to Dash's
+    GET-only route and Starlette rejects the method before any of our code
+    runs again. One backend disagreeing with the other two about a method
+    RFC 9110 requires wherever GET is allowed is exactly the class of
+    defect the adapter parity tests exist to catch.
+
+    Only routes that already allow GET are touched, and only by adding
+    HEAD — no route gains a method it did not already answer with the same
+    handler.
+
+    Called twice on purpose, and both calls are needed. Dash's eager
+    routes (``/`` among them) exist by the time ``add_llms_routes`` runs,
+    so the registration-time pass catches those. But **Dash's FastAPI
+    backend registers its page catch-all from the ASGI lifespan startup
+    event**, which fires after this module has finished: measured
+    2026-08-31, the first pass fixed ``/`` while ``/guide`` still returned
+    405. So the request path re-runs it for HEAD. The pass is idempotent
+    and early-continues on every already-correct route, so the repeat is
+    one set-membership test per route, on a method that is rare by nature.
+
+    Never raises: a routing table shape we did not expect must not take
+    down startup, or a request, over a method fallback.
+    """
+    try:
+        for route in getattr(server, "routes", []):
+            methods = getattr(route, "methods", None)
+            if not methods or "GET" not in methods or "HEAD" in methods:
+                continue
+            try:
+                methods.add("HEAD")
+            except AttributeError:
+                # A sequence rather than a set — leave it alone rather than
+                # guess at the route class's contract.
+                continue
+    except Exception:  # noqa: BLE001
+        pass

@@ -15,6 +15,8 @@ the routes, middleware, and response rewriting are connected.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import dash_improve_my_llms as pkg
@@ -955,6 +957,333 @@ class TestCrawlerLaneH1:
         status, body = client.get("/guide", ua="Mozilla/5.0 (compatible; Googlebot/2.1)")
         assert status == 200
         assert body.count("<h1") == 1, "the crawler lane serves duplicate h1s"
+
+
+SIZE_ANNOTATION = re.compile(r"\(([\d.]+) (B|KB|MB), ~([\d.]+)([kM]?) tok\)\s*$")
+
+
+def _parse_annotation(line):
+    """(bytes, tokens) a line claims, or None if it carries no annotation."""
+    match = SIZE_ANNOTATION.search(line)
+    if not match:
+        return None
+    value, unit, tok_value, tok_scale = match.groups()
+    scale = {"B": 1, "KB": 1024, "MB": 1024 * 1024}[unit]
+    tok_mult = {"": 1, "k": 1000, "M": 1_000_000}[tok_scale]
+    return float(value) * scale, float(tok_value) * tok_mult
+
+
+class TestSizeAnnotations:
+    """2.9.3 item 4 — every entry in the index is priced before it is fetched.
+
+    An agent choosing what to request is choosing how much of its context
+    to spend, and until now the only way to learn the price was to pay it.
+    These assertions are what make the numbers worth trusting: each one
+    parses an annotation out of the served index and compares it against
+    the document that URL actually returns, over HTTP, on this backend.
+    """
+
+    #: The stated size is rounded to one decimal, so a KB figure can be off
+    #: by half of the last digit — 51.2 bytes — plus a byte for the rounding
+    #: itself. Anything outside that is a wrong number, not a rounded one.
+    TOLERANCE = 0.05
+
+    def _index_lines(self, client):
+        status, body, _ = client.get_full("/llms.txt")
+        assert status == 200
+        return body.splitlines()
+
+    def test_every_page_entry_is_priced_with_its_real_size(self, client):
+        """The assertion the whole feature rests on: parse what the index
+        claims, fetch what the URL returns, compare."""
+        checked = 0
+        for line in self._index_lines(client):
+            if "Machine-readable: " not in line:
+                continue
+            annotation = _parse_annotation(line)
+            assert annotation is not None, f"unpriced entry: {line!r}"
+            stated_bytes, _ = annotation
+
+            url = line.split("Machine-readable: ", 1)[1].split(" (")[0].strip()
+            path = url.replace("https://example.com", "") or "/"
+            _, doc, _ = client.get_full(path)
+            actual = len(doc.encode("utf-8"))
+
+            assert abs(stated_bytes - actual) <= actual * self.TOLERANCE + 52, (
+                f"{path}: index says {stated_bytes:.0f} B, the document is "
+                f"{actual} B on {client.backend}"
+            )
+            checked += 1
+        assert checked >= 2, "the sweep checked nothing"
+
+    def test_the_corpus_tiers_are_priced_with_their_real_sizes(self, client):
+        """The menu an agent reads before spending anything."""
+        checked = 0
+        for line in self._index_lines(client):
+            if not line.startswith("- [/llms"):
+                continue
+            annotation = _parse_annotation(line)
+            assert annotation is not None, f"unpriced tier: {line!r}"
+            stated_bytes, _ = annotation
+            path = line.split("- [", 1)[1].split("]", 1)[0]
+            _, doc, _ = client.get_full(path)
+            actual = len(doc.encode("utf-8"))
+            assert abs(stated_bytes - actual) <= actual * self.TOLERANCE + 52, (
+                f"{path}: index says {stated_bytes:.0f} B, the document is "
+                f"{actual} B on {client.backend}"
+            )
+            checked += 1
+        assert checked == 3, f"expected three tiers priced, found {checked}"
+
+    def test_the_index_states_its_own_size_exactly(self, client):
+        """The self-referential one, and it is EXACT rather than within
+        tolerance: stating the size changes the size, so the builder
+        iterates to a fixed point. If it ever ships a number that merely
+        rounds to itself, this catches it."""
+        _, body, _ = self._served_index(client)
+        actual = len(body.encode("utf-8"))
+        for line in body.splitlines():
+            if line.startswith("- [/llms.txt]"):
+                stated_bytes, _ = _parse_annotation(line)
+                assert abs(stated_bytes - actual) <= actual * self.TOLERANCE + 52
+                break
+        else:
+            pytest.fail("the index does not price itself")
+
+    def _served_index(self, client):
+        status, body, headers = client.get_full("/llms.txt")
+        assert status == 200
+        return status, body, headers
+
+    def test_the_token_count_is_a_quarter_of_the_bytes_and_says_so(self, client):
+        """`~` is the contract: never an exact count for a tokenizer this
+        package does not know."""
+        for line in self._index_lines(client):
+            annotation = _parse_annotation(line)
+            if annotation is None:
+                continue
+            stated_bytes, stated_tokens = annotation
+            assert "~" in line
+            assert abs(stated_tokens - stated_bytes / 4) <= max(stated_tokens * 0.1, 60)
+
+    def test_the_annotation_is_a_trailing_parenthetical(self, client):
+        """Parser-safety: a reader that does not understand the annotation
+        can drop everything from the last `(` and still parse the line it
+        always parsed."""
+        for line in self._index_lines(client):
+            if "Machine-readable: " not in line:
+                continue
+            assert line.rstrip().endswith(")")
+            stripped = SIZE_ANNOTATION.sub("", line).rstrip()
+            url = stripped.split("Machine-readable: ", 1)[1]
+            assert url.startswith("http")
+            assert " " not in url, "the URL must survive the annotation"
+
+    def test_a_size_that_cannot_be_computed_is_simply_absent(self):
+        """Truth or silence. A wrong number here would be budgeted
+        against, which is worse than no number at all."""
+        from dash_improve_my_llms.handlers import format_size_annotation
+
+        assert format_size_annotation(None) == ""
+        assert format_size_annotation(-1) == ""
+        assert format_size_annotation(0) == " (0 B, ~0 tok)"
+
+
+def _openapi(app, client):
+    """The generated schema, as a dict."""
+    import json
+
+    status, body, _ = client.get_full("/openapi.json")
+    assert status == 200
+    return json.loads(body)
+
+
+@pytest.mark.skipif("fastapi" not in _backends(), reason="fastapi backend unavailable")
+class TestOpenApiTellsTheTruth:
+    """2.9.3 item 2 — the schema must describe what the wire does.
+
+    Measured on a live host 2026-08-31 and reproduced in-process: every
+    markdown route declared `application/json` with an empty schema, and
+    so did /sitemap.xml while serving application/xml. FastAPI infers the
+    declared media type from `response_class`, whose default is
+    JSONResponse — so the one surface this package exists to serve was
+    described to client generators as JSON.
+
+    `info` was `{"title": "FastAPI", "version": "0.1.0"}`, which tells an
+    agent the framework and nothing about whose documentation it found.
+    """
+
+    MARKDOWN_ROUTES = ("/llms.txt", "/llms-small.txt", "/llms-full.txt", "/{page_path}/llms.txt")
+
+    @pytest.fixture
+    def spec(self):
+        app = _build_app("fastapi")
+        return _openapi(app, _Client(app, "fastapi"))
+
+    @pytest.mark.parametrize("route", MARKDOWN_ROUTES)
+    def test_markdown_routes_declare_markdown(self, spec, route):
+        content = spec["paths"][route]["get"]["responses"]["200"]["content"]
+        assert "text/markdown" in content
+        assert "application/json" not in content, (
+            f"{route} still advertises JSON; a generated client gets the "
+            f"wrong content contract for the corpus"
+        )
+
+    @pytest.mark.parametrize("route", MARKDOWN_ROUTES)
+    def test_the_negotiable_types_are_declared_too(self, spec, route):
+        """`Accept: text/html` gets the viewer and `text/plain` gets plain
+        text — both reachable, so both declared. A schema that names only
+        the common case is still a schema that misleads."""
+        content = spec["paths"][route]["get"]["responses"]["200"]["content"]
+        assert set(content) == {"text/markdown", "text/html", "text/plain"}
+
+    def test_sitemap_declares_xml_and_robots_declares_text(self, spec):
+        """/sitemap.xml is the one the drop did not list; it had the same
+        defect."""
+        assert set(spec["paths"]["/sitemap.xml"]["get"]["responses"]["200"]["content"]) == {
+            "application/xml"
+        }
+        assert set(spec["paths"]["/robots.txt"]["get"]["responses"]["200"]["content"]) == {
+            "text/plain"
+        }
+
+    def test_the_declared_type_is_what_the_wire_sends(self, spec):
+        """The assertion that makes the others worth having: schema vs the
+        actual response, on the same app."""
+        app = _build_app("fastapi")
+        client = _Client(app, "fastapi")
+        for path, declared in (
+            ("/llms.txt", "text/markdown"),
+            ("/llms-small.txt", "text/markdown"),
+            ("/guide/llms.txt", "text/markdown"),
+            ("/robots.txt", "text/plain"),
+            ("/sitemap.xml", "application/xml"),
+        ):
+            _, _, headers = client.get_full(path)
+            served = _lower(headers)["content-type"].split(";")[0].strip()
+            assert served == declared, f"{path} serves {served}, schema says {declared}"
+
+    def test_head_is_not_a_duplicate_operation(self, spec):
+        """GET and HEAD shared one function, so FastAPI emitted the same
+        operationId twice — six `Duplicate Operation ID` warnings, and a
+        generated client that silently loses methods. HEAD is a protocol
+        obligation, not a distinct operation for a client author."""
+        operation_ids = [
+            op["operationId"]
+            for path in spec["paths"].values()
+            for op in path.values()
+            if "operationId" in op
+        ]
+        assert len(operation_ids) == len(set(operation_ids)), "duplicate operationIds are back"
+        for path, ops in spec["paths"].items():
+            assert "head" not in ops, f"{path} declares HEAD as its own operation"
+
+    def test_head_still_works_even_though_it_is_unlisted(self, spec):
+        """Out of the schema is not out of the app."""
+        app = _build_app("fastapi")
+        client = _Client(app, "fastapi")
+        for path in ("/llms.txt", "/robots.txt", "/sitemap.xml"):
+            assert client.head_full(path)[0] == 200
+
+    def test_identity_defaults_to_the_apps_own_title(self, spec):
+        assert spec["info"]["title"] == "Test App"
+        assert "DOCUMENTATION BACKEND" in spec["info"]["description"]
+
+    def test_the_host_can_inject_identity(self):
+        app = _build_app(
+            "fastapi",
+            openapi_title="pannellum.2plot.dev",
+            openapi_description="Docs backend for dash-pannellum.",
+            openapi_version="1.6.34",
+        )
+        info = _openapi(app, _Client(app, "fastapi"))["info"]
+        assert info["title"] == "pannellum.2plot.dev"
+        assert info["description"] == "Docs backend for dash-pannellum."
+        assert info["version"] == "1.6.34"
+
+    def test_a_title_the_host_already_set_is_never_overwritten(self):
+        """Only the literal FastAPI default is replaced. Anything else is
+        the host's own answer."""
+        import dash
+        from dash import Dash, html
+        from starlette.testclient import TestClient
+
+        _reset_package_state()
+        dash.page_registry.clear()
+        app = Dash(__name__, use_pages=True, pages_folder="", backend="fastapi")
+        app.server.title = "Host's own title"
+        app.server.description = "Host's own description."
+        app._base_url = "https://example.com"
+        dash.register_page("home", path="/", name="Home", layout=html.Div("home"))
+        app.layout = html.Div([dash.page_container])
+        pkg.add_llms_routes(app, pkg.LLMSConfig(warn_missing_llms_doc=False))
+
+        with TestClient(app.server) as client:
+            info = client.get("/openapi.json").json()["info"]
+        assert info["title"] == "Host's own title"
+        assert info["description"] == "Host's own description."
+
+
+class TestHeadParityOnPageRoutes:
+    """The PAGE routes answer HEAD too — the 2.9.3 fix.
+
+    `TestHeadParity` below covers this package's own document routes. The
+    hole was next door, in the routes Dash owns: measured in-process
+    2026-08-31, a browser-UA `HEAD /` returned **405 Allow: GET** on the
+    FastAPI backend while Googlebot-UA and suppressed-UA HEAD returned
+    200, and Flask AND Quart were clean on all three.
+
+    The User-agent only looked causal. A crawler never reaches Dash's
+    route at all — this package's middleware answers the crawler lane
+    itself, HEAD included — while a browser falls through to a route
+    FastAPI registered as `methods=["GET"]`, and Starlette rejects the
+    method before any of our code runs again. Werkzeug (Flask, Quart) and
+    Starlette's own `Route` both derive HEAD from GET; FastAPI's
+    `APIRoute` does not. So it was never an ASGI property: Quart is ASGI
+    and was always fine.
+
+    RFC 9110 requires HEAD wherever GET is allowed, so this asserts the
+    strong form the drop asked for — full header equality, not a chosen
+    subset. That holds today on all three backends and all three UA
+    classes; if a header ever legitimately diverges, the assertion should
+    be narrowed deliberately and not by default.
+    """
+
+    PAGE_PATHS = ("/", "/guide")
+    UA_CLASSES = (
+        pytest.param(BROWSER, id="browser"),
+        pytest.param(GOOGLEBOT, id="crawler"),
+        pytest.param("", id="no-ua"),
+    )
+
+    @pytest.mark.parametrize("ua", UA_CLASSES)
+    @pytest.mark.parametrize("path", PAGE_PATHS)
+    def test_head_is_never_method_not_allowed(self, client, path, ua):
+        """The regression itself, stated as bluntly as it happened."""
+        status, _, headers = client.head_full(path, ua=ua)
+        assert status != 405, (
+            f"HEAD {path} is 405 on {client.backend} " f"(Allow: {headers.get('allow')!r})"
+        )
+
+    @pytest.mark.parametrize("ua", UA_CLASSES)
+    @pytest.mark.parametrize("path", PAGE_PATHS)
+    def test_head_matches_get_status_and_every_header(self, client, path, ua):
+        get_status, _, get_headers = client.get_full(path, ua=ua)
+        head_status, _, head_headers = client.head_full(path, ua=ua)
+
+        assert head_status == get_status, (
+            f"HEAD {path} returned {head_status}, GET returned {get_status} " f"on {client.backend}"
+        )
+        assert _lower(head_headers) == _lower(
+            get_headers
+        ), f"HEAD {path} headers diverge from GET on {client.backend}"
+
+    @pytest.mark.parametrize("ua", UA_CLASSES)
+    def test_the_discovery_link_survives_a_head(self, client, ua):
+        """What the 405 actually cost a client: the Link header is how an
+        agent finds the machine surface without fetching the page."""
+        _, _, headers = client.head_full("/guide", ua=ua)
+        assert "link" in _lower(headers)
 
 
 class TestHeadParity:

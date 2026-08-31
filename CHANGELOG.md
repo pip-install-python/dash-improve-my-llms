@@ -5,6 +5,118 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.3] - 2026-08-31 — HEAD on every route, a schema that tells the truth, a priced index
+
+### Fixed — a browser-UA `HEAD /` returned 405 on the FastAPI backend
+
+Seat-confirmed on two live hosts and reproduced in-process across all
+three backends: `HEAD /` with a Chrome User-agent returned **405
+Allow: GET** on FastAPI, with no discovery `Link` header, while
+Googlebot-UA and suppressed-UA HEAD returned 200 — and **Flask and Quart
+were clean on all three UA classes**.
+
+The measured cause is neither the lane split nor ASGI:
+
+* Werkzeug (Flask, Quart) adds HEAD to every GET rule automatically, and
+  so does Starlette's own `Route`;
+* **FastAPI's `APIRoute` does not** — and Dash's FastAPI backend
+  registers its index route through it as `methods=["GET"]`.
+
+The User-agent only looked causal. A crawler never reaches that route at
+all: this package's middleware answers the crawler lane itself, HEAD
+included, while a browser falls through to Dash's GET-only route and
+Starlette rejects the method before any of our code runs again. Quart is
+ASGI and was never affected.
+
+HEAD is now added to every route that already allows GET, at
+registration and again on the request path — both are needed, because
+**Dash registers its page catch-all from the ASGI lifespan startup
+event**, after this package has finished wiring. The matrix test asserts
+HEAD == GET on status *and every header* for three UA classes × two page
+routes × three backends; without the fix it reds on exactly the five
+FastAPI-plus-browser cases the seat saw on the wire.
+
+### Fixed — /openapi.json described the corpus as JSON
+
+Measured on a live host and reproduced in-process: `/llms.txt`,
+`/llms-small.txt`, `/llms-full.txt` and `/{page_path}/llms.txt` all
+declared `application/json` with an empty schema while serving
+`text/markdown`, and **`/sitemap.xml` declared JSON while serving
+`application/xml`** (that one was not in the report). FastAPI infers the
+declared media type from `response_class`, whose default is
+JSONResponse — so the one surface this package exists to serve was
+described to client generators as JSON.
+
+Every route now declares what it actually sends, including the types
+reachable by `Accept` negotiation: the llms.txt family declares
+`text/markdown`, `text/html` (the viewer) and `text/plain`. A test
+compares each declaration against the response the same app returns.
+
+Also fixed, found while measuring: GET and HEAD shared one function per
+route, so FastAPI emitted **six `Duplicate Operation ID` warnings** and a
+schema whose operationIds collided, which makes a generated client lose
+methods silently. Document routes are now registered as a GET operation
+plus a HEAD route kept out of the schema — HEAD still answers everywhere,
+it is a protocol obligation rather than a distinct operation for a client
+author.
+
+### Added — the schema says whose documentation it is
+
+`info` was FastAPI's default `{"title": "FastAPI", "version": "0.1.0"}`.
+`LLMSConfig` gains `openapi_title`, `openapi_description` and
+`openapi_version`; unset, the title comes from the Dash app's own `title`
+and the description says this schema describes the site's
+**documentation backend** — the sentence that stops an agent reading a
+docs host's schema as the API of whatever library the site documents.
+A title or description the host already set is never overwritten: only
+the literal FastAPI default is replaced. `info.version` is left alone
+unless injected, because the package does not know the host's version and
+will not invent one.
+
+### Fixed — robots.txt promised an MCP surface no host runs
+
+The generated file ended with two unconditional lines telling MCP-aware
+clients they could fetch per-page docs as resources.
+`register_mcp_resources()` has always returned whether that actually
+happened, and the answer was always discarded — so every host advertised
+it, including the normal case of Dash < 4.3 where `dash.mcp` does not
+exist. The claim is now made only when resources really registered.
+Truth-or-silence applies to the comments as much as to the directives: an
+agent reads both, and a comment it cannot act on costs it a fetch to find
+out.
+
+### Added — every entry in /llms.txt carries its size
+
+An agent choosing what to fetch is choosing how much of its context
+window to spend, and until now the only way to learn the price was to pay
+it. Every page entry and every corpus tier now ends with
+`(14.1 KB, ~3.6k tok)`, measured from the document that URL actually
+returns — built, not estimated from the prose.
+
+* **The tier menu prices all three**, `/llms-small.txt`, `/llms.txt` and
+  `/llms-full.txt`, so the top of the document tells an agent the whole
+  menu's cost before it commits to any of it.
+* **The index states its own size exactly.** Stating it changes it, so
+  the body is built, measured, rebuilt with the measurement and measured
+  again, repeating only while the stated number is still wrong. If it has
+  not settled within three passes the self-annotation is dropped and the
+  rest of the document ships.
+* **Truth or silence.** A size that cannot be computed is left unsaid; a
+  wrong number would be budgeted against, which is worse than none.
+* **Parser-safe.** The annotation is a plain trailing parenthetical, so a
+  reader that does not understand it can drop everything from the last
+  `(` and parse the line it always parsed. It rides the
+  `Machine-readable:` line rather than the page line, because the number
+  is the size of the *document*, not of the page.
+* The token figure is bytes/4 and is labelled `~`. The tilde is the
+  contract: the package never claims an exact count for a tokenizer it
+  does not know.
+
+Cost, measured: building the index takes 0.3 ms for 10 pages and 2.2 ms
+for 60, against 0.1 ms and 0.4 ms for `/llms-full.txt` on the same apps.
+The tests parse the served index and compare every annotation against the
+document fetched from that URL over HTTP, on each backend.
+
 ## [2.9.2] - 2026-08-30 — the vendor's class reaches the row
 
 ### Fixed — `vendor_class` was computed, held, and then dropped

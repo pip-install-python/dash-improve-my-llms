@@ -380,9 +380,13 @@ class TestIndexTierAdvertisement:
             "- [/llms-small.txt](https://example.com/llms-small.txt): "
             "compact briefing — start here if context is tight." in body
         )
+        # 2.9.3: the size annotation rides the end of each line.
+        assert re.search(
+            r"- \[/llms-small\.txt\]\([^)]+\): [^\n]+ \([\d.]+ [KM]?B, ~[\d.]+[kM]? tok\)", body
+        )
         assert (
             "- [/llms-full.txt](https://example.com/llms-full.txt): "
-            "every page's prose in one document (3 pages)." in body
+            "every page's prose in one document — 3 pages." in body
         )
         assert body.index("/llms-small.txt") < body.index("## Pages")
 

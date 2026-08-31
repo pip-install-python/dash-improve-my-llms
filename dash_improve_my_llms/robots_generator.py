@@ -99,7 +99,12 @@ def _vendor_groups(vendors: list, directive: str) -> list:
     return lines
 
 
-def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -> str:
+def generate_robots_txt(
+    config: RobotsConfig,
+    sitemap_url: str,
+    base_url: str,
+    mcp_enabled: bool = False,
+) -> str:
     """
     Generate robots.txt content based on configuration.
 
@@ -275,11 +280,22 @@ def generate_robots_txt(config: RobotsConfig, sitemap_url: str, base_url: str) -
             "#",
             f"# {base_url}/llms.txt - LLM-friendly prose documentation",
             f"# {base_url}/sitemap.xml - Complete sitemap",
-            "#",
-            "# MCP-aware clients can also fetch per-page docs as",
-            "# resources via Dash 4.3+ MCP server endpoints.",
-            "",
         ]
     )
+    # Only claimed when the resources actually registered. Through 2.9.2
+    # these two lines were unconditional, so every host advertised MCP
+    # resource endpoints — and no host ran one (measured across the fleet,
+    # 2026-08-31). Truth-or-silence applies to the comments as much as to
+    # the directives: an agent reads both, and a comment it cannot act on
+    # costs it a fetch to find out.
+    if mcp_enabled:
+        lines.extend(
+            [
+                "#",
+                "# MCP-aware clients can also fetch per-page docs as",
+                "# resources via this app's Dash MCP server.",
+            ]
+        )
+    lines.append("")
 
     return "\n".join(lines)

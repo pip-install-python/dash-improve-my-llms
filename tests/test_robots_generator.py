@@ -658,3 +658,51 @@ class TestGoogleFamilyRobots:
         assert policies["storebot-google"] == "block"
         assert policies["googlebot"] == "allow"
         assert policies["googleother"] == "allow"
+
+
+class TestTheMcpClaimIsConditional:
+    """2.9.3 item 3 — robots.txt may not promise a surface the host lacks.
+
+    Through 2.9.2 the "AI-Friendly Documentation" block ended with two
+    unconditional lines telling MCP-aware clients they could fetch
+    per-page docs as resources. `register_mcp_resources()` has always
+    returned whether that actually happened and the answer was always
+    discarded — so every host advertised it, including the normal case of
+    Dash < 4.3 where `dash.mcp` does not exist. Measured across the fleet
+    2026-08-31: two mentions per host, zero hosts running an MCP server.
+
+    Truth-or-silence applies to comments as much as to directives. An
+    agent reads both, and a comment it cannot act on costs it a fetch to
+    find out.
+    """
+
+    def _render(self, **kwargs):
+        return generate_robots_txt(
+            config=RobotsConfig(),
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+            **kwargs,
+        )
+
+    def test_silent_by_default(self):
+        assert "MCP" not in self._render()
+
+    def test_claimed_only_when_the_resources_registered(self):
+        robots = self._render(mcp_enabled=True)
+        assert "MCP-aware clients" in robots
+        assert "Dash MCP server" in robots
+
+    def test_the_rest_of_the_block_is_unchanged_either_way(self):
+        """The documents that DO exist are announced regardless."""
+        for kwargs in ({}, {"mcp_enabled": True}):
+            robots = self._render(**kwargs)
+            assert "https://example.com/llms.txt - LLM-friendly prose documentation" in robots
+            assert "https://example.com/sitemap.xml - Complete sitemap" in robots
+
+    def test_the_file_still_ends_with_exactly_one_blank_line(self):
+        """Parser-safety: the block used to end with a "" element and the
+        conditional must not change how the file terminates."""
+        for kwargs in ({}, {"mcp_enabled": True}):
+            robots = self._render(**kwargs)
+            assert robots.endswith("\n")
+            assert not robots.endswith("\n\n")

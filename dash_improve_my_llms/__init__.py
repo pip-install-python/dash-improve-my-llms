@@ -37,7 +37,7 @@ or via register_page_metadata(path, llms_doc="..."):
 
 from __future__ import annotations
 
-__version__ = "2.9.2"
+__version__ = "2.9.3"
 
 import logging
 import warnings
@@ -97,6 +97,9 @@ class LLMSConfig:
         panel: bool = False,
         panel_path: str = "/llms-policy",
         panel_token: Optional[str] = None,
+        openapi_title: Optional[str] = None,
+        openapi_description: Optional[str] = None,
+        openapi_version: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -152,6 +155,21 @@ class LLMSConfig:
                 DIMLL_PANEL_TOKEN env var, read per-request so rotation
                 needs no redeploy. Unset ⇒ the panel answers 404
                 unconditionally (fails closed). See docs/PANEL.md.
+            openapi_title: FastAPI backend only — ``info.title`` for
+                /openapi.json. Unset, the Dash app's own ``title`` is
+                used, and a host that already set ``FastAPI(title=...)``
+                is never overwritten. FastAPI's own default is the literal
+                string "FastAPI", which tells an agent nothing about whose
+                documentation it just found.
+            openapi_description: FastAPI backend only —
+                ``info.description``. Unset, a sentence is generated
+                saying this schema describes the site's DOCUMENTATION
+                BACKEND, which matters because a host whose app documents
+                a Python library otherwise publishes a schema an agent
+                reads as that library's own HTTP API.
+            openapi_version: FastAPI backend only — ``info.version``.
+                Unset, FastAPI's "0.1.0" is left alone: the package does
+                not know the host's version and will not invent one.
         """
         self.enabled = enabled
         self.warn_missing_llms_doc = warn_missing_llms_doc
@@ -166,6 +184,9 @@ class LLMSConfig:
         self.panel = panel
         self.panel_path = panel_path
         self.panel_token = panel_token
+        self.openapi_title = openapi_title
+        self.openapi_description = openapi_description
+        self.openapi_version = openapi_version
 
 
 # ---------------------------------------------------------------------------
@@ -465,11 +486,17 @@ def add_llms_routes(app: Any, config: Optional[LLMSConfig] = None) -> None:
             "Supported: flask, fastapi, quart."
         )
 
+    # Whether the MCP surface is REALLY there, recorded on the app because
+    # /robots.txt tells agents about it (2.9.3). `register_mcp_resources`
+    # has always returned that answer and it was always discarded, so
+    # robots.txt announced MCP resources on every host — including the
+    # normal case, Dash < 4.3 with no dash.mcp at all.
+    app._dimll_mcp_resources = False
     if config.register_mcp_resources:
         try:
             from ._mcp_bridge import register_mcp_resources as _register_mcp
 
-            _register_mcp(app, _state)
+            app._dimll_mcp_resources = bool(_register_mcp(app, _state))
         except Exception as exc:
             logger.debug("MCP bridge registration skipped: %s", exc)
 
