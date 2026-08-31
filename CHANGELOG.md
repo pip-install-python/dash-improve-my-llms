@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.9.3] - 2026-08-31 — HEAD on every route, a schema that tells the truth, a priced index
+## [2.9.4] - 2026-08-31 — HEAD on every route, a schema that tells the truth, a priced index
+
+> **2.9.3 was tagged and never published.** Its CD run failed the gate on
+> the `py3.9 · dash 4.4.1` leg and the publish job was skipped, so no
+> 2.9.3 wheel exists on PyPI. Everything below shipped as 2.9.4, plus the
+> fix for what that leg caught — see "the two fixes collided" at the end.
 
 ### Fixed — a browser-UA `HEAD /` returned 405 on the FastAPI backend
 
@@ -116,6 +121,34 @@ Cost, measured: building the index takes 0.3 ms for 10 pages and 2.2 ms
 for 60, against 0.1 ms and 0.4 ms for `/llms-full.txt` on the same apps.
 The tests parse the served index and compare every annotation against the
 document fetched from that URL over HTTP, on each backend.
+
+### Fixed — the two fixes above collided on older FastAPI
+
+Caught by CI on the one leg that installs an older FastAPI
+(`py3.9 · dash 4.4.1`), after a green local matrix. The HEAD pass added
+HEAD to *every* GET route — including the in-schema GET routes the
+OpenAPI fix had just split out precisely so FastAPI would stop emitting
+one operationId for both methods. Every document route became
+`['GET', 'HEAD']` again and the six colliding operationIds came back.
+
+Newer FastAPI omits HEAD from the generated schema, so `/openapi.json`
+looked correct while the route table was wrong — which is why a green
+matrix run said nothing. Two changes make that unrepeatable:
+
+* the HEAD pass now skips any path that **already** has a route
+  answering HEAD, so a deliberate GET/HEAD split is never folded back
+  together;
+* both the pass and its test now walk **nested routers**. Starlette 1.x
+  with FastAPI 0.14x does not flatten an included router into
+  `app.routes` — this package's own routes sit behind an
+  `_IncludedRouter` — while older versions do. Walking both shapes is
+  what stops the package's behaviour, and the test that pins it, from
+  depending on which FastAPI a host happens to have installed.
+
+The regression test asserts on the route table rather than the schema
+and fails on **both** FastAPI generations when the guard is removed;
+it also asserts it found all six document routes, because a pin that can
+pass by finding nothing is not a pin.
 
 ## [2.9.2] - 2026-08-30 — the vendor's class reaches the row
 

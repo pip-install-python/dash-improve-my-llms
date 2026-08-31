@@ -1178,6 +1178,67 @@ class TestOpenApiTellsTheTruth:
         for path, ops in spec["paths"].items():
             assert "head" not in ops, f"{path} declares HEAD as its own operation"
 
+    def test_the_head_pass_leaves_the_split_doc_routes_alone(self):
+        """The regression that got past a green local matrix and reddened
+        CI on py3.9 only.
+
+        Two fixes in one release collided: `_allow_head_wherever_get_is_
+        allowed` added HEAD to every GET route — including the in-schema
+        GET routes this adapter had just split out precisely so FastAPI
+        would stop emitting one operationId for both methods. Newer
+        FastAPI omits HEAD from the schema and hid it; the older FastAPI
+        that installs on Python 3.9 renders HEAD, so six colliding
+        operationIds came back.
+
+        This asserts on the ROUTE TABLE rather than the schema, so it
+        fails on every FastAPI version rather than only the ones that
+        would show it in /openapi.json.
+        """
+        app = _build_app("fastapi")
+        _Client(app, "fastapi")  # runs lifespan, so the catch-all exists
+
+        doc_paths = {
+            "/llms.txt",
+            "/llms-small.txt",
+            "/llms-full.txt",
+            "/{page_path:path}/llms.txt",
+            "/robots.txt",
+            "/sitemap.xml",
+        }
+
+        def walk(routes, depth=0):
+            """Starlette 1.x hides an included router's routes behind a
+            wrapper; older versions flatten them. Walk both, so this test
+            cannot pass by simply failing to find anything."""
+            out = []
+            if depth > 3 or not routes:
+                return out
+            for route in routes:
+                out.append(route)
+                nested = getattr(route, "original_router", None) or getattr(route, "router", None)
+                nested_routes = getattr(nested, "routes", None) if nested else None
+                if nested_routes:
+                    out.extend(walk(nested_routes, depth + 1))
+            return out
+
+        by_path = {}
+        for route in walk(app.server.routes):
+            path = getattr(route, "path", None)
+            if path in doc_paths:
+                by_path.setdefault(path, []).append(route)
+
+        assert set(by_path) == doc_paths, (
+            f"only found {sorted(by_path)}; a vacuous pass here would hide "
+            f"the very regression this test exists for"
+        )
+
+        for path, routes in by_path.items():
+            methods = sorted(tuple(sorted(r.methods)) for r in routes)
+            assert methods == [("GET",), ("HEAD",)], (
+                f"{path} is registered as {methods}; the GET operation and "
+                f"the hidden HEAD route must stay separate"
+            )
+
     def test_head_still_works_even_though_it_is_unlisted(self, spec):
         """Out of the schema is not out of the app."""
         app = _build_app("fastapi")

@@ -585,6 +585,41 @@ def _apply_openapi_identity(server: Any, app: Any, config: Any) -> None:
         pass
 
 
+def _flatten_routes(routes: Any, _depth: int = 0) -> list:
+    """Every route reachable from a routing table, nested ones included.
+
+    Starlette 1.x + FastAPI 0.14x do not flatten an included router into
+    ``app.routes``: this package's own document routes sit inside an
+    ``_IncludedRouter`` wrapper, reachable through ``original_router``.
+    Older versions do flatten them. Walking both shapes is what keeps this
+    module's behaviour — and the test that pins it — the same on either,
+    instead of silently depending on which FastAPI a host installed.
+
+    Depth-bounded and exception-proof: this runs at startup and on HEAD
+    requests, and an unfamiliar router shape must cost nothing worse than
+    a route this pass does not reach.
+    """
+    found: list = []
+    if _depth > 3:
+        return found
+    try:
+        for route in routes or []:
+            found.append(route)
+            for attr in ("original_router", "router"):
+                nested = getattr(route, attr, None)
+                nested_routes = getattr(nested, "routes", None)
+                if nested_routes:
+                    found.extend(_flatten_routes(nested_routes, _depth + 1))
+                    break
+            else:
+                nested_routes = getattr(route, "routes", None)
+                if nested_routes and nested_routes is not routes:
+                    found.extend(_flatten_routes(nested_routes, _depth + 1))
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
 def _allow_head_wherever_get_is_allowed(server: Any) -> None:
     """Make HEAD work on every GET route of a FastAPI-backed app.
 
@@ -621,13 +656,32 @@ def _allow_head_wherever_get_is_allowed(server: Any) -> None:
     and early-continues on every already-correct route, so the repeat is
     one set-membership test per route, on a method that is rare by nature.
 
+    A path that ALREADY has a route answering HEAD is left alone, and that
+    exclusion is load-bearing rather than an optimisation. This package
+    registers each of its own document routes twice on purpose — a GET
+    operation in the schema plus a HEAD route kept out of it — so that
+    FastAPI stops emitting one operationId for both methods. Folding HEAD
+    back into the GET route would undo exactly that, and it did: measured
+    on Python 3.9's older FastAPI, every doc path came back as
+    ``['GET', 'HEAD']`` and the schema regained six colliding operationIds.
+    Newer FastAPI omits HEAD from the schema and hid the same mistake.
+
     Never raises: a routing table shape we did not expect must not take
     down startup, or a request, over a method fallback.
     """
     try:
-        for route in getattr(server, "routes", []):
+        routes = _flatten_routes(getattr(server, "routes", []))
+        answered = {
+            getattr(route, "path", None)
+            for route in routes
+            if "HEAD" in (getattr(route, "methods", None) or ())
+        }
+        for route in routes:
             methods = getattr(route, "methods", None)
             if not methods or "GET" not in methods or "HEAD" in methods:
+                continue
+            if getattr(route, "path", None) in answered:
+                # Something else already answers HEAD here — see above.
                 continue
             try:
                 methods.add("HEAD")
