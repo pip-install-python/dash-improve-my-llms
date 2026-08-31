@@ -283,6 +283,38 @@ curl -A "Mozilla/5.0 (compatible; Googlebot/2.1)" http://localhost:8050/
 curl -A "Mozilla/5.0 (Macintosh)" http://localhost:8050/
 ```
 
+### Skill: probe your own host without polluting your ledger
+
+A posture probe has to wear a real vendor User-agent — that is the only
+way to exercise the lane the real crawler will take. But it then writes a
+read row indistinguishable from the crawler's, except that it is
+`unverified` (your address is not Google's), so a day of probes can fill
+the ledger with vendor rows nobody visited.
+
+**Classification ignores anything you append.** Vendor matching is
+substring-based and runs before every other test, so decorating a vendor
+User-agent leaves `vendor_key`, `bot_type` and `lane` exactly as the real
+crawler's would be:
+
+```bash
+curl -A "Mozilla/5.0 (compatible; GPTBot/1.0) acme-internal/probe" https://your.site/
+# classify() -> vendor_key="gptbot", bot_type="training", lane="crawler"
+```
+
+So the convention is: **keep the vendor token for the lane, append your own
+token, and have your `on_document_read` callback drop rows whose UA carries
+it.** The package deliberately has no opinion about which token is yours —
+suppression is the application's decision, at write time, where the
+ledger lives.
+
+One constraint, and it only bites a probe with **no** vendor token: your
+token must not contain a word the generic fallback matches — `bot`,
+`crawler`, `spider`, `scraper`, `curl`, `wget`, `python-requests`,
+`uptime`, `monitoring`, `healthcheck`. `acme-internal/probe` is safe;
+`acme-monitoring/1` would classify a vendorless probe as `monitor`. With a
+vendor token present, the vendor always wins and the constraint does not
+apply.
+
 ---
 
 ## 4. Hiding pages

@@ -254,3 +254,71 @@ class TestItIsFailOpen:
         _ledger.emit_read(path="/llms.txt", headers=Hostile())
         assert recorded[0]["client_ip"] is None
         assert recorded[0]["host"] is None
+
+
+class TestDeniedAttemptsAreRecorded:
+    """Recording a read that was NOT served is the design, not an oversight.
+
+    Four of the six verdicts name a non-served outcome — `denied`,
+    `blocked`, `rate_limited`, and the two payment states — and they exist
+    so a row can say what happened rather than only that something was
+    handed over. A consumer that stored only `verdict == "served"` would
+    keep the reads and throw away the enforcement: every 403 a policy
+    produced, every 429 the limiter produced, and every 404 a hidden path
+    produced. Those are the rows a conversation with a vendor rests on.
+    """
+
+    def test_the_vocabulary_is_mostly_not_served(self):
+        assert _ledger.VERDICTS == (
+            "served",
+            "priced",
+            "gated",
+            "denied",
+            "blocked",
+            "rate_limited",
+        )
+
+    def test_a_hidden_path_records_the_attempt(self):
+        """A crawler-lane 404 on a mark_hidden path is an attempt, and the
+        ledger says so — with the requester named."""
+        from dash_improve_my_llms import handlers
+
+        events = []
+        _ledger.reset()
+        _ledger.on_document_read(events.append)
+        try:
+            event = _ledger.build_event(
+                path="/admin/llms.txt",
+                tier=handlers.document_tier("/admin/llms.txt"),
+                status=404,
+                body="404 Not Found - Page not available",
+                verdict="denied",
+                user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+                policy="allow",
+            )
+        finally:
+            _ledger.reset()
+
+        assert event["verdict"] == "denied"
+        assert event["status"] == 404
+        assert event["vendor_key"] == "gptbot"
+        assert event["bytes"] > 0
+
+    def test_verdict_is_how_a_board_labels_an_attempt(self):
+        """The field a consumer needs on screen: same vendor, same path
+        shape, three different outcomes."""
+        outcomes = {}
+        for status, verdict in ((200, "served"), (403, "blocked"), (404, "denied")):
+            event = _ledger.build_event(
+                path="/guide",
+                status=status,
+                body="x" * 10,
+                verdict=verdict,
+                user_agent="Mozilla/5.0 (compatible; GPTBot/1.0)",
+            )
+            outcomes[verdict] = (event["status"], event["vendor_key"])
+        assert outcomes == {
+            "served": (200, "gptbot"),
+            "blocked": (403, "gptbot"),
+            "denied": (404, "gptbot"),
+        }

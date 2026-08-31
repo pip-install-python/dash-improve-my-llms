@@ -405,3 +405,67 @@ def test_google_safety_is_never_named_in_robots():
     site cannot keep — the anthropic-legacy rule, different reason."""
     assert get_vendor("google-safety").robots_tokens == ()
     assert get_vendor("adsbot-google").robots_tokens == ("AdsBot-Google",)
+
+
+# ---------------------------------------------------------------------------
+# The probe convention — trailing decoration never changes identity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ua,vendor_key,bot_type",
+    [
+        (
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "googlebot",
+            "traditional",
+        ),
+        ("Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)", "gptbot", "training"),
+        (
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0)",
+            "claudebot",
+            "training",
+        ),
+        ("Claude-User/1.0", "claude-user", "search"),
+        ("Mozilla/5.0 (compatible; PerplexityBot/1.0)", "perplexitybot", "search"),
+    ],
+)
+@pytest.mark.parametrize(
+    "suffix",
+    [" acme-internal/probe", " (+internal; token=abc123)", " fleet-probe/1.0"],
+)
+def test_appending_a_probe_token_does_not_change_a_vendors_identity(
+    ua, vendor_key, bot_type, suffix
+):
+    """The fleet probe convention rests on this.
+
+    A posture probe must wear a real vendor User-agent to exercise the lane
+    the real crawler takes, and it appends its own token so the application
+    can drop the row at write time. That only works if the decoration is
+    invisible to classification — vendor matching is substring-based and
+    runs before every other test, so it is.
+    """
+    from dash_improve_my_llms.bot_detection import classify
+
+    plain = classify(ua)
+    decorated = classify(ua + suffix)
+    assert plain["vendor_key"] == decorated["vendor_key"] == vendor_key
+    assert plain["bot_type"] == decorated["bot_type"] == bot_type
+    assert plain["lane"] == decorated["lane"] == "crawler"
+
+
+@pytest.mark.parametrize("ua", ["curl/8.4.0", "", "Go-http-client/2.0"])
+def test_a_probe_token_CAN_reclassify_a_vendorless_probe(ua):
+    """The one constraint on the convention, pinned as known behaviour
+    rather than left to be discovered.
+
+    With no vendor token to win first, the generic fallback sees the whole
+    string — so a probe token containing `monitoring` (or `bot`, `uptime`,
+    `healthcheck`, ...) changes what a vendorless probe classifies as. A
+    token free of those words does not.
+    """
+    from dash_improve_my_llms.bot_detection import classify
+
+    plain = classify(ua)["bot_type"]
+    assert classify(ua + " acme-internal/probe")["bot_type"] == plain
+    assert classify(ua + " acme-monitoring/1")["bot_type"] == "monitor"
