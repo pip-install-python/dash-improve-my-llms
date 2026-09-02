@@ -17,7 +17,7 @@ from typing import Any, Dict
 # parameter and every /llms.txt request 422s. Keep annotations eager so they
 # resolve in the enclosing scope where the import actually lives.
 
-from . import _ledger, access
+from . import _ledger, access, wellknown
 from ._headers import normalize_headers
 from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
@@ -518,6 +518,103 @@ def register_fastapi(app: Any, config: Any, state: Any) -> None:
         router.add_api_route(
             _root_path,
             _make_root_icon(_root_path),
+            methods=DOC_ROUTE_METHODS,
+            include_in_schema=False,
+        )
+
+    # -----------------------------------------------------------------
+    # 2.10 — the /.well-known/ namespace, and the refusal under it
+    # -----------------------------------------------------------------
+    #
+    # Measured before this shipped, on three live hosts and all three
+    # adapters: EVERY path under /.well-known/ answered 200 with the Dash
+    # app shell. An agent asking for an API catalog or OAuth metadata got
+    # a web page, so nothing published here could be trusted. The guard
+    # ships with the documents rather than after them.
+    #
+    # Starlette matches in REGISTRATION order, and this router is included
+    # below before Dash registers its page catch-all from the lifespan
+    # startup — so the specific paths precede the guard, the guard
+    # precedes Dash, and a host that registered its own well-known route
+    # before add_llms_routes() still wins over all of it.
+    _wk_claimed = {getattr(route, "path", None) for route in _flatten_routes(server.routes)}
+
+    def _wk_result(request, body: str, content_type: str, status: int) -> Response:
+        _emit(request, request.url.path, wellknown.WELLKNOWN_TIER, status, body)
+        return Response(
+            content=body,
+            status_code=status,
+            media_type=content_type,
+            headers={"Cache-Control": "no-store"} if status == 404 else {},
+        )
+
+    if wellknown.API_CATALOG_PATH not in _wk_claimed:
+
+        @_doc_route(
+            wellknown.API_CATALOG_PATH,
+            summary="RFC 9727 API catalog — this host's machine surfaces as a linkset",
+            media={wellknown.LINKSET_TYPE: {"schema": {"type": "object"}}},
+        )
+        def _wk_api_catalog(request: Request):
+            # FastAPI is the one backend that really serves an OpenAPI
+            # document, so it is the one backend whose catalog may claim
+            # `service-desc`. Flask and Quart omit the relation rather
+            # than point at a 404.
+            return _wk_result(
+                request,
+                wellknown.build_api_catalog(
+                    app,
+                    openapi_path=server.openapi_url or None,
+                    status_path=wellknown.detect_status_path(_wk_claimed),
+                ),
+                wellknown.LINKSET_TYPE,
+                200,
+            )
+
+    if wellknown.MCP_CARD_PATH not in _wk_claimed:
+
+        @_doc_route(
+            wellknown.MCP_CARD_PATH,
+            summary="MCP server card, when this app registers MCP resources",
+            media={"application/json": {"schema": {"type": "object"}}},
+        )
+        def _wk_mcp_card(request: Request):
+            card = wellknown.build_mcp_server_card(app, config)
+            if card is None:
+                return _wk_result(request, wellknown.not_found_body(), wellknown.JSON_TYPE, 404)
+            return _wk_result(request, card, wellknown.JSON_TYPE, 200)
+
+    if wellknown.AGENT_SKILLS_PATH not in _wk_claimed:
+
+        @_doc_route(
+            wellknown.AGENT_SKILLS_PATH,
+            summary="Agent Skills discovery index for this host's SKILL.md",
+            media={"application/json": {"schema": {"type": "object"}}},
+        )
+        def _wk_agent_skills(request: Request):
+            return _wk_result(
+                request, wellknown.build_agent_skills_index(app), wellknown.JSON_TYPE, 200
+            )
+
+    @router.api_route(
+        "/.well-known/{rest:path}", methods=DOC_ROUTE_METHODS, include_in_schema=False
+    )
+    def _wk_guard(rest: str, request: Request):
+        return _wk_result(request, wellknown.not_found_body(), wellknown.JSON_TYPE, 404)
+
+    for _wk_root in wellknown.ROOT_DISCOVERY_PATHS:
+        if _wk_root in _wk_claimed:
+            continue
+
+        def _make_root_guard(_path=_wk_root):
+            def _root_guard(request: Request):
+                return _wk_result(request, wellknown.not_found_body(), wellknown.JSON_TYPE, 404)
+
+            return _root_guard
+
+        router.add_api_route(
+            _wk_root,
+            _make_root_guard(),
             methods=DOC_ROUTE_METHODS,
             include_in_schema=False,
         )

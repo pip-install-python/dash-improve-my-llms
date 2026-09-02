@@ -71,7 +71,13 @@ EVENT_FIELDS = (
 
 # What `tier` may say. Named rather than free-form so a rollup can group
 # on it without a per-host mapping.
-TIERS = ("small", "index", "full", "page", "html", "policy", "sitemap")
+# `wellknown` is new in 2.10.0 — the /.well-known/ documents (API
+# catalog, MCP server card, agent-skills index) are corpus reads too: an
+# agent discovering the host is a reader, and a ledger that only counted
+# the prose would show the discovery as nothing at all. A consumer that
+# has never heard of the name sees an unfamiliar string, which is why
+# this is a vocabulary and not an enum.
+TIERS = ("small", "index", "full", "page", "html", "policy", "sitemap", "wellknown")
 
 # What `verdict` may say — the outcome, not the status code, because the
 # same 200 covers "served the corpus" and "served a payment offer".

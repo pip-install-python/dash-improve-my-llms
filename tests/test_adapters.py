@@ -1089,6 +1089,319 @@ class TestSizeAnnotations:
         assert format_size_annotation(0) == " (0 B, ~0 tok)"
 
 
+@pytest.fixture
+def recorded():
+    """Every read event a test's requests produce, in order.
+
+    Module-level so the 2.10 classes can use it; `TestReadEvents` keeps its
+    own identical copy, which shadows this one harmlessly.
+    """
+    from dash_improve_my_llms import _ledger
+
+    _ledger.reset()
+    events = []
+    _ledger.on_document_read(events.append)
+    yield events
+    _ledger.reset()
+
+
+class TestWellKnownNamespace:
+    """2.10 item 0 — the namespace refuses what it does not publish.
+
+    Measured before the fix, on three live hosts and all three adapters in
+    the bed: every path under `/.well-known/` answered 200 with the Dash
+    app shell, and so did `/auth.md`. A document published here is only
+    trustworthy if its neighbours refuse — an agent that gets 200 for
+    `/.well-known/anything` learns nothing from getting 200 for
+    `/.well-known/api-catalog`.
+    """
+
+    UNKNOWN = (
+        "/.well-known/nope",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/agent-card.json",
+        "/.well-known/deep/nested/thing.json",
+    )
+
+    @pytest.mark.parametrize("path", UNKNOWN)
+    def test_an_unknown_discovery_path_refuses(self, client, path):
+        import json as _json
+
+        status, body, headers = client.get_full(path, ua=BROWSER)
+        assert status == 404, f"{path} is {status} on {client.backend}"
+        assert _lower(headers)["content-type"].startswith("application/json")
+        assert _json.loads(body) == {"error": "not found", "see": "/llms.txt"}
+
+    @pytest.mark.parametrize("path", UNKNOWN)
+    def test_it_refuses_a_crawler_too(self, client, path):
+        """The lane does not enter into it: a scanner may arrive with any
+        User-agent, and a 200 app shell would mislead all of them."""
+        assert client.get_full(path, ua=GOOGLEBOT)[0] == 404
+        assert client.get_full(path, ua="")[0] == 404
+
+    def test_auth_md_refuses_until_a_host_serves_one(self, client):
+        assert client.get_full("/auth.md", ua=BROWSER)[0] == 404
+
+    def test_openapi_json_refuses_only_where_there_is_no_schema(self, client):
+        """FastAPI serves a real one and must keep it; Flask and Quart have
+        none and must say so."""
+        status, _, headers = client.get_full("/openapi.json", ua=BROWSER)
+        if client.backend == "fastapi":
+            assert status == 200
+            assert _lower(headers)["content-type"].startswith("application/json")
+        else:
+            assert status == 404
+
+    def test_the_documents_this_package_publishes_are_not_refused(self, client):
+        assert client.get_full("/.well-known/api-catalog")[0] == 200
+        assert client.get_full("/.well-known/agent-skills/index.json")[0] == 200
+
+    def test_a_host_route_wins_over_the_guard(self, backend):
+        """Hosts keep the namespace. A route registered before
+        add_llms_routes() answers, and the guard never shadows it."""
+        import dash
+        from dash import Dash, html
+
+        _reset_package_state()
+        dash.page_registry.clear()
+        if hasattr(dash, "_pages") and hasattr(dash._pages, "PAGE_REGISTRY"):
+            dash._pages.PAGE_REGISTRY.clear()
+
+        kwargs = {"use_pages": True, "pages_folder": ""}
+        if backend != "flask":
+            kwargs["backend"] = backend
+        app = Dash(__name__, **kwargs)
+        app._base_url = "https://example.com"
+        dash.register_page("home", path="/", name="Home", layout=html.Div("home"))
+        app.layout = html.Div([dash.page_container])
+
+        body = "Contact: mailto:security@example.com\n"
+        if backend == "fastapi":
+            from fastapi import Response as FastAPIResponse
+
+            @app.server.get("/.well-known/security.txt")
+            def _security():
+                return FastAPIResponse(body, media_type="text/plain")
+
+        else:
+
+            def _security():
+                return body, 200, {"Content-Type": "text/plain"}
+
+            app.server.add_url_rule("/.well-known/security.txt", "host_security", _security)
+
+        pkg.add_llms_routes(app, pkg.LLMSConfig(warn_missing_llms_doc=False))
+        status, served, _ = _Client(app, backend).get_full("/.well-known/security.txt")
+        assert status == 200
+        assert "security@example.com" in served
+
+
+class TestWellKnownDocuments:
+    """2.10 items 3-5 on the wire."""
+
+    def test_the_api_catalog_is_a_linkset(self, client):
+        import json as _json
+
+        status, body, headers = client.get_full("/.well-known/api-catalog")
+        assert status == 200
+        assert _lower(headers)["content-type"].startswith("application/linkset+json")
+        entry = _json.loads(body)["linkset"][0]
+        assert entry["anchor"] == "https://example.com"
+        assert entry["service-doc"][0]["href"] == "https://example.com/llms.txt"
+        # The test-bed app registers no health endpoint, so the catalog
+        # says nothing about one — see the next test.
+        assert "status" not in entry
+
+    def test_status_appears_only_when_the_host_serves_a_health_endpoint(self, backend):
+        """`/healthz` is a fleet convention, not a route this package
+        serves, so it is detected from the host's own routes. A `status`
+        link that 404s is the same lie as a `service-desc` that 404s, and
+        this release exists because that lie was everywhere here."""
+        import dash
+        import json as _json
+        from dash import Dash, html
+
+        _reset_package_state()
+        dash.page_registry.clear()
+        if hasattr(dash, "_pages") and hasattr(dash._pages, "PAGE_REGISTRY"):
+            dash._pages.PAGE_REGISTRY.clear()
+
+        kwargs = {"use_pages": True, "pages_folder": ""}
+        if backend != "flask":
+            kwargs["backend"] = backend
+        app = Dash(__name__, **kwargs)
+        app._base_url = "https://example.com"
+        dash.register_page("home", path="/", name="Home", layout=html.Div("home"))
+        app.layout = html.Div([dash.page_container])
+
+        if backend == "fastapi":
+
+            @app.server.get("/healthz")
+            def _healthz():
+                return {"ok": True}
+
+        else:
+
+            def _healthz():
+                return {"ok": True}
+
+            app.server.add_url_rule("/healthz", "host_healthz", _healthz)
+
+        pkg.add_llms_routes(app, pkg.LLMSConfig(warn_missing_llms_doc=False))
+        body = _Client(app, backend).get_full("/.well-known/api-catalog")[1]
+        entry = _json.loads(body)["linkset"][0]
+        assert entry["status"][0]["href"] == "https://example.com/healthz"
+
+    def test_service_desc_appears_only_where_a_schema_exists(self, client):
+        """The one field that differs by backend, and it differs because
+        the fact differs."""
+        import json as _json
+
+        entry = _json.loads(client.get_full("/.well-known/api-catalog")[1])["linkset"][0]
+        if client.backend == "fastapi":
+            assert entry["service-desc"][0]["href"].endswith("/openapi.json")
+            assert client.get_full("/openapi.json")[0] == 200
+        else:
+            assert "service-desc" not in entry
+
+    def test_the_mcp_card_refuses_when_the_bridge_is_inactive(self, client):
+        """404 rather than a card for a server that is not running."""
+        assert client.get_full("/.well-known/mcp/server-card.json")[0] == 404
+
+    def test_the_mcp_card_is_served_when_the_bridge_registered(self, backend):
+        import json as _json
+
+        app = _build_app(backend)
+        app._dimll_mcp_resources = True
+        status, body, headers = _Client(app, backend).get_full("/.well-known/mcp/server-card.json")
+        assert status == 200
+        assert _lower(headers)["content-type"].startswith("application/json")
+        card = _json.loads(body)
+        assert card["serverInfo"]["name"] == "Test App"
+        assert card["capabilities"] == {"resources": {}}
+        assert card["documentationUrl"] == "https://example.com/llms.txt"
+
+    def test_the_skills_index_is_empty_not_absent(self, client):
+        import json as _json
+
+        status, body, headers = client.get_full("/.well-known/agent-skills/index.json")
+        assert status == 200
+        assert _lower(headers)["content-type"].startswith("application/json")
+        index = _json.loads(body)
+        assert index["skills"] == []
+        assert index["$schema"].startswith("https://schemas.agentskills.io/discovery/0.2.0")
+
+    def test_every_well_known_document_records_a_read(self, backend, recorded):
+        """Item 6: an agent discovering the host is a reader. A ledger that
+        counted only the prose would show the discovery as nothing."""
+        client = _Client(_build_app(backend), backend)
+        for path in (
+            "/.well-known/api-catalog",
+            "/.well-known/agent-skills/index.json",
+            "/.well-known/nope",
+        ):
+            client.get_full(path, ua=GPTBOT)
+        assert len(recorded) == 3
+        assert {event["tier"] for event in recorded} == {"wellknown"}
+        assert [event["status"] for event in recorded] == [200, 200, 404]
+        assert {event["vendor_key"] for event in recorded} == {"gptbot"}
+
+
+class TestMarkdownNegotiation:
+    """2.10 item 2 — a page URL answers markdown when asked for markdown."""
+
+    BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+    def test_html_stays_the_default(self, client):
+        """Browsers are unaffected: their Accept prefers html, and `*/*`
+        and a tie both leave html the default."""
+        for accept in (self.BROWSER_ACCEPT, "*/*", "text/html", "text/markdown, text/html"):
+            _, _, headers = client.get_full("/guide", ua=BROWSER, accept=accept)
+            assert _lower(headers)["content-type"].startswith("text/html"), accept
+
+    @pytest.mark.parametrize(
+        "accept",
+        ["text/markdown", "text/markdown;q=1.0, text/html;q=0.8", "text/markdown;q=0.5, */*;q=0.1"],
+    )
+    def test_markdown_when_markdown_is_preferred(self, client, accept):
+        status, body, headers = client.get_full("/guide", ua=BROWSER, accept=accept)
+        assert status == 200
+        assert _lower(headers)["content-type"] == "text/markdown; charset=utf-8"
+        assert body.lstrip().startswith("#")
+
+    def test_the_twin_is_the_same_bytes_the_llms_url_serves(self, client):
+        """Not a second rendering — the same document. Two renderings would
+        be two things to keep true."""
+        _, twin, _ = client.get_full("/guide", ua=BROWSER, accept="text/markdown")
+        _, doc, _ = client.get_full("/guide/llms.txt", ua=BROWSER)
+        assert twin == doc
+
+    def test_vary_names_accept_and_user_agent(self, client):
+        """One URL, two content types: a shared cache that stored the
+        markdown for the next browser would serve the wrong representation
+        to a real reader."""
+        for accept in ("text/markdown", self.BROWSER_ACCEPT):
+            _, _, headers = client.get_full("/guide", ua=BROWSER, accept=accept)
+            vary = _lower(headers)["vary"].lower()
+            assert "accept" in vary and "user-agent" in vary
+
+    def test_the_markdown_response_carries_the_discovery_headers(self, client):
+        _, _, headers = client.get_full("/guide", ua=BROWSER, accept="text/markdown")
+        lowered = _lower(headers)
+        assert "link" in lowered
+        assert any("digest" in key for key in lowered)
+
+    def test_a_caching_client_does_not_serve_one_to_the_other(self, backend):
+        """The cache-poisoning case, run in the order that would poison:
+        HTML first, then markdown for the same URL."""
+        client = _Client(_build_app(backend), backend)
+        _, html_body, html_headers = client.get_full(
+            "/guide", ua=BROWSER, accept=self.BROWSER_ACCEPT
+        )
+        _, md_body, md_headers = client.get_full("/guide", ua=BROWSER, accept="text/markdown")
+
+        assert html_body != md_body
+        assert _lower(html_headers)["content-type"].startswith("text/html")
+        assert _lower(md_headers)["content-type"].startswith("text/markdown")
+        # Both responses must tell a cache that Accept selected them.
+        for headers in (html_headers, md_headers):
+            assert "accept" in _lower(headers)["vary"].lower()
+
+    def test_the_crawler_lane_is_unchanged(self, client):
+        """A crawler sending `*/*` — which is what they send — still gets
+        the crawler document it always got."""
+        status, body, headers = client.get_full("/guide", ua=GOOGLEBOT, accept="*/*")
+        assert status == 200
+        assert _lower(headers)["content-type"].startswith("text/html")
+        assert STUB not in body
+
+    def test_policy_still_wins_over_the_negotiation(self, backend, recorded):
+        """The branch sits after every policy branch on purpose: asking for
+        markdown is not a way around a 403."""
+        app = _build_app(backend)
+        app._robots_config = pkg.RobotsConfig(block_ai_training=True)
+        status, _, _ = _Client(app, backend).get_full("/guide", ua=GPTBOT, accept="text/markdown")
+        assert status == 403
+        assert recorded[0]["verdict"] == "blocked"
+
+    def test_a_hidden_page_is_still_hidden(self, client):
+        """`build_llms_txt_for_page` runs the same access verdict the
+        llms.txt route runs, so the twin cannot leak what the document
+        would not."""
+        assert client.get_full("/admin", ua=BROWSER, accept="text/markdown")[0] == 404
+
+    def test_the_twin_records_a_page_read(self, backend, recorded):
+        """Item 6: one path now serves two documents, so the tier names the
+        DOCUMENT that went out, not the path it came from."""
+        client = _Client(_build_app(backend), backend)
+        client.get_full("/guide", ua=GPTBOT, accept="text/markdown")
+        assert len(recorded) == 1
+        assert recorded[0]["tier"] == "page"
+        assert recorded[0]["path"] == "/guide"
+        assert recorded[0]["verdict"] == "served"
+
+
 def _openapi(app, client):
     """The generated schema, as a dict."""
     import json

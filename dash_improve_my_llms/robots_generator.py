@@ -83,6 +83,38 @@ class RobotsConfig:
         self.default_unknown_ai = default_unknown_ai
 
 
+def content_signal(config: Any) -> str:
+    """The `Content-Signal` value for a config, as `key=yes|no` pairs.
+
+    Cloudflare's Content Signals Policy (CC0, 2025) lets a site state
+    three postures that robots.txt itself cannot express: may this content
+    be shown in search results, used as input to an AI answer, and used to
+    train a model. No crawler honours it yet; stating it costs one line
+    and it is the posture this fleet already holds.
+
+    All three are DERIVED, which is the difference between a signal and a
+    decoration:
+
+    * ``search`` follows ``allow_traditional`` — a host that disallows
+      Googlebot and Bingbot in the groups below must not say `search=yes`
+      one line above them.
+    * ``ai-input`` follows ``allow_ai_search`` — the named-human fetchers
+      and citation crawlers are exactly "AI input".
+    * ``ai-train`` follows ``block_ai_training``, inverted: `yes` when
+      training is allowed, `no` when it is blocked.
+
+    Cloudflare's own injected default said `ai-train=no`. A host that
+    deliberately allows training crawlers so their reads can be attributed
+    would have shipped the opposite of its policy by taking that default,
+    which is the argument for generating the line from the config that
+    also renders the groups.
+    """
+    allow_search = "yes" if getattr(config, "allow_traditional", True) else "no"
+    allow_input = "yes" if getattr(config, "allow_ai_search", True) else "no"
+    allow_train = "no" if getattr(config, "block_ai_training", True) else "yes"
+    return f"search={allow_search}, ai-input={allow_input}, ai-train={allow_train}"
+
+
 def _vendor_groups(vendors: list, directive: str) -> list:
     """User-agent groups for the given vendors, one group per robots token.
 
@@ -137,6 +169,11 @@ def generate_robots_txt(
 
     if config.crawl_delay:
         lines.append(f"Crawl-delay: {config.crawl_delay}")
+
+    # Content Signals (2.10.0), inside the `*` group and derived from this
+    # same config — never hand-typed by a host, because a signal that
+    # disagrees with the directives below it is worse than no signal.
+    lines.append(f"Content-Signal: {content_signal(config)}")
 
     lines.append("")
 

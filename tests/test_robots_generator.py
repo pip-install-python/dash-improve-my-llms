@@ -4,6 +4,7 @@ Tests for robots.txt generator module.
 
 import pytest
 from dash_improve_my_llms.robots_generator import (
+    content_signal,
     RobotsConfig,
     generate_robots_txt,
 )
@@ -706,3 +707,79 @@ class TestTheMcpClaimIsConditional:
             robots = self._render(**kwargs)
             assert robots.endswith("\n")
             assert not robots.endswith("\n\n")
+
+
+class TestContentSignal:
+    """2.10 item 1 — one `Content-Signal` line, derived, never hand-typed.
+
+    Cloudflare's Content Signals Policy states three postures robots.txt
+    cannot otherwise express. No crawler honours it yet; the line costs
+    one row and says what this host already does. Cloudflare's own
+    injected default said `ai-train=no` — the opposite of a host that
+    deliberately allows training crawlers so their reads can be
+    attributed, which is why the value is generated from the config that
+    renders the groups rather than typed by a human.
+    """
+
+    def _render(self, config):
+        return generate_robots_txt(
+            config=config,
+            sitemap_url="https://example.com/sitemap.xml",
+            base_url="https://example.com",
+        )
+
+    def test_exactly_one_line_and_it_is_in_the_wildcard_group(self):
+        robots = self._render(RobotsConfig())
+        lines = robots.splitlines()
+        signals = [i for i, line in enumerate(lines) if line.startswith("Content-Signal:")]
+        assert len(signals) == 1
+
+        index = signals[0]
+        star = lines.index("User-agent: *")
+        # Inside the group: after `User-agent: *`, before the blank line
+        # that closes it.
+        assert star < index
+        assert "" not in lines[star:index]
+
+    @pytest.mark.parametrize(
+        "config,expected",
+        [
+            (RobotsConfig(), "search=yes, ai-input=yes, ai-train=no"),
+            (RobotsConfig(block_ai_training=False), "search=yes, ai-input=yes, ai-train=yes"),
+            (RobotsConfig(allow_traditional=False), "search=no, ai-input=yes, ai-train=no"),
+            (RobotsConfig(allow_ai_search=False), "search=yes, ai-input=no, ai-train=no"),
+            (
+                RobotsConfig(
+                    block_ai_training=False, allow_ai_search=False, allow_traditional=False
+                ),
+                "search=no, ai-input=no, ai-train=yes",
+            ),
+        ],
+    )
+    def test_every_signal_tracks_the_config_that_renders_the_groups(self, config, expected):
+        """All three are derived. A host that disallows Googlebot in the
+        groups below must not say `search=yes` one line above them."""
+        assert content_signal(config) == expected
+        assert f"Content-Signal: {expected}" in self._render(config)
+
+    def test_the_networks_posture_renders_as_the_drop_specified(self):
+        """`block_ai_training=False` is the network's decision (d) — allow,
+        and attribute in the ledger."""
+        assert "Content-Signal: search=yes, ai-input=yes, ai-train=yes" in self._render(
+            RobotsConfig(block_ai_training=False)
+        )
+
+    def test_a_config_object_that_never_heard_of_it_still_renders(self):
+        """Read with getattr, like every other field: a pre-2.10 config
+        object must not break the file."""
+        from types import SimpleNamespace
+
+        old_shape = SimpleNamespace(
+            block_ai_training=True,
+            allow_ai_search=True,
+            allow_traditional=True,
+            crawl_delay=None,
+            custom_rules=[],
+            disallowed_paths=[],
+        )
+        assert "Content-Signal: search=yes, ai-input=yes, ai-train=no" in self._render(old_shape)

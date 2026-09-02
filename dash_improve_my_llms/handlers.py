@@ -1706,7 +1706,22 @@ def handle_bot_request(
             request_ip = None
 
     identity = classify(user_agent, request_ip)
-    if identity["lane"] == "browser":
+
+    # 2.10 item 2 — a request that asks for markdown MORE than for HTML is
+    # not a browser navigating, whatever its User-agent claims, so it is
+    # allowed past the browser gate to reach the twin below. Everything
+    # else about the browser lane is unchanged, and the check is a header
+    # parse: normal traffic still returns here having paid nothing.
+    wants_markdown = False
+    if headers is not None and not is_doc_route:
+        try:
+            from .discovery import prefers_markdown
+
+            wants_markdown = prefers_markdown(headers.get("accept", "") or "")
+        except Exception:  # noqa: BLE001
+            wants_markdown = False
+
+    if identity["lane"] == "browser" and not wants_markdown:
         return None
 
     bot_type = identity["bot_type"] or "unknown"
@@ -1722,7 +1737,7 @@ def handle_bot_request(
         robots_config=robots_config, identity=identity, user_agent=user_agent
     )
 
-    def _emit(status: int, body: Any, verdict: str) -> None:
+    def _emit(status: int, body: Any, verdict: str, tier: Optional[str] = None) -> None:
         """One read event for a document the middleware itself produced.
 
         Costs a truth-test on hosts with no listener registered, which is
@@ -1733,7 +1748,11 @@ def handle_bot_request(
         _ledger.emit_read(
             path=path,
             method=method,
-            tier=document_tier(path),
+            # `tier` is overridable because one path can serve two
+            # documents since 2.10: a page URL answers the app's HTML and,
+            # under Accept negotiation, that page's markdown twin. The
+            # tier names the DOCUMENT, not the path.
+            tier=tier or document_tier(path),
             lane="crawler",
             status=status,
             body=body,
@@ -1835,6 +1854,63 @@ def handle_bot_request(
     # branches below — they would render the app shell for /llms.txt.
     if is_doc_route:
         return None
+
+    # 2.10 item 2 — the page's markdown twin, at the page's own URL.
+    #
+    # The same bytes `/<page>/llms.txt` serves, because they ARE the
+    # markdown representation of this page; building a second one would be
+    # two documents to keep true. Deliberately placed after every policy
+    # branch above: a blocked crawler that asks for markdown still gets
+    # its 403, and a gated page still answers with its gate document,
+    # because `build_llms_txt_for_page` runs the same access verdict the
+    # llms.txt route runs.
+    #
+    # `Vary: Accept` is not decoration here. One URL now answers two
+    # content types, so a shared cache that stored the markdown for the
+    # next browser — or the HTML for the next agent — would be serving the
+    # wrong representation to a real reader. The header is what makes the
+    # negotiation safe to put in front of a CDN.
+    if wants_markdown:
+        twin = build_llms_txt_for_page(
+            app=app,
+            page_path=_normalize_page_path(path),
+            page_metadata=page_metadata,
+            hidden_paths=hidden_paths,
+            # No `state` at this seam — the crawler branch below passes
+            # None to `access.offer_document` for the same reason. The
+            # twin's nav block and access verdict do not need it.
+            state=None,
+            include_nav=True,
+            user_agent=user_agent,
+        )
+        if twin is not None:
+            body, status = twin
+            page_path = _normalize_page_path(path)
+            headers_out = {"Vary": "Accept, User-Agent"}
+
+            from .discovery import DIGEST_HEADER, link_header_value, source_digest
+
+            headers_out["Link"] = link_header_value(page_path)
+            entry = _find_page(page_path)
+            digest = source_digest(_resolve_llms_doc(page_path, page_metadata, entry))
+            if digest:
+                headers_out[DIGEST_HEADER] = digest
+
+            # Item 6: this is a corpus read of the PAGE document, not of
+            # the HTML at the same URL — the tier a ledger groups on has
+            # to name which of the two went out.
+            _emit(status, body, _ledger.verdict_for_status(status), tier="page")
+            return {
+                "status": status,
+                "body": body,
+                # Bare, no charset: every adapter appends one for a
+                # text/* type, and spelling it here produced
+                # "text/markdown; charset=utf-8; charset=utf-8" on the two
+                # Werkzeug backends. The crawler HTML branch below returns
+                # a bare type for the same reason.
+                "content_type": "text/markdown",
+                "headers": headers_out,
+            }
 
     # 2.8 item 1 — everything still here is served the crawler document.
     #

@@ -62,8 +62,13 @@ non-JavaScript consumer will look:
 | `/sitemap.xml` | Every non-hidden page |
 | `/robots.txt` | Per-bot-class access policy |
 | `dash.mcp` | The same prose as an MCP resource (Dash 4.3+) |
+| The page URL, with `Accept: text/markdown` | That page's Markdown twin — the same bytes as `/<page>/llms.txt` |
+| `/.well-known/api-catalog` | RFC 9727 linkset naming this host's machine surfaces |
+| `/.well-known/mcp/server-card.json` | The MCP server card, when the bridge registered resources |
+| `/.well-known/agent-skills/index.json` | Agent Skills index, with a sha256 digest per skill |
+| Anything else under `/.well-known/` | **404 JSON** — the namespace refuses what it does not publish |
 
-One source of truth, eight surfaces, and the interactive app is untouched.
+One source of truth, and the interactive app is untouched.
 Every llms document content-negotiates: agents and crawlers get the raw
 Markdown byte-for-byte, browsers get the same Markdown rendered (`?raw=1`
 forces the raw side). `configure_seo()` additionally answers `/favicon.ico`

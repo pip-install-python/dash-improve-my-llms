@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from . import _ledger, access
+from . import _ledger, access, wellknown
 from ._headers import normalize_headers
 from .discovery import DIGEST_HEADER, link_header_value, wants_plain_text
 from .handlers import (
@@ -344,6 +344,96 @@ def register_flask(app: Any, config: Any, state: Any) -> None:
     # two identical rules, but relying on that would leave a dead duplicate
     # in the map. A route registered AFTER improve() cannot be honoured;
     # register such routes first, or pass configure_seo(root_icons=False).
+
+    # -----------------------------------------------------------------
+    # 2.10 — the /.well-known/ namespace, and the refusal under it
+    # -----------------------------------------------------------------
+    #
+    # Measured before this shipped, on three live hosts and all three
+    # adapters: EVERY path under /.well-known/ answered 200 with the Dash
+    # app shell, and so did /auth.md. An agent asking for an API catalog
+    # or OAuth metadata got a web page. Nothing published in this
+    # namespace is trustworthy until its neighbours refuse, which is why
+    # the guard ships with the documents rather than after them.
+    #
+    # Registered as ROUTES, not as middleware, so precedence is the
+    # routing table's own: Werkzeug ranks a static rule above a converter
+    # rule, so a host's own /.well-known/whatever still wins over the
+    # catch-all below, and Dash's page catch-all loses to both.
+    _wk_claimed = {rule.rule for rule in server.url_map.iter_rules()}
+
+    def _wk_response(payload):
+        """(body, content_type, status) -> a Response, with the read recorded."""
+        body, content_type, status = payload
+        _emit(request.path, wellknown.WELLKNOWN_TIER, status, body)
+        return Response(
+            body,
+            status=status,
+            mimetype=content_type,
+            headers={"Cache-Control": "no-store"} if status == 404 else {},
+        )
+
+    def _wk_api_catalog():
+        return _wk_response(
+            (
+                wellknown.build_api_catalog(
+                    app,
+                    openapi_path=None,
+                    status_path=wellknown.detect_status_path(_wk_claimed),
+                ),
+                wellknown.LINKSET_TYPE,
+                200,
+            )
+        )
+
+    def _wk_mcp_card():
+        card = wellknown.build_mcp_server_card(app, config)
+        if card is None:
+            return _wk_response((wellknown.not_found_body(), wellknown.JSON_TYPE, 404))
+        return _wk_response((card, wellknown.JSON_TYPE, 200))
+
+    def _wk_agent_skills():
+        return _wk_response((wellknown.build_agent_skills_index(app), wellknown.JSON_TYPE, 200))
+
+    def _wk_guard(rest=""):
+        return _wk_response((wellknown.not_found_body(), wellknown.JSON_TYPE, 404))
+
+    for _wk_path, _wk_view, _wk_name in (
+        (wellknown.API_CATALOG_PATH, _wk_api_catalog, "api_catalog"),
+        (wellknown.MCP_CARD_PATH, _wk_mcp_card, "mcp_card"),
+        (wellknown.AGENT_SKILLS_PATH, _wk_agent_skills, "agent_skills"),
+    ):
+        if _wk_path in _wk_claimed:
+            continue
+        server.add_url_rule(
+            _wk_path,
+            endpoint=f"_dimll_wk_{_wk_name}",
+            view_func=_wk_view,
+            methods=DOC_ROUTE_METHODS,
+        )
+
+    # The guard itself, last: a converter rule, so every static rule above
+    # it — ours and the host's — is preferred by Werkzeug's ranking.
+    server.add_url_rule(
+        "/.well-known/<path:rest>",
+        endpoint="_dimll_wk_guard",
+        view_func=_wk_guard,
+        methods=DOC_ROUTE_METHODS,
+    )
+
+    # The two discovery paths that live at the root. Claimed only when
+    # nothing else answers them: FastAPI serves a real /openapi.json, and
+    # a host may serve its own /auth.md once the identity ladder is up.
+    for _wk_root in wellknown.ROOT_DISCOVERY_PATHS:
+        if _wk_root in _wk_claimed:
+            continue
+        server.add_url_rule(
+            _wk_root,
+            endpoint=f"_dimll_wk_root{_wk_root.replace('/', '_').replace('.', '_')}",
+            view_func=_wk_guard,
+            methods=DOC_ROUTE_METHODS,
+        )
+
     _claimed = {rule.rule for rule in server.url_map.iter_rules()}
     for _root_path in ROOT_ICON_PATHS:
         if _root_path in _claimed:

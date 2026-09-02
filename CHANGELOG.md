@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-09-02 — the machine surface refuses what it does not serve
+
+Cloudflare's agent-readiness scan failed this network on checks it already
+satisfied in substance. Chasing those was worth one release; the thing the
+scan does *not* check was worth doing first.
+
+### Fixed — every `/.well-known/*` path answered 200 with the app shell
+
+Measured on three live hosts and reproduced in-process on all three
+adapters: **every** path under `/.well-known/` returned 200 and a Dash
+page, and so did `/auth.md`, and `/openapi.json` on the backends that
+have no schema. An agent asking for an API catalog, an agent card or
+OAuth metadata got a web page and no way to tell.
+
+That is a soft-404 on the one namespace whose entire purpose is machine
+discovery, and it makes every document published there worthless: an
+agent that gets 200 for `/.well-known/anything` learns nothing from
+getting 200 for `/.well-known/api-catalog`. **Refusing the unknown is
+what makes the known worth reading**, which is why the guard ships in the
+same release as the documents rather than after them.
+
+Unknown discovery paths now answer `404` with
+`{"error":"not found","see":"/llms.txt"}` and `Cache-Control: no-store`,
+on all three adapters, for every User-agent. Registered as routes rather
+than middleware, so precedence is the routing table's own: **a host's own
+`/.well-known/` route still wins**, and Dash's page catch-all loses to
+both. `/openapi.json` is claimed only where nothing else serves it —
+FastAPI's real schema is untouched.
+
+### Added — `Content-Signal` in robots.txt
+
+One line in the `User-agent: *` group, **derived from the same
+`RobotsConfig` that renders the groups below it**, never hand-typed:
+`search` follows `allow_traditional`, `ai-input` follows
+`allow_ai_search`, `ai-train` follows `block_ai_training` inverted. A
+signal that disagrees with the directives under it is worse than no
+signal — and Cloudflare's injected default said `ai-train=no`, the
+opposite of a host that deliberately allows training crawlers so their
+reads can be attributed.
+
+### Added — `Accept: text/markdown` on page routes
+
+A request for a page URL whose `Accept` prefers markdown over HTML now
+receives that page's markdown twin: **the same bytes `/<page>/llms.txt`
+serves**, because they already are the markdown representation of that
+page — a second rendering would be a second thing to keep true.
+`Content-Type: text/markdown`, `Vary: Accept, User-Agent`, plus the
+`Link` and source-digest headers the llms routes carry.
+
+*Strictly* preferred, by a real q-value parse with RFC 9110 specificity
+ordering: `*/*`, a tie, and a browser's
+`text/html,…,*/*;q=0.8` all leave HTML the default, so browsers and
+crawlers are untouched without anything having to opt out. The branch
+sits after every policy branch, so asking for markdown is not a way past
+a 403, and the twin runs the same access verdict — a hidden page is still
+404.
+
+### Added — three discovery documents, none of which invent anything
+
+* **`/.well-known/api-catalog`** (RFC 9727, `application/linkset+json`):
+  one anchored linkset. `service-doc` → `/llms.txt` always;
+  `service-desc` → the OpenAPI document **only on FastAPI**, which is the
+  only backend that has one; `status` → the host's health endpoint **only
+  when the host registered one**, detected from its routes rather than
+  assumed. A link that 404s is the lie this release exists to remove.
+* **`/.well-known/mcp/server-card.json`** (SEP-2127 draft): generated from
+  what the MCP bridge actually registered — `serverInfo` is the *host's*
+  identity via the `openapi_*` knobs, and `capabilities` declares
+  `resources` because that is all the bridge provides. **404 when the
+  bridge is inactive**, like any other path the host does not serve. Every
+  schema and version string sits in one place, so ratification is one
+  edit.
+* **`/.well-known/agent-skills/index.json`** (agent-skills-discovery
+  v0.2.0): the package serves the index and computes each `sha256` digest
+  from the bytes on disk; the SKILL.md content is the host's. A host with
+  none gets `"skills": []` — **empty is an answer, absent is a mystery**.
+
+### Added — a `wellknown` tier on read events
+
+An agent discovering a host is a reader, so items above emit
+`on_document_read` like any document: `tier="wellknown"` for the three
+discovery documents and the refusals, `tier="page"` for a markdown twin.
+One path can now serve two documents, so the tier names the **document**,
+not the path.
+
+### Fixed — a doubled charset on the Werkzeug backends
+
+Found by the new negotiation tests: returning
+`"text/markdown; charset=utf-8"` from a handler produced
+`text/markdown; charset=utf-8; charset=utf-8` on Flask and Quart, which
+append their own. Handlers return bare types; adapters add the charset.
+
 ## [2.9.4] - 2026-08-31 — HEAD on every route, a schema that tells the truth, a priced index
 
 > **2.9.3 was tagged and never published.** Its CD run failed the gate on

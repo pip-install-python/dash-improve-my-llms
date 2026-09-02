@@ -59,6 +59,67 @@ def link_header_value(page_path: str) -> str:
     )
 
 
+def accept_quality(accept: str, media_type: str) -> float:
+    """The q-value an ``Accept`` header gives one media type.
+
+    RFC 9110 §12.5.1 precedence: the most specific matching range wins
+    regardless of q, so ``text/markdown`` beats ``text/*`` beats ``*/*``.
+    That ordering is the whole reason this is a parser and not a
+    substring test — a browser's
+    ``text/html,application/xhtml+xml,*/*;q=0.8`` matches markdown only
+    through the wildcard, at 0.8, while html matches exactly at 1.0.
+
+    An absent or unparseable header reads as ``*/*``: 1.0 for anything.
+    """
+    text = (accept or "").strip()
+    if not text:
+        return 1.0
+
+    main_type = media_type.split("/")[0]
+    best = None  # (specificity, q) — specificity 2 exact, 1 type/*, 0 */*
+    for part in text.split(","):
+        piece = part.strip()
+        if not piece:
+            continue
+        range_, _, params = piece.partition(";")
+        range_ = range_.strip().lower()
+
+        quality = 1.0
+        for param in params.split(";"):
+            key, _, value = param.partition("=")
+            if key.strip().lower() == "q":
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 1.0
+
+        if range_ == media_type:
+            specificity = 2
+        elif range_ == f"{main_type}/*":
+            specificity = 1
+        elif range_ == "*/*":
+            specificity = 0
+        else:
+            continue
+
+        if best is None or specificity > best[0]:
+            best = (specificity, quality)
+
+    return 0.0 if best is None else best[1]
+
+
+def prefers_markdown(accept: str) -> bool:
+    """True when a client asks for markdown MORE than for HTML.
+
+    Strictly greater, deliberately. ``*/*`` and a tie both leave HTML the
+    default, so a browser, a crawler sending ``*/*`` and every client that
+    has never heard of this negotiation are all unaffected — which is the
+    property that lets a page URL answer two content types without
+    anything having to opt out.
+    """
+    return accept_quality(accept, "text/markdown") > accept_quality(accept, "text/html")
+
+
 def wants_plain_text(accept: str) -> bool:
     """The one-line compatibility ramp: an Accept header that names
     text/plain and does not name markdown gets the same bytes typed
